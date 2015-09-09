@@ -206,7 +206,8 @@ def meta_extractor(metadata):
     homologenes = set()
     proteingis = set()
     genefraglen = []
-    if metadata :
+    
+    if metadata:
         for data in metadata:
             genes[data.geneid].append((data.taxonid, data.homologeneid, data.proteingi, data.genefraglen))
         for gene in genes:

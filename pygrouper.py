@@ -37,14 +37,13 @@ def Grouper(usrfile, usrdata, exp_setup, FilterValues):
     # -------------------- Populate gene, protein, homologene lists and counts -------------------- #
     usrdata['_data_tGeneList'], usrdata['_data_tProteinList'], usrdata['_data_GeneCount'], \
         usrdata['_data_ProteinCount'], usrdata['_data_tHIDList'], usrdata['_data_HIDCount'], \
-        usrdata['_data_ProteinCapacity'] = list(zip(*usrdata.apply(lambda x: meta_extractor(x['metadatainfo']), \
-                                                           axis=1)))
+        usrdata['_data_ProteinCapacity'] = list(zip(*usrdata.apply(lambda x: meta_extractor(x['metadatainfo']),axis=1)))
     # --------------------------------------------------------------------------------------------- #
 
     usrdata['_data_HID'], usrdata['_data_ProteinGI'], usrdata['_data_tTaxonIDList'], usrdata['_data_TaxonCount'] =\
                             '', '', '', ''  # potentially filled in later, fields will exist in database at least
 
-    logfile.write('{} | Finished matching PSMs to {} refseq\n'.format(time.ctime(), usrdata.at[0, '_data_TaxonID']))
+    logfile.write('{} | Finished matching PSMs to {} refseq\n'.format(time.ctime(), usrdata.loc[0]['_data_TaxonID']))
     logging.info('Starting Grouper for exp number {}'.format(exp_setup['EXPRecNo']))
     nomatches = usrdata[usrdata['_data_GeneCount'] == 0].Sequence  # select all PSMs that didn't get a match to the refseq peptidome
     logfile.write('{} | Total identified PSMs : {}\n'.format(time.ctime(), \
@@ -172,12 +171,12 @@ def Grouper(usrfile, usrdata, exp_setup, FilterValues):
             last = 0
             for i in range(len(genes_df)):  # this is confusing but it works. The logic behind it is obvious, but its implementation is weird.
             # print last
-                if genes_df.at[i, '_e2g_IDSet'] != 3:
-                    genes_df.at[i, '_e2g_GPGroup'], lessthan = GPG_helper(genes_df.at[i, '_e2g_IDSet'], \
-                                                                          genes_df.at[i, '_e2g_PeptideSet'], \
+                if genes_df.loc[i]['_e2g_IDSet'] != 3:
+                    genes_df.loc[i]['_e2g_GPGroup'], lessthan = GPG_helper(genes_df.loc[i]['_e2g_IDSet'], \
+                                                                          genes_df.loc[i]['_e2g_PeptideSet'], \
                                                                           genes_df, last)
-                if type(genes_df.at[i, '_e2g_GPGroup']) is int and not lessthan:
-                    last = genes_df.at[i, '_e2g_GPGroup']
+                if type(genes_df.loc[i]['_e2g_GPGroup']) is int and not lessthan:
+                    last = genes_df.loc[i]['_e2g_GPGroup']
 
             genes_df['_e2g_GPGroups_All'] = genes_df.apply(GPGall_helper, args=(genes_df,), axis=1)
             genes_df['_e2g_GPGroup'].replace(to_replace='', value=float('NaN'),
@@ -190,7 +189,7 @@ def Grouper(usrfile, usrdata, exp_setup, FilterValues):
             genes_df['_e2g_EXPRunNo'] = exp_setup['EXPRunNo']
             genes_df['_e2g_EXPSearchNo'] = exp_setup['EXPSearchNo']
             genes_df['_e2g_EXPTechRepNo'] = exp_setup['EXPTechRepNo']
-            genes_df['_e2g_AddedBy'] = usrdata.at[1, '_data_AddedBy']
+            genes_df['_e2g_AddedBy'] = usrdata.loc[1]['_data_AddedBy']
             genes_df['_e2g_CreationTS'] = datetime.now().ctime()
             genes_df['_e2g_ModificationTS'] = datetime.now().ctime()
             genes_df.to_csv(genedata_out, columns=gene_cols, index=False, encoding='utf-8', sep='\t')
@@ -358,7 +357,7 @@ def main(usrfiles=[], exp_setups=[], automated=False, usepeptidome=True):
                                 'Percolator q-Value': 'q-Value','Percolator PEP': 'PEP',\
                                 'Ions Score': 'IonScore', 'DeltaM [ppm]': 'Delta Mass [PPM]',
                                 'Deltam/z [Da]' : 'Delta Mass [Da]',
-                                'Ions Matched':'Matched Ions'}, inplace=True)  # PD 2.0 column name changes
+                                }, inplace=True)  # PD 2.0 column name changes
         if not automated:
             usrdata['_data_AddedBy'] = usr_name
 
@@ -379,14 +378,14 @@ def main(usrfiles=[], exp_setups=[], automated=False, usepeptidome=True):
             # pept_reader = file_reader(refs[organism]['loc'])
             ref_reader = csv_reader(refs[organism]['loc'])
             print('Using peptidome {} '.format(refs[organism]))
-            print('Breakups : {}'.format(pept_breakups[organism]))
+            #print('Breakups : {}'.format(pept_breakups[organism]))
             #sys.exit(0)
             for breakup in pept_breakups[organism]:  # Read refseq in chunks, uses less memory
                 prot = defaultdict(list)
                 for k in range(*breakup):
                     try:
                         row = next(ref_reader)
-                        fragments, fraglen = protease(row.fasta, minlen=7,\
+                        fragments, fraglen = protease(row.fasta, minlen=7,
                                                       cutsites=['K', 'R'])  # should stop else clause here
                         # fragments = protease((linesplit[4].strip('\n'),minlen = 7, cutsites=['k','r'])
                         for fragment in fragments:
@@ -397,7 +396,8 @@ def main(usrfiles=[], exp_setups=[], automated=False, usepeptidome=True):
                         break
 
                 for usrdata, usrfile in zip(usrdatas, usrfiles):
-                    if usrdata.at[0, '_data_TaxonID'] == int(organism):  # check to see if the inputdata 
+                    #print(usrdata.loc[0]['_data_TaxonID'])
+                    if usrdata.loc[0]['_data_TaxonID'] == int(organism):  # check to see if the inputdata 
                                                                          #taxonID matches with the proteome
                         usrdata['Sequence'], usrdata['_data_SequenceModi'], usrdata['_data_SequenceModiCount'], usrdata['_data_LabelFLAG'] = \
                         list(zip(*usrdata.apply(lambda x : seq_modi(x['Sequence'], x['Modifications']), axis=1)))
@@ -416,7 +416,7 @@ def main(usrfiles=[], exp_setups=[], automated=False, usepeptidome=True):
             failed_exps.append((usrfile, e))
             print('Failure for file of experiment {}.\nThe reason is : {}'.format(esetup['EXPRecNo'], e))
             logging.warn('Failure for file of experiment {}.\nThe reason is : {}'.format(esetup['EXPRecNo'], e))
-            #raise  # usually don't need to raise, will kill the script. Re-enable if need to debug and find where errors are
+            raise  # usually don't need to raise, will kill the script. Re-enable if need to debug and find where errors are
     print('Time taken : {}'.format(datetime.now() - startTime))
     logging.info('Time taken : {}.\n\n'.format(datetime.now() - startTime))
     if automated:
