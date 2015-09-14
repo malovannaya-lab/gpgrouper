@@ -14,6 +14,11 @@ try :
     #imagetitle = True
 except ImportError: pass
     #imagetitle = False
+
+
+RefseqInfo = namedtuple('RefseqInfo',
+                        'taxonid, geneid, homologeneid,proteingi,genefraglen')
+    
 def bufcount(filename):
     '''fast way to count lines in a file'''
     f = open(filename, mode = 'rt', encoding = 'latin1')                  
@@ -120,7 +125,7 @@ def protease(seq,minlen = 0,cutsites = [], exceptions = []):
             #print(chop, seq)  # for debugging
             chop = ''
         
-    frags_1, frags_2, frags_3 = [], [], []
+    frags_1, frags_2  = [], [] 
     for i in range(len(frags)-1):
         frags_1.append(frags[i]+frags[i+1])
     for i in range(len(frags)-2):
@@ -144,30 +149,99 @@ def genematcher(seq, metadata, prot):
             metadata.append(data)
     return metadata
 
-def meta_extractor(metadata):
-    #taxonid = set()
+def genelist_extractor(metadata):
+     ''' at the peptide level'''
+     taxonids = set()
+     homologeneids = set()
+     proteingis = set()
+     genefraglens = []
+
+     genelist = set()
+     if metadata:
+          for data in metadata:
+             genelist.add(data.geneid)
+             taxonids.add(data.taxonid)
+             homologeneids.add(data.homologeneid)
+             proteingis.add(data.proteingi)
+             #gene_metadata[data.geneid].append((data.taxonid, data.homologeneid,
+             #                             data.proteingi, data.genefraglen))
+
+     #for gene in genes:
+     #     if gene not in genelist:  # we split based on genelist, need unique set
+     #          genelist.append(gene)
+
+     return (','.join(genelist), len(genelist), ','.join(taxonids),
+             len(taxonids), ','.join(proteingis),
+             len(proteingis))
+
+def meta_extractor(geneid, genedict):  # need to take in whole tempdf.
+                                       # not at peptide level anymore
+     ''' at the gene level 
+     taxonid, homologeneid, proteingi, genefraglen'''
+
+     homologeneids = set()
+     proteingis = set()
+     genefraglens = []
+     for data in genedict[geneid]:
+
+          homologeneids.add(data[1])
+          proteingis.add(data[2])
+          genefraglens.append(data[3])
+
+     if not genefraglens:
+          genefraglens.append(0)  # if nothing gets populated
+
+     return (','.join(homologeneids),
+             len(homologeneids), ','.join(proteingis), len(proteingis),
+             mean(genefraglens))
+             
+     
+
+def meta_extractor_old(metadata):
+    taxonids = []
     genes = defaultdict(list)
-    homologenes = set()
-    proteingis = set()
+    genelst = []
+    homologenes = []
+    proteingis = []
     genefraglen = []
-    
+    frags = ['0'] # will be overwritten if there are genes    
     if metadata:
         for data in metadata:
             genes[data.geneid].append((data.taxonid, data.homologeneid,
                                        data.proteingi, data.genefraglen))
+        #print(genes)
+        #sys.exit(1)
+            #genelst.append(data.geneid)
+            #taxonids.append(data.taxonid)
+            #homologenes.append(data.homologeneid)
+            #proteingis.append(data.proteingi)
+            #genefraglen.append(str(data.genefraglen))
+
         for gene in genes:
-            frags = []
-            for genedata in genes[gene]:
-                #taxonid.add(genedata[0])  # next step
-                homologenes.add(genedata[1])
-                proteingis.add(genedata[2])
-                frags.append(genedata[3])
-            if len(frags) > 0 : genefraglen.append(str(mean(frags)))
-            else : genefraglen.append(0)
-    genelst = [gene for gene in genes]
+            if gene not in genelst:
+                genelst.append(gene)
+                frags = []
+                for data in genes[gene]:
+                #if data[0] not in taxonids:
+                    taxonids.append(data[0])  # next step
+                    frags.append(str(data[3]))
+                #if data[1] not in homologenes:
+
+                    homologenes.append(data[1])
+                #if data[2] not in proteingis:
+                    proteingis.append(data[2])
+
+                #if len(data[3]) > 0: 
+                     
+                #else:
+                #     frags.append('0')
+
+        #if len(frags) > 0 : genefraglen.append(str(mean(frags)))
+        #else : genefraglen.append('0')
+    #print(genefraglen)
     return ','.join(genelst), ','.join(proteingis), len(genelst),\
          len(proteingis), ','.join(homologenes), len(homologenes),\
-         ','.join(genefraglen)             
+         ','.join(frags), ','.join(taxonids), len(taxonids)             
 
 def dict_modifier(d,exceptions = {},exception_float = True):
     """Dictionary modifier function for the user. Takes in dictionary (d), as 
@@ -513,9 +587,9 @@ def AUC_distributor(inputdata,genes_df,EXPQuantSource):
         print('No distArea for GeneID : {}'.format(inputdata['_data_GeneID']))  
     if u2gPept != 0 : 
         totArea = 0
-        GeneList = inputdata._data_tGeneList.split(',')
+        gene_list = inputdata._data_tGeneList.split(',')
         totArea = sum(genes_df[
-             genes_df['_e2g_GeneID'].isin(GeneList)
+             genes_df['_e2g_GeneID'].isin(gene_list)
                               ]._e2g_nGPArea_Sum_u2g_all)
         distArea = (u2gPept/totArea) * inputvalue
         #ratio of u2g peptides over total area
@@ -604,14 +678,21 @@ def GPG_all_helper(genes_df,df_all):
     return str([k for k in GPGall]).strip('[').strip(']')    
         #df_all[df_all['_e2g_PeptideSet'].str.contains(pept)
         
-def capacity_grabber(geneid, df):
-    sel = df[df._data_GeneID == geneid][['_data_tGeneList','_data_ProteinCapacity']]
-    capacity = 0    
-    if len(sel) > 0:
-        sel.reset_index(inplace = True)
-        lst_indx = sel.at[0,'_data_tGeneList'].split(',').index(geneid)
-        capacity = sel.at[0,'_data_ProteinCapacity'].split(',')[lst_indx]
-    
-    return capacity
+def capacity_grabber(geneid, gene_metadata):
+    genefraglengths=[]
+
+    for data in gene_metadata[geneid]:
+         genefraglengths.append(data[3])
+    #sel = df[df._data_GeneID == geneid][['_data_tProteinList',
+    #                                     '_data_ProteinCapacity']]
+    #capacity = 0    
+    #if len(sel) > 0:
+    #    sel.reset_index(inplace = True)
+    #    lst_indx = sel.loc[0]['_data_tProteinList'].split(',').index(geneid)
+    #    capacity = sel.loc[0]['_data_ProteinCapacity'].split(',')[lst_indx]
+    if not genefraglengths:
+         genefraglengths.append(0)
+         
+    return mean(genefraglengths)
         
   

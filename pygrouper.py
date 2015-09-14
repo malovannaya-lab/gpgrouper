@@ -18,6 +18,19 @@ try:
 except ImportError:
     imagetitle = False
 
+def quick_save(df,name='df_snapshot.p', path=None, q=False):
+    import pickle
+    #import RefSeqInfo
+
+    if path:
+        name = path+name
+        
+    #df.to_csv('test_matched.tab', index=False, sep='\t')
+    pickle.dump( df, open( name, 'wb' ) )
+    print('Pickling...')
+    if q:
+        print('Exiting prematurely')
+        sys.exit(0)
 
 def PeptidomeMatcher(usrdata, ref_dict):
     usrdata['metadatainfo'] = usrdata.apply(lambda x:
@@ -28,8 +41,12 @@ def PeptidomeMatcher(usrdata, ref_dict):
 
 
 def Grouper(usrfile, usrdata, exp_setup, FilterValues):
+    #import RefseqInfo
+
     global program_title
     global release_date
+
+    #print(usrdata.dtypes)
 
     print('Starting Grouper for exp file {}'.format(usrfile))
     logfilestr = '_'.join(str(x) for x in [exp_setup['EXPRecNo'],
@@ -42,18 +59,37 @@ def Grouper(usrfile, usrdata, exp_setup, FilterValues):
     logfile.write('{} | Starting {} for file : {}\n'.format(
         time.ctime(),program_title, usrfile))
 
+    # ==================== Populate gene info ================================ #
+    gene_metadata = defaultdict(list)
+    for metadata in usrdata.metadatainfo:
+        for data in metadata:
+            gene_metadata[data.geneid].append((data.taxonid, data.homologeneid,
+                                          data.proteingi, data.genefraglen))
+
+    usrdata['_data_tGeneList'], usrdata['_data_GeneCount'], \
+        usrdata['_data_tTaxonIDList'],\
+        usrdata['_data_TaxonCount'], usrdata['_data_tProteinList'], \
+        usrdata['_data_ProteinCount'] = list(zip(
+        *usrdata.apply(lambda x : genelist_extractor(x['metadatainfo'],
+                                                     ),
+                       axis=1)))
+
+
+    # ==================== Populate gene info ================================ #
+    
     # -------------------- Populate gene, protein, homologene lists----------- #
-    usrdata['_data_tGeneList'], usrdata['_data_tProteinList'],\
-    usrdata['_data_GeneCount'], usrdata['_data_ProteinCount'],\
-    usrdata['_data_tHIDList'], usrdata['_data_HIDCount'],\
-    usrdata['_data_ProteinCapacity'] = list(zip(
-        *usrdata.apply(lambda x:
-                       meta_extractor(x['metadatainfo']),axis=1)))
+    #usrdata['_data_tGeneList'], usrdata['_data_tProteinList'],\
+    #usrdata['_data_GeneCount'], usrdata['_data_ProteinCount'],\
+    #usrdata['_data_tHIDList'], usrdata['_data_HIDCount'],\
+    #usrdata['_data_ProteinCapacity'], usrdata['_data_tTaxonIDList'],\
+    #usrdata['_data_TaxonCount'] = list(zip(
+    #    *usrdata.apply(lambda x:
+    #                   meta_extractor(x['metadatainfo']),axis=1)))
     #------------------------------------------------------------------------- #
 
-    usrdata['_data_HID'], usrdata['_data_ProteinGI'],\
-    usrdata['_data_tTaxonIDList'], usrdata['_data_TaxonCount'] =\
-    '', '', '', ''  # potentially filled in later,
+    usrdata['_data_HID'], usrdata['_data_ProteinGI'] = '', ''
+    
+    # potentially filled in later,
     #fields will exist in database at least
 
     logfile.write('{} | Finished matching PSMs to {} '\
@@ -61,6 +97,7 @@ def Grouper(usrfile, usrdata, exp_setup, FilterValues):
                                     usrdata.loc[0]['_data_TaxonID']))
     logging.info('Starting Grouper for exp number'\
                  '{}'.format(exp_setup['EXPRecNo']))
+        
     nomatches = usrdata[usrdata['_data_GeneCount'] == 0].Sequence  # select all
     #PSMs that didn't get a match to the refseq peptidome
     logfile.write('{} | Total identified PSMs : {}\n'.format(
@@ -74,8 +111,6 @@ def Grouper(usrfile, usrdata, exp_setup, FilterValues):
                                                                 usrfile))
         # Store all of these sequences in the big log file, not per experiment.
 
-    usrdata.drop('metadatainfo', axis=1, inplace=True)  # Don't need this
-                                      # column anymore.
     resultout_dir = os.getcwd()  
 
     logfile.write('{} | Starting grouper.\n'.format(time.ctime()))
@@ -98,6 +133,17 @@ def Grouper(usrfile, usrdata, exp_setup, FilterValues):
                                           #from glstsplitter Series
     # ========================================================================= #
 
+    # ======================== Get rest of of the metadata ===================== #
+
+    #usrdata['_data_tHIDList'], usrdata['_data_HIDCount'], \
+    #        usrdata['_data_tProteinList'], usrdata['_data_ProteinCount'], \
+    #        usrdata['_data_ProteinCapacity'] = list(zip(
+    #            *usrdata.apply(lambda x : meta_extractor(x['_data_GeneID'],
+    #                                                     x['gene_metadata']),
+    #                           axis=1)))
+
+    # ========================================================================= #
+            
     logfile.write('{} | Starting peptide ranking.\n'.format(time.ctime()))
     usrdata = usrdata.sort(['Spectrum File', '_data_GeneID', 'Precursor Area',
                             'Sequence', 'Modifications',
@@ -123,7 +169,9 @@ def Grouper(usrfile, usrdata, exp_setup, FilterValues):
     logging.info('{}: Peptide ranking complete for {}.'.format(datetime.now(),
                                                                usrfile))
     # ========================================================================= #
-
+    #quick_save(usrdata, q=False)
+    #quick_save(gene_metadata, name='metadata.p', q=False)
+    
     usrdata['_data_AUC_nUseFLAG'], usrdata['_data_PSM_nUseFLAG'] = \
     list(zip(*usrdata.apply(AUC_PSM_flagger, args=(FilterValues,), axis=1)))
     # Flag good quality peptides
@@ -179,7 +227,8 @@ def Grouper(usrfile, usrdata, exp_setup, FilterValues):
             genes_df['_e2g_GeneCapacity'] = genes_df.apply(lambda x:
                                                            capacity_grabber(
                                                                x['_e2g_GeneID'],
-                                                               temp_df), axis=1)
+                                                               gene_metadata),
+                                                           axis=1)
             genes_df['_e2g_EXPLabelFLAG'] = label
             for i, j in exp_setup.items(): genes_df[i] = j  # creates genes_df
             #columns and populates them with  exp_setup values.
@@ -291,7 +340,11 @@ def Grouper(usrfile, usrdata, exp_setup, FilterValues):
                           'completed.\n'.format(
                               time.ctime(), 
                               labeltypes[label]))
-    # ----------------End of none/silac loop--------------------------------- #  
+    # ----------------End of none/silac loop--------------------------------- #
+    usrdata.drop('metadatainfo', axis=1, inplace=True)  # Don't need this
+                                      # column anymore.
+
+    
     usrdata = pd.merge(usrdata, temp_df, how='outer')
     usrdata['_data_EXPRecNo'], usrdata['_data_EXPRunNo'],\
     usrdata['_data_EXPSearchNo'],\
@@ -506,8 +559,9 @@ def main(usrfiles=[], exp_setups=[], automated=False, usepeptidome=True):
 
     # ============== Load refseq and start matching peptides ================ #
     print('{}: Loading refseq database.'.format(datetime.now()))
-    RefseqInfo = namedtuple('RefseqInfo',
-                            'taxonid, geneid, homologeneid,proteingi,genefraglen')
+    #RefseqInfo = namedtuple('RefseqInfo',
+    #                    'taxonid, geneid, homologeneid,proteingi,genefraglen')
+    
     for organism in refs.keys():
         if any(any(x['_data_TaxonID'].isin([int(organism)])) for x in\
                usrdatas):  # check if we even need to read the
@@ -523,7 +577,8 @@ def main(usrfiles=[], exp_setups=[], automated=False, usepeptidome=True):
                     try:
                         row = next(ref_reader)
                         fragments, fraglen = protease(row.fasta, minlen=7,
-                                                      cutsites=['K', 'R'])
+                                                      cutsites=['K', 'R'],
+                                                      exceptions=['P'])
                         # should stop else clause here (??)
                         # fragments = protease((linesplit[4].strip('\n'),minlen =
                                                   #7, cutsites=['k','r'])
@@ -744,7 +799,7 @@ if __name__ == '__main__':
                         help='Run setup wizard for PyGrouper.\n'\
                         'Not necessary unless adding a new refseq or need to'\
                         'change refseq location.')
-    parser.add_argument('-auto', '--automated',
+    parser.add_argument('-a', '--automated',
                         action='store_true', help='Automated run of PyGrouper.'\
                         'Note, requires experiment dump from iSPEC to be set up'\
                         'seperately.\nIf you are not sure if this is correctly'\
