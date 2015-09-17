@@ -522,25 +522,19 @@ def e2g_PSM_helper(gene_df_ID, data,EXPTechRepNo):
     return total, total_u2g, total_S, total_S_u2g
     
    
-def area_calculator(gene_df, usrdata, EXPTechRepNo,EXPQuantSource):
-    if EXPQuantSource == 'AUC':
-        matches  = usrdata[(usrdata['_data_GeneID'] == gene_df['_e2g_GeneID']) &
-                           (usrdata['_data_AUC_nUseFLAG']==1)] [
-                                ['Precursor Area', '_data_GeneCount',
-                                 '_data_PSM_IDG', '# Missed Cleavages']]
-        normalization = 10**9
- 
-    elif EXPQuantSource == 'Intensity':
-        matches  = usrdata[(usrdata['_data_GeneID'] == gene_df['_e2g_GeneID']) &
-                           (usrdata['data_AUC_nUseFLAG']==1)][
-                                ['Intensity','_data_GeneCount']]
-        normalization = 10**5        
+def area_calculator(gene_df, usrdata, EXPTechRepNo,area_col, normalization):
 
-    else : 
+    matches  = usrdata[(usrdata['_data_GeneID'] == gene_df['_e2g_GeneID']) &
+                           (usrdata['_data_AUC_nUseFLAG']==1)] [
+                                [area_col, '_data_GeneCount',
+                                 '_data_PSM_IDG', '# Missed Cleavages']]
+ 
+
+    #else : 
        # return None, None, None, None, None, None
-        print('{} : Error - EXPQuantSource is not defined correctly.'.format(
-             datetime.now()))
-        sys.exit(1)
+        #print('{} : Error - EXPQuantSource is not defined correctly.'.format(
+             #datetime.now()))
+        #sys.exit(1)
         
     uniq_matches = matches[matches['_data_GeneCount']==1]
     uniq_matches_0 = uniq_matches[uniq_matches['# Missed Cleavages']==0]
@@ -548,31 +542,33 @@ def area_calculator(gene_df, usrdata, EXPTechRepNo,EXPQuantSource):
 
 
     values_max = nan_popper([value for value in
-                             matches['Precursor Area'].values])
+                             matches[area_col].values])
 
     values_adj = nan_popper([value/count for value,count in
-                             matches[['Precursor Area','_data_GeneCount']
+                             matches[[area_col,'_data_GeneCount']
                              ].values])
     uniq_values_adj = nan_popper([value/count for value,count in
-                                  uniq_matches[['Precursor Area',
+                                  uniq_matches[[area_col,
                                                 '_data_GeneCount']].values])
     uniq_values_adj_0 = nan_popper([value/count for value,count in
-                                    uniq_matches_0[['Precursor Area',
+                                    uniq_matches_0[[area_col,
                                                     '_data_GeneCount']].values])
     result = (sum(values_max)/normalization,  sum(values_adj)/normalization,
               sum(uniq_values_adj_0)/normalization,
               sum(uniq_values_adj)/normalization)
     return result
 
-def AUC_distributor(inputdata,genes_df,EXPQuantSource):
-    if EXPQuantSource == 'AUC':
-        inputvalue = inputdata['Precursor Area'] 
-    elif EXPQuantSource == 'Intensity':
-        inputvalue = inputdata['Intensity']
-    else:
-        print('{} : Error - EXPQuantSource is not defined correctly.'.format(
-             datetime.now()))
-        sys.exit(1)
+def AUC_distributor(inputdata,genes_df,area_col):
+     
+    #if EXPQuantSource == 'AUC':
+    #    inputvalue = inputdata['Precursor Area'] 
+    #elif EXPQuantSource == 'Intensity':
+    #    inputvalue = inputdata['Intensity']
+    #else:
+    #    print('{} : Error - EXPQuantSource is not defined correctly.'.format(
+    #         datetime.now()))
+    #    sys.exit(1)
+    inputvalue = inputdata[area_col]
     u2gPept = genes_df[genes_df['_e2g_GeneID']==inputdata['_data_GeneID']
     ]['_e2g_nGPArea_Sum_u2g_all'].values
     
@@ -696,3 +692,17 @@ def capacity_grabber(geneid, gene_metadata):
     return mean(genefraglengths)
         
   
+def regex_pattern_all(items):
+     patterns=[]
+     for item in items:
+          pattern = ''
+          for element in item:
+               pattern += '(?=.*{})'.format(element)
+          patterns.append(pattern)
+
+     return patterns
+
+def gene_to_taxon(gene, d):
+     if gene:
+          gene = str(int(gene))  # just in case
+     return d.get(gene)

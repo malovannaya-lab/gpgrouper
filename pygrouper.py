@@ -61,10 +61,14 @@ def Grouper(usrfile, usrdata, exp_setup, FilterValues):
 
     # ==================== Populate gene info ================================ #
     gene_metadata = defaultdict(list)
+    gene_taxon_dict = dict()
+    
     for metadata in usrdata.metadatainfo:
         for data in metadata:
             gene_metadata[data.geneid].append((data.taxonid, data.homologeneid,
                                           data.proteingi, data.genefraglen))
+    for gene in gene_metadata:
+        gene_taxon_dict[gene] = gene_metadata[gene][0][0]
 
     usrdata['_data_tGeneList'], usrdata['_data_GeneCount'], \
         usrdata['_data_tTaxonIDList'],\
@@ -131,27 +135,71 @@ def Grouper(usrfile, usrdata, exp_setup, FilterValues):
     glstsplitter.name = '_data_GeneID'  # give the series a name
     usrdata = usrdata.join(glstsplitter)  # usrdata gains column '_data_GeneID'
                                           #from glstsplitter Series
+                                              
     # ========================================================================= #
 
-    # ======================== Get rest of of the metadata ===================== #
+    # ======================== Plugin for multiple taxons  ===================== #
+    if exp_setup['EXPQuantSource'] == 'AUC':
+        area_col = 'Precursor Area'  # we always use Precursor Area
+        normalize = 10**9
+    elif exp_setup['EXPQuantSource'] == 'Intensity':
+        area_col = 'Intensity'
+        normalize = 10**5
 
-    #usrdata['_data_tHIDList'], usrdata['_data_HIDCount'], \
-    #        usrdata['_data_tProteinList'], usrdata['_data_ProteinCount'], \
-    #        usrdata['_data_ProteinCapacity'] = list(zip(
-    #            *usrdata.apply(lambda x : meta_extractor(x['_data_GeneID'],
-    #                                                     x['gene_metadata']),
-    #                           axis=1)))
+    usrdata['gene_taxon_map'] = usrdata.apply(lambda x : gene_to_taxon(
+        x['_data_GeneID'], gene_taxon_dict), axis=1)
+    
+    taxon_ids = set(','.join(x for x in usrdata._data_tTaxonIDList.tolist()
+                             if x).split(','))    
+    area_col_new = '_data_taxonArea_redistrib'
+    #quick_save(usrdata, q=False)
+    #quick_save(gene_taxon_dict, name='gene_taxon_dict.p', q=True)
+    if len(taxon_ids) == 1:  # just 1 taxon id present
+        usrdata[area_col_new] = usrdata[area_col]
+    elif len(taxon_ids) > 1:  # more than 1 taxon id
+        print('Multiple taxons found, redistributing areas...')
+        logfile.write('{} | Multiple taxons found, '\
+                      'redistributing areas.\n'.format(time.ctime()))
+        usrdata.reset_index(inplace=True)
+        usrdata[area_col_new] = 0
+        taxon_totals = dict()
+        for taxon in taxon_ids:
+            all_others = [x for x in taxon_ids if x != taxon]
+            taxon_totals[taxon] = usrdata[
+                (usrdata._data_tTaxonIDList.str.contains(taxon)) &
+                (~usrdata._data_tTaxonIDList.str.contains('|'.join(all_others)))
+                ][area_col].sum()
 
+        tot_unique = sum(taxon_totals.values())  #sum of unique
+        # now compute ratio:
+        for taxon in taxon_ids:
+            taxon_totals[taxon] = taxon_totals[taxon] / tot_unique
+            print(taxon, ' ratio : ', taxon_totals[taxon])
+            logfile.write('{} ratio : {}'.format(taxon, taxon_totals[taxon]))
+        all_combos = [x for i in range(2, len(taxon_ids)+1) for x in
+                      itertools.combinations(taxon_ids, i)] # list of tuples
+        patterns = regex_pattern_all(all_combos)
+        for taxons, pattern in zip(all_combos, patterns):
+            for taxon in taxons:
+                ratio = taxon_totals[taxon]
+                usrdata.ix[(usrdata._data_tTaxonIDList.str.contains(pattern)) &
+                           (usrdata.gene_taxon_map == taxon),
+                           area_col_new] = usrdata[area_col] * ratio
+
+        usrdata.ix[usrdata._data_TaxonCount==1, area_col_new] = usrdata[area_col]
+        area_col = area_col_new  # use new area col as the area column now
+        print()
+            
     # ========================================================================= #
             
     logfile.write('{} | Starting peptide ranking.\n'.format(time.ctime()))
-    usrdata = usrdata.sort(['Spectrum File', '_data_GeneID', 'Precursor Area',
+    usrdata = usrdata.sort(['Spectrum File', '_data_GeneID', area_col,
                             'Sequence', 'Modifications',
                             'Charge','_data_PSM_IDG','IonScore', 'PEP',
                             'q-Value'], ascending=[0, 1, 0, 1, 1, 1, 1, 0, 1, 1]) 
     usrdata.reset_index(inplace=True)
     usrdata.Modifications.fillna('', inplace=True)  # must do this to compare nans
-    usrdata['Precursor Area'].fillna(0, inplace=True)  # must do this to compare
+    usrdata[area_col].fillna(0, inplace=True)  # must do this to compare
                                                        #nans
     grouped = usrdata.drop_duplicates(subset=['Spectrum File', '_data_GeneID',
                                               'Sequence', 'Modifications',
@@ -260,7 +308,7 @@ def Grouper(usrfile, usrdata, exp_setup, FilterValues):
             list(zip(*genes_df.apply(area_calculator,
                                      args=(temp_df,
                                            exp_setup['EXPTechRepNo'],
-                                           exp_setup['EXPQuantSource']),
+                                           area_col, normalize),
                                      axis=1)))
             # pandas may give a warning from this though it is fine
             print('{}: Calculating distributed area ratio for {}.'.format(
@@ -271,13 +319,9 @@ def Grouper(usrfile, usrdata, exp_setup, FilterValues):
                 time.ctime()))
             temp_df['_data_PrecursorArea_dstrAdj'] = temp_df.apply(
                 AUC_distributor,args=(genes_df,
-                                      exp_setup['EXPQuantSource'],),
+                                      area_col,),
                                       axis=1)
-            if exp_setup['EXPQuantSource'] == 'AUC':
-                normalize = 10 ** 9
-            elif exp_setup['EXPQuantSource'] == 'Intensity':
-                normalize = 10 ** 5
-
+            
             print('{}: Assigning gene sets and groups for {}.'.format(
                 datetime.now(), usrfile))
             logging.info('{}: Assigning gene sets and groups for {}.'.format(
@@ -314,7 +358,7 @@ def Grouper(usrfile, usrdata, exp_setup, FilterValues):
                                genes_df.loc[i]['_e2g_PeptideSet'], \
                                genes_df, last)
                 if type(genes_df.loc[i]['_e2g_GPGroup']) is int and not lessthan:
-                    last = genes_df.loc[i]['_e2g_GPGroup']
+                    last = genes_df.loc[i, '_e2g_GPGroup']
 
             genes_df['_e2g_GPGroups_All'] = genes_df.apply(GPG_all_helper,
                                                            args=(genes_df,),
@@ -377,12 +421,13 @@ def Grouper(usrfile, usrdata, exp_setup, FilterValues):
                  '_data_PSM_IDG', '_data_SequenceModi', 
                  '_data_SequenceModiCount', '_data_LabelFLAG', '_data_GeneID',
                  '_data_PeptRank', '_data_AUC_nUseFLAG','_data_PSM_nUseFLAG',
-                 '_data_PrecursorArea_dstrAdj']
+                 area_col_new, '_data_PrecursorArea_dstrAdj']
     #usrdata.to_csv(usrdata_out, columns=usrdata.columns,
                                 #encoding='utf-8', sep='\t')
     #print(usrdata.columns.values)  # for debugging
     if not all(x in usrdata.columns.values for x in data_cols):
-        print('Potential error, not all columns filled')
+        print('Potential error, not all columns filled.')
+        print([x for x in data_cols if x not in usrdata.columns.values])                                
         data_cols = [x for x in data_cols if x in usrdata.columns.values]
         # will still export successfully
     usrdata.to_csv(usrdata_out, columns=data_cols, index=False, encoding='utf-8',
@@ -467,7 +512,7 @@ def main(usrfiles=[], exp_setups=[], automated=False, usepeptidome=True):
 
         while True:
             try:
-                exp_setup = {'taxonID': 9606, 'EXPTechRepNo': 1,
+                exp_setup = {'taxonID': 20150811, 'EXPTechRepNo': 1,
                              'EXPQuantSource': 'AUC', 'EXPRunNo': 1,
                              'EXPSearchNo': 1, 'EXPLabelType': 'none'}
                 usrfile_input = input('Enter a file to group or press'\
@@ -509,7 +554,7 @@ def main(usrfiles=[], exp_setups=[], automated=False, usepeptidome=True):
                         except KeyboardInterrupt:
                             print(
                                 '\nEXPQuantSource can be set to AUC or '\
-                                'Intensity, but all other values must be'\
+                                'Intensity, but all other values must be '\
                                 'numbers only.')
                             dict_modifier(exp_setup, {'EXPQuantSource':
                                                       ['AUC', 'Intensity']}, 
@@ -626,7 +671,7 @@ def main(usrfiles=[], exp_setups=[], automated=False, usepeptidome=True):
                          'The reason is : {}'.format(esetup['EXPRecNo'], e))
             raise  # usually don't need to raise, will kill the script. Re-enable
                    #if need to debug and find where errors are
-    print('Time taken : {}'.format(datetime.now() - startTime))
+    print('Time taken : {}\n'.format(datetime.now() - startTime))
     logging.info('Time taken : {}.\n\n'.format(datetime.now() - startTime))
     if automated:
         return failed_exps
@@ -720,7 +765,7 @@ def expchecker(options):
                         usrfile = usrfilelst[0]
                     else:  # can't find the correct file if we get to here
                         print('Warning, more than one match for EXPRecNo {}'\
-                              'detected, skipping...'.format(
+                              ' detected, skipping...'.format(
                                   exp_setup['EXPRecNo']))
                         passed = False
                 elif len(usrfilelst) == 0:  # no file found
@@ -736,7 +781,7 @@ def expchecker(options):
     if len(usrfiles) > 0:  # then we group
         for usrfile, exp_setup in zip(usrfiles, exp_setups):
             print('Found experiment {} from datafile'\
-                  '{}.'.format(exp_setup['EXPRecNo'], usrfile))
+                  ' {}.'.format(exp_setup['EXPRecNo'], usrfile))
             logfilestr = '_'.join(
                 str(x) for x in [exp_setup['EXPRecNo'], exp_setup['EXPRunNo'],
                                  exp_setup['EXPSearchNo'],
@@ -782,8 +827,8 @@ def schedule(INTERVAL, options):
 
 
 if __name__ == '__main__':
-    program_title = 'PyGrouper v0.1.004'
-    release_date = '11 August 2015'
+    program_title = 'PyGrouper v0.1.005'
+    release_date = '17 September 2015'
     parser = argparse.ArgumentParser()
     parser.add_argument('-fpr', '--fullpeptread',
                         action='store_true',
