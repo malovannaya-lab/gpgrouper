@@ -165,17 +165,19 @@ def Grouper(usrfile, usrdata, exp_setup, FilterValues):
         taxon_totals = dict()
         for taxon in taxon_ids:
             all_others = [x for x in taxon_ids if x != taxon]
-            taxon_totals[taxon] = usrdata[
+            uniq_taxon = usrdata[
                 (usrdata._data_tTaxonIDList.str.contains(taxon)) &
                 (~usrdata._data_tTaxonIDList.str.contains('|'.join(all_others)))
-                ][area_col].sum()
+                ]
+            taxon_totals[taxon] = (uniq_taxon[area_col] / uniq_taxon['_data_GeneCount']).sum()
+
 
         tot_unique = sum(taxon_totals.values())  #sum of unique
         # now compute ratio:
         for taxon in taxon_ids:
             taxon_totals[taxon] = taxon_totals[taxon] / tot_unique
             print(taxon, ' ratio : ', taxon_totals[taxon])
-            logfile.write('{} ratio : {}'.format(taxon, taxon_totals[taxon]))
+            logfile.write('{} ratio : {}\n'.format(taxon, taxon_totals[taxon]))
         all_combos = [x for i in range(2, len(taxon_ids)+1) for x in
                       itertools.combinations(taxon_ids, i)] # list of tuples
         patterns = regex_pattern_all(all_combos)
@@ -827,8 +829,8 @@ def schedule(INTERVAL, options):
 
 
 if __name__ == '__main__':
-    program_title = 'PyGrouper v0.1.005'
-    release_date = '17 September 2015'
+    program_title = 'PyGrouper v0.1.006'
+    release_date = '22 September 2015'
     parser = argparse.ArgumentParser()
     parser.add_argument('-fpr', '--fullpeptread',
                         action='store_true',
