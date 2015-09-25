@@ -46,8 +46,27 @@ def Grouper(usrfile, usrdata, exp_setup, FilterValues):
     global program_title
     global release_date
 
-    #print(usrdata.dtypes)
+    # file with entry of gene ids to ignore for normalizations
 
+    gid_ignore_file = 'pygrouper_geneignore.txt'
+    gid_ignore_list = []
+
+    if os.path.isfile(gid_ignore_file):
+        print('Using gene filter file for normalization.')
+        gid_ignore_read=[x.strip() for x in open(gid_ignore_file,'r') if
+                         not x.strip().startswith('#')]
+        #gid_ignore_list = [int(x) for x in gid_ignore_read if x.isdigit()]
+        # don't convert to int, GIDs are not ints
+        gid_ignore_list = gid_ignore_read
+
+    if exp_setup['EXPQuantSource'] == 'AUC':
+        area_col = 'Precursor Area'  # we always use Precursor Area
+        normalize = 10**9
+    elif exp_setup['EXPQuantSource'] == 'Intensity':
+        area_col = 'Intensity'
+        normalize = 10**5    
+
+                
     print('Starting Grouper for exp file {}'.format(usrfile))
     logfilestr = '_'.join(str(x) for x in [exp_setup['EXPRecNo'],
                                            exp_setup['EXPRunNo'],
@@ -135,65 +154,9 @@ def Grouper(usrfile, usrdata, exp_setup, FilterValues):
     glstsplitter.name = '_data_GeneID'  # give the series a name
     usrdata = usrdata.join(glstsplitter)  # usrdata gains column '_data_GeneID'
                                           #from glstsplitter Series
-                                              
+
     # ========================================================================= #
 
-    # ======================== Plugin for multiple taxons  ===================== #
-    if exp_setup['EXPQuantSource'] == 'AUC':
-        area_col = 'Precursor Area'  # we always use Precursor Area
-        normalize = 10**9
-    elif exp_setup['EXPQuantSource'] == 'Intensity':
-        area_col = 'Intensity'
-        normalize = 10**5
-
-    usrdata['gene_taxon_map'] = usrdata.apply(lambda x : gene_to_taxon(
-        x['_data_GeneID'], gene_taxon_dict), axis=1)
-    
-    taxon_ids = set(','.join(x for x in usrdata._data_tTaxonIDList.tolist()
-                             if x).split(','))    
-    area_col_new = '_data_taxonArea_redistrib'
-    #quick_save(usrdata, q=False)
-    #quick_save(gene_taxon_dict, name='gene_taxon_dict.p', q=True)
-    if len(taxon_ids) == 1:  # just 1 taxon id present
-        usrdata[area_col_new] = usrdata[area_col]
-    elif len(taxon_ids) > 1:  # more than 1 taxon id
-        print('Multiple taxons found, redistributing areas...')
-        logfile.write('{} | Multiple taxons found, '\
-                      'redistributing areas.\n'.format(time.ctime()))
-        usrdata.reset_index(inplace=True)
-        usrdata[area_col_new] = 0
-        taxon_totals = dict()
-        for taxon in taxon_ids:
-            all_others = [x for x in taxon_ids if x != taxon]
-            uniq_taxon = usrdata[
-                (usrdata._data_tTaxonIDList.str.contains(taxon)) &
-                (~usrdata._data_tTaxonIDList.str.contains('|'.join(all_others)))
-                ]
-            taxon_totals[taxon] = (uniq_taxon[area_col] / uniq_taxon['_data_GeneCount']).sum()
-
-
-        tot_unique = sum(taxon_totals.values())  #sum of unique
-        # now compute ratio:
-        for taxon in taxon_ids:
-            taxon_totals[taxon] = taxon_totals[taxon] / tot_unique
-            print(taxon, ' ratio : ', taxon_totals[taxon])
-            logfile.write('{} ratio : {}\n'.format(taxon, taxon_totals[taxon]))
-        all_combos = [x for i in range(2, len(taxon_ids)+1) for x in
-                      itertools.combinations(taxon_ids, i)] # list of tuples
-        patterns = regex_pattern_all(all_combos)
-        for taxons, pattern in zip(all_combos, patterns):
-            for taxon in taxons:
-                ratio = taxon_totals[taxon]
-                usrdata.ix[(usrdata._data_tTaxonIDList.str.contains(pattern)) &
-                           (usrdata.gene_taxon_map == taxon),
-                           area_col_new] = usrdata[area_col] * ratio
-
-        usrdata.ix[usrdata._data_TaxonCount==1, area_col_new] = usrdata[area_col]
-        area_col = area_col_new  # use new area col as the area column now
-        print()
-            
-    # ========================================================================= #
-            
     logfile.write('{} | Starting peptide ranking.\n'.format(time.ctime()))
     usrdata = usrdata.sort(['Spectrum File', '_data_GeneID', area_col,
                             'Sequence', 'Modifications',
@@ -226,6 +189,62 @@ def Grouper(usrfile, usrdata, exp_setup, FilterValues):
     list(zip(*usrdata.apply(AUC_PSM_flagger, args=(FilterValues,), axis=1)))
     # Flag good quality peptides
 
+        # ======================== Plugin for multiple taxons  ===================== #
+
+    usrdata['gene_taxon_map'] = usrdata.apply(lambda x : gene_to_taxon(
+        x['_data_GeneID'], gene_taxon_dict), axis=1)
+    
+    taxon_ids = set(','.join(x for x in usrdata._data_tTaxonIDList.tolist()
+                             if x).split(','))    
+    area_col_new = '_data_taxonArea_redistrib'
+    #quick_save(usrdata, q=False)
+    #quick_save(gene_taxon_dict, name='gene_taxon_dict.p', q=True)
+    if len(taxon_ids) == 1:  # just 1 taxon id present
+        usrdata[area_col_new] = usrdata[area_col]
+    elif len(taxon_ids) > 1:  # more than 1 taxon id
+        print('Multiple taxons found, redistributing areas...')
+        logfile.write('{} | Multiple taxons found, '\
+                      'redistributing areas.\n'.format(time.ctime()))
+        usrdata.reset_index(inplace=True)
+        usrdata[area_col_new] = 0
+        taxon_totals = dict()
+        for taxon in taxon_ids:
+            #all_others = [x for x in taxon_ids if x != taxon]
+            uniq_taxon = usrdata[
+                #(usrdata._data_tTaxonIDList.str.contains(taxon)) &
+                #(~usrdata._data_tTaxonIDList.str.contains('|'.join(all_others)))&
+                (usrdata._data_tTaxonIDList==taxon) &
+                #(usrdata._data_PSM_IDG<9) &  # this is redunant with AUC_UseFLAG
+                (~usrdata._data_GeneID.isin(gid_ignore_list)) &
+                (usrdata._data_AUC_nUseFLAG == 1)
+                ]
+            taxon_totals[taxon] = (uniq_taxon[area_col] / uniq_taxon['_data_GeneCount']).sum()
+
+
+        tot_unique = sum(taxon_totals.values())  #sum of unique
+        # now compute ratio:
+        for taxon in taxon_ids:
+            taxon_totals[taxon] = taxon_totals[taxon] / tot_unique
+            print(taxon, ' ratio : ', taxon_totals[taxon])
+            logfile.write('{} ratio : {}\n'.format(taxon, taxon_totals[taxon]))
+        all_combos = [x for i in range(2, len(taxon_ids)+1) for x in
+                      itertools.combinations(taxon_ids, i)] # list of tuples
+        patterns = regex_pattern_all(all_combos)
+        for taxons, pattern in zip(all_combos, patterns):
+            for taxon in taxons:
+                ratio = taxon_totals[taxon]
+                usrdata.ix[(usrdata._data_tTaxonIDList.str.contains(pattern)) &
+                           (usrdata.gene_taxon_map == taxon),
+                           area_col_new] = usrdata[area_col] * ratio
+
+        usrdata.ix[usrdata._data_TaxonCount==1, area_col_new] = usrdata[area_col]
+        area_col = area_col_new  # use new area col as the area column now
+        print()
+        #sys.exit(0)    
+    # ========================================================================= #
+            
+
+    
     pd.options.mode.chained_assignment = None  # default='warn'
 
     # Make the name for the peptide data table :
@@ -829,8 +848,8 @@ def schedule(INTERVAL, options):
 
 
 if __name__ == '__main__':
-    program_title = 'PyGrouper v0.1.006'
-    release_date = '22 September 2015'
+    program_title = 'PyGrouper v0.1.007'
+    release_date = '25 September 2015'
     parser = argparse.ArgumentParser()
     parser.add_argument('-fpr', '--fullpeptread',
                         action='store_true',
