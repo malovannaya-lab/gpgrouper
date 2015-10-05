@@ -51,18 +51,20 @@ def file_checker(INPUT_DIR, OUTPUT_DIR):
             usrfilesize += os.stat(os.path.join(INPUT_DIR, usrfile)).st_size
             
 
-        if setup and usrfile and (len(usrfilesize <= MAX_SIZE):  # if we have both, 
+        if setup and usrfile and (usrfilesize <= MAX_SIZE):  # if we have both, 
             setups.append(setup)                     # a cap on max files to group at once
             usrfiles.append(usrfile)
-
+            print('Found experiment {} from datafile'\
+                  ' {}.'.format(setup['EXPRecNo'], usrfile))
+        if len(usrfiles) > 0:
             pygrouper.main(usrfiles=usrfiles, exp_setups=setups, automated=True,
-                           inputdir=INPUT_DIR, outputdir=OUTPUT_DIR, usedb=True)
+                       iqnputdir=INPUT_DIR, outputdir=OUTPUT_DIR, usedb=True)
     session.close()
         
 def schedule(INTERVAL, args):
     print('{} : Checking for new experiments.'.format(time.ctime()))
     INPUT_DIR = args[0]
-    db.get_ispec_experiment_info(os.path.join(INPUT_DIR,ispecf))
+    db.get_ispec_experiment_info(os.path.join(INPUT_DIR,ispecf), todb=True, norepeats=True)
     file_checker(*args)
     global thread
     thread = threading.Timer(INTERVAL, schedule, [INTERVAL, args])
