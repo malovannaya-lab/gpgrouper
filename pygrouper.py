@@ -11,6 +11,16 @@ from statistics import mean
 from configparser import SafeConfigParser, ParsingError, NoSectionError, NoOptionError
 import pandas as pd
 from pygrouper_subfuncts import *
+try :
+    import database_config as db
+except ImportError:
+    print('Not using databse_config')
+    pass # don't use db
+
+
+program_title = 'PyGrouper v0.1.008'
+release_date = '4 October 2015'
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
 try:
     from PIL import Image, ImageFont, ImageDraw
@@ -40,12 +50,12 @@ def PeptidomeMatcher(usrdata, ref_dict):
     return usrdata
 
 
-def Grouper(usrfile, usrdata, exp_setup, FilterValues):
+def Grouper(usrfile, usrdata, exp_setup, FilterValues, usedb=False, outdir=''):
     #import RefseqInfo
 
     global program_title
     global release_date
-
+    usrfile = os.path.split(usrfile)[1]
     # file with entry of gene ids to ignore for normalizations
 
     gid_ignore_file = 'pygrouper_geneignore.txt'
@@ -74,7 +84,7 @@ def Grouper(usrfile, usrdata, exp_setup, FilterValues):
                                            exp_setup['EXPTechRepNo'],
                                            str(exp_setup['EXPLabelType']) +
                                            '.log'])
-    logfile = open(logfilestr, 'w+')  # append to previously opened log file
+    logfile = open(os.path.join(outdir,logfilestr), 'w+')  # append to previously opened log file
     logfile.write('{} | Starting {} for file : {}\n'.format(
         time.ctime(),program_title, usrfile))
 
@@ -257,6 +267,7 @@ def Grouper(usrfile, usrdata, exp_setup, FilterValues):
     # none/SILAC loop
     labeltypes = ['nolabel', 'heavy']  # right now only using nolabel, but in
                                        # future this can grow
+    gpgcount, genecount, ibaqtot, = 0, 0, 0                                   
     for label in range(1):  # increase the range to go through more label types
         logfile.write('{} | Starting gene assignment for label {}.\n'.format(
             time.ctime(), labeltypes[label]))
@@ -277,7 +288,7 @@ def Grouper(usrfile, usrdata, exp_setup, FilterValues):
                      '_e2g_nGPArea_Sum_max', '_e2g_nGPArea_Sum_dstrAdj',
                      '_e2g_GeneCapacity', '_e2g_n_iBAQ_dstrAdj']  # cols of
                                                                   #interest
-        if args.genesets: gene_cols.append('_e2g_PeptideSet')  # this is useless
+
         # ==================================================================== #
         #print(len(temp_df))  # for debugging
         if len(temp_df) > 0:  # only do if we actually have peptides selected
@@ -369,14 +380,16 @@ def Grouper(usrfile, usrdata, exp_setup, FilterValues):
             genes_df.sort(columns=['_e2g_PSMs'], ascending=False, inplace=True)
             genes_df.index = list(range(0, len(genes_df)))
             last = 0
+            #quick_save(usrdata,name='usrdata.p', path=outdir, q=False)
+            #quick_save(genes_df,name='genedf.p', path=outdir, q=True)
             for i in range(len(genes_df)):  # The logic behind it makes
                 #sense,
                 #but the implementation is weird.
             # print(last)  # for debugging
                 if genes_df.loc[i]['_e2g_IDSet'] != 3:
-                    genes_df.loc[i]['_e2g_GPGroup'], lessthan = \
-                    GPG_helper(genes_df.loc[i]['_e2g_IDSet'],
-                               genes_df.loc[i]['_e2g_PeptideSet'], \
+                    genes_df.loc[i,'_e2g_GPGroup'], lessthan = \
+                    GPG_helper(genes_df.at[i,'_e2g_IDSet'],
+                               genes_df.at[i,'_e2g_PeptideSet'], \
                                genes_df, last)
                 if type(genes_df.loc[i]['_e2g_GPGroup']) is int and not lessthan:
                     last = genes_df.loc[i, '_e2g_GPGroup']
@@ -389,6 +402,7 @@ def Grouper(usrfile, usrdata, exp_setup, FilterValues):
                                          #strings, convert all strings to NaN
             genes_df.sort(columns=['_e2g_GPGroup'], ascending=True, inplace=True)
             genes_df.index = list(range(0, len(genes_df)))  # reset the index
+            gpgcount += genes_df._e2g_GPGroup.max()  # do this before filling na
             genes_df['_e2g_GPGroup'].fillna('', inplace=True)  # convert all NaN
                                                            #back to empty string
             # =============================================================#
@@ -399,12 +413,20 @@ def Grouper(usrfile, usrdata, exp_setup, FilterValues):
             genes_df['_e2g_AddedBy'] = usrdata.loc[1]['_data_AddedBy']
             genes_df['_e2g_CreationTS'] = datetime.now().ctime()
             genes_df['_e2g_ModificationTS'] = datetime.now().ctime()
-            genes_df.to_csv(genedata_out, columns=gene_cols, index=False,
-                            encoding='utf-8', sep='\t')
+            genes_df.to_csv(os.path.join(outdir,genedata_out), columns=gene_cols,
+                            index=False,encoding='utf-8', sep='\t')
             logfile.write('{} | Export of genetable for labeltype {}'\
                           'completed.\n'.format(
                               time.ctime(), 
                               labeltypes[label]))
+
+            genecount += len(genes_df)
+            ibaqtot += genes_df[~genes_df._e2g_GeneID.isin(
+                gid_ignore_list)]._e2g_n_iBAQ_dstrAdj.sum()
+            if usedb:
+                #db.add_exp2gene(genes_df)
+                pass
+
     # ----------------End of none/silac loop--------------------------------- #
     usrdata.drop('metadatainfo', axis=1, inplace=True)  # Don't need this
                                       # column anymore.
@@ -451,17 +473,39 @@ def Grouper(usrfile, usrdata, exp_setup, FilterValues):
         print([x for x in data_cols if x not in usrdata.columns.values])                                
         data_cols = [x for x in data_cols if x in usrdata.columns.values]
         # will still export successfully
-    usrdata.to_csv(usrdata_out, columns=data_cols, index=False, encoding='utf-8',
-                   sep='\t')
+    usrdata.to_csv(os.path.join(outdir,usrdata_out), columns=data_cols,
+                   index=False, encoding='utf-8',sep='\t')
+    
     logfile.write('{} | Export of datatable completed.\n'.format(time.ctime()))
     logfile.write('Successful grouping of file completed.')
     logfile.close()
+    
+    # update database
+    if usedb:
+        session = db.make_session()
+        exprecord = session.query(db.ExperimentRun).\
+                    filter_by(record_no=exp_setup['EXPRecNo']).\
+                    filter_by(run_no=exp_setup['EXPRunNo']).one()
+        exprecord.GPGroup_count = int(gpgcount)
+        exprecord.gene_count = int(genecount)
+        exprecord.iBAQ_total = int(ibaqtot)
+        exprecord.PSM_count = len(usrdata[usrdata._data_PSM_nUseFLAG==1])
+        exprecord.grouped = True
+        exprecord.failed = False
+        exprecord.group_date = datetime.now()
+
+        session.add(exprecord)
+        session.commit()
+        session.close()
+
+                                
     print('Successful grouping of {} completed.\n' \
           .format('_'.join(
               [str(exp_setup['EXPRecNo'])+'_'+str(exp_setup['EXPRunNo']
               )])))
 
-def main(usrfiles=[], exp_setups=[], automated=False, usepeptidome=True):
+def main(usrfiles=[], exp_setups=[], automated=False, usepeptidome=True, setup=False,fullpeptread=False,
+         usedb=False, inputdir='', outputdir=''):
     # ===================Configuration Setup / Loading==========================#
     global program_title
     global release_date
@@ -470,7 +514,7 @@ def main(usrfiles=[], exp_setups=[], automated=False, usepeptidome=True):
         input("No config file detected. Don't worry, we'll make one now\n"\
               "Press [Enter] to continue")
         pysetup()
-    elif args.setup:
+    elif setup:
         pysetup()
     parser = SafeConfigParser()
     parser.read('py_config.ini')
@@ -480,7 +524,7 @@ def main(usrfiles=[], exp_setups=[], automated=False, usepeptidome=True):
         refs[taxon] = {'loc': location,
                        'size': parser.getfloat('refseq file sizes',
                         taxon)}  # access and store preconfigured reference info
-        if args.fullpeptread:
+        if fullpeptread:
             pept_breakups[taxon] = [(0, int(refs[taxon]['size']))]
         else:
             pept_breakups[taxon] = [(0, int(ceil(refs[taxon]['size'] / \
@@ -513,13 +557,18 @@ def main(usrfiles=[], exp_setups=[], automated=False, usepeptidome=True):
         FilterValues['Filter_Modi'])
 
     print('\nFilter values set to : {}'.format(Filter_Stamp))
-    if not automated:
+    if not automated and not usedb:
         try:
             explog = open('PyGrouper_grouped_exps.log', 'r+U')
         except IOError:
             explog = open('PyGrouper_grouped_exps.log', 'a+')
         grouped_exps = [value for value in re.findall(r'(\d+\S*\.txt)',\
                                                     ' '.join(explog.readlines()))]
+    if not automated and usedb:
+        grouped_query = db.get_grouped_exps()
+        grouped_exps = [(group.record_no, group.run_no, group.search_no, group.tech_repeat)
+                        for group in grouped_query]
+    if not automated:
         try:
             input('Press enter to continue, or Ctrl+C to modify the filter'\
                   'values.\n')
@@ -533,7 +582,7 @@ def main(usrfiles=[], exp_setups=[], automated=False, usepeptidome=True):
 
         while True:
             try:
-                exp_setup = {'taxonID': 20150811, 'EXPTechRepNo': 1,
+                exp_setup = {'taxonID': 9606, 'EXPTechRepNo': 1,
                              'EXPQuantSource': 'AUC', 'EXPRunNo': 1,
                              'EXPSearchNo': 1, 'EXPLabelType': 'none'}
                 usrfile_input = input('Enter a file to group or press'\
@@ -541,10 +590,10 @@ def main(usrfiles=[], exp_setups=[], automated=False, usepeptidome=True):
                 if usrfile_input == 'forcequit':
                     logging.info('forcequit without selecting any files')
                     logging.shutdown()
-                    sys.exit(1)
+                    sys.exit(0)
                 if os.path.isfile(usrfile_input):  # check to see if file exists
                     proceed = True
-                    if usrfile_input.strip() in grouped_exps:  # strip any
+                    if usrfile_input.strip() in grouped_exps and not usedb:  # strip any
                         #whitespace to match correctly
                         while True:
                             proceed = input(
@@ -558,20 +607,20 @@ def main(usrfiles=[], exp_setups=[], automated=False, usepeptidome=True):
                                 break
                     if proceed:
                         try:
-                            exp_setup['EXPRecNo'] = re.search('(\d{3,})',
-                                                    usrfile_input).group()
+                            exp_setup['EXPRecNo'] = int(re.search('(\d{3,})',
+                                                    usrfile_input).group())
                             # find first number of at least 3 digits
                         except AttributeError:
                             exprecno = input("Couldn't locate experimental"\
                                              " record automatically,"\
                                              " please enter it now. ")
-                            exp_setup['EXPRecNo'] = exprecno
+                            exp_setup['EXPRecNo'] = int(exprecno)
+
                         print('Experimental setup is : {}'.format(exp_setup))
                         try:
                             input('Press enter to accept values and continue,'\
                                   'or Ctrl+C to modify the experimental'\
                                   'values.\n')
-                            exp_setups.append(exp_setup)
                         except KeyboardInterrupt:
                             print(
                                 '\nEXPQuantSource can be set to AUC or '\
@@ -580,15 +629,51 @@ def main(usrfiles=[], exp_setups=[], automated=False, usepeptidome=True):
                             dict_modifier(exp_setup, {'EXPQuantSource':
                                                       ['AUC', 'Intensity']}, 
                                           exception_float=False)
+                            
+                        if usedb:
+                            #print(grouped_exps)
+                            #print((exp_setup['EXPRecNo'], exp_setup['EXPRunNo'],
+                            #    exp_setup['EXPSearchNo'], exp_setup['EXPTechRepNo']))
+                            exp_setup['add_to_db'] = True
+                            if (exp_setup['EXPRecNo'], exp_setup['EXPRunNo'],
+                                exp_setup['EXPSearchNo'], exp_setup['EXPTechRepNo']) in grouped_exps:
+                                while True:
+                                    proceed = input(
+                                        'Records show that {} has been grouped before.'\
+                                        'Are you sure you want to regroup (Y/n)? '\
+                                        .format(usrfile_input))
+                                    if 'Y' in proceed:
+                                        exp_setup['add_to_db'] = False
+                                        break
+                                    elif 'n' in proceed.lower():
+                                        proceed = False
+                                        break
+                        if proceed:            
                             exp_setups.append(exp_setup)
-
-                        usrfiles.append(usrfile_input)
+                            usrfiles.append(usrfile_input)
+                                                        
                 else:
                     print('File {} not found.'.format(usrfile_input))
                     # morefile = raw_input('Do you have more files to group? ')
             except KeyboardInterrupt:
                 if len(usrfiles) > 0:
                     print()
+                    if usedb:
+                        newexps = defaultdict(list)
+                        for exp in exp_setups:
+                            if exp['add_to_db']:
+                                newexps[exp['EXPRecNo']].append(
+                                    {'run_no':exp['EXPRunNo'],
+                                     'search_no':exp['EXPSearchNo'],
+                                     'taxon':exp['taxonID'],
+                                     'addedby':usr_name,
+                                     'creation_ts':datetime.now(),
+                                     'techrep':exp['EXPTechRepNo'],
+                                     'label':exp['EXPLabelType'],
+                                     'quant':exp['EXPQuantSource'],
+                                     })
+                            
+                        db.add_experiments(newexps)
                     break
                 else:
                     print('No files selected!')
@@ -599,10 +684,10 @@ def main(usrfiles=[], exp_setups=[], automated=False, usepeptidome=True):
 
     print('\nStart at {}'.format(startTime))
     logging.info('Start at {}'.format(startTime))
-    if args.fullpeptread: print('Running with fullpeptread option')
+    if fullpeptread: print('Running with fullpeptread option')
     usrdatas = []
     for usrfile in usrfiles:  # load all data
-        usrdatas.append(pd.read_csv(usrfile, sep='\t'))
+        usrdatas.append(pd.read_csv(os.path.join(inputdir,usrfile), sep='\t'))
     for usrdata, exp_setup in zip(usrdatas, exp_setups):
         usrdata.rename(columns={'Annotated Sequence': 'Sequence', 'Area':
                                 'Precursor Area','Percolator q-Value':
@@ -682,7 +767,7 @@ def main(usrfiles=[], exp_setups=[], automated=False, usepeptidome=True):
     for usrfile, udata, esetup in zip(usrfiles, usrdatas, exp_setups):
         # print usrfile, esetup
         try:
-            Grouper(usrfile, udata, esetup, FilterValues)
+            Grouper(usrfile, udata, esetup, FilterValues, usedb=usedb, outdir=outputdir)
         except Exception as e:  # catch and store all exceptions, won't crash
                                 # the whole program at least
             failed_exps.append((usrfile, e))
@@ -694,17 +779,27 @@ def main(usrfiles=[], exp_setups=[], automated=False, usepeptidome=True):
                    #if need to debug and find where errors are
     print('Time taken : {}\n'.format(datetime.now() - startTime))
     logging.info('Time taken : {}.\n\n'.format(datetime.now() - startTime))
-    if automated:
+    if automated and not usedb:
         return failed_exps
     else:
         if failed_exps:  # list of failed experiments, is empty if no failures
+
             for failed in failed_exps:  # failed is a tuple with the datafile and
                                         #then the reason for failure
                 usrfiles.remove(failed[0])  # remove all of the failed
                                             #experiments so they won't go in log
+                if usedb:
+                    session = db.make_session()
+                    exprecord = session.query(db.ExperimentRun).\
+                    filter_by(record_no=exp_setup['EXPRecNo']).\
+                    filter_by(run_no=exp_setup['EXPRunNo']).one()
+                    exprecord.failed = True
+                    session.add(exprecord)
+                    session.commit()
+                    session.close()
                 failedlog.write('{} : failed grouping {},'\
                                 ' reason : {}\n'.format(datetime.now(), *failed))
-        if usrfile:
+        if usrfile and not usedb:
             for usrfile in usrfiles:
                 explog.write('{} : grouped experiment file {}'\
                              '\n'.format(datetime.now(), usrfile))
@@ -848,8 +943,13 @@ def schedule(INTERVAL, options):
 
 
 if __name__ == '__main__':
-    program_title = 'PyGrouper v0.1.007'
-    release_date = '25 September 2015'
+
+    parser = SafeConfigParser()
+    parser.read('py_config.ini')
+    INPUT_DIR = parser['directories']['inputdir']  # where to look
+                                                   # for files to group
+    OUTPUT_DIR = parser['directories']['outputdir']
+
     parser = argparse.ArgumentParser()
     parser.add_argument('-fpr', '--fullpeptread',
                         action='store_true',
@@ -870,11 +970,19 @@ if __name__ == '__main__':
                         'Note, requires experiment dump from iSPEC to be set up'\
                         'seperately.\nIf you are not sure if this is correctly'\
                         'set up, automation will probably not work.')
+    parser.add_argument('-nd', '--nodatabase', action='store_true', 
+                        help='Do not use database to store'\
+                        'experiment info.')
     args = parser.parse_args()
     logfilename = program_title.replace(' ', '_') + '.log'
     logging.basicConfig(filename=logfilename, level=logging.DEBUG)
     logging.info('{}: Initiating {}'.format(datetime.now(), program_title))
     options = {}
+    options['setup'] = args.setup
+    options['fullpeptread'] = args.fullpeptread
+    options['usedb'] = not args.nodatabase
+    options['inputdir'] = INPUT_DIR
+    options['outputdir'] = OUTPUT_DIR
     if args.automated:
         options['automated'] = True
         while True:

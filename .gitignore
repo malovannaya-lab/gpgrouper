@@ -1,0 +1,9 @@
+*.sqlite3
+*.log
+*.ini
+*geneignore.txt
+*.aux
+*.pdf
+*.gz
+*.tex
+__pycache__/
