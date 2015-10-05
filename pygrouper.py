@@ -21,7 +21,9 @@ except ImportError:
 program_title = 'PyGrouper v0.1.008'
 release_date = '4 October 2015'
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-
+logfilename = program_title.replace(' ', '_') + '.log'
+logging.basicConfig(filename=logfilename, level=logging.DEBUG)
+logging.info('{}: Initiating {}'.format(datetime.now(), program_title))
 try:
     from PIL import Image, ImageFont, ImageDraw
     imagetitle = True
@@ -974,9 +976,7 @@ if __name__ == '__main__':
                         help='Do not use database to store'\
                         'experiment info.')
     args = parser.parse_args()
-    logfilename = program_title.replace(' ', '_') + '.log'
-    logging.basicConfig(filename=logfilename, level=logging.DEBUG)
-    logging.info('{}: Initiating {}'.format(datetime.now(), program_title))
+
     options = {}
     options['setup'] = args.setup
     options['fullpeptread'] = args.fullpeptread

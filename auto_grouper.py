@@ -56,8 +56,8 @@ def file_checker(INPUT_DIR, OUTPUT_DIR):
             usrfiles.append(usrfile)
             print('Found experiment {} from datafile'\
                   ' {}.'.format(setup['EXPRecNo'], usrfile))
-        if len(usrfiles) > 0:
-            pygrouper.main(usrfiles=usrfiles, exp_setups=setups, automated=True,
+    if len(usrfiles) > 0:
+        pygrouper.main(usrfiles=usrfiles, exp_setups=setups, automated=True,
                        inputdir=INPUT_DIR, outputdir=OUTPUT_DIR, usedb=True)
     session.close()
         
