@@ -389,7 +389,7 @@ def seq_modi(sequence, modifications):
     amino_acids = ['('+x+')' for x in amino_acids]
     modtext = {'(DeStreak)' : '(des)', '(Deamidated)' : '(dam)',
                '(Carbamidomethyl)' : '(car)', '(Oxidation)' : '(oxi)',
-               '(Phospho)' : '(pho)', '(Prot)(Acetyl'):'(ace)',
+               '(Phospho)' : '(pho)', '(Prot)(Acetyl)':'(ace)',
                '(Acetyl)': '(ace)', '(GlyGly)' : '(gg)', '(Label:13C(6))' :
                '(lab)', '(Label:13C(6)+GlyGly)' : '(labgg)'}
     seqmodi = ''

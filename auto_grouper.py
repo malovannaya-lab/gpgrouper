@@ -58,7 +58,7 @@ def file_checker(INPUT_DIR, OUTPUT_DIR):
                   ' {}.'.format(setup['EXPRecNo'], usrfile))
         if len(usrfiles) > 0:
             pygrouper.main(usrfiles=usrfiles, exp_setups=setups, automated=True,
-                       iqnputdir=INPUT_DIR, outputdir=OUTPUT_DIR, usedb=True)
+                       inputdir=INPUT_DIR, outputdir=OUTPUT_DIR, usedb=True)
     session.close()
         
 def schedule(INTERVAL, args):
