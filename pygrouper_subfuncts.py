@@ -485,7 +485,7 @@ def pept_print(df,usrdata):
         matches.Sequence = matches.Sequence.astype('object').str.upper()
         #matches.drop_duplicates(cols='Sequence', take_last=False,
         #inplace = True) # cols is depreciated, use subset    
-        matches.drop_duplicates(subset='Sequence', take_last=False,
+        matches.drop_duplicates(subset='Sequence', keep='first',
                                 inplace=True)
 
         protcount = matches.Sequence.count() # counting peptides (not proteins)
@@ -607,15 +607,16 @@ def gene_AUC_sum(genes_df,temp_df,normalization):
 
 def gene_setter(genes_df,genes_df_all, temp_df ):
     IDquery, Pquery = genes_df[['_e2g_GeneID','_e2g_PeptideSet']]
+    
        # Pquery = set(Pquery.split('_'))
     if any(temp_df[temp_df._data_GeneID==IDquery]['_data_GeneCount']==1):
        # genes_df.at[pos,'GeneSet'] = 1
         setValue = 1
-    elif not any(genes_df_all._e2g_PeptideSet > Pquery):
+    elif not any(genes_df_all._e2g_PeptideSet.values > Pquery):
         #genes_df.at[pos,'GeneSet'] = 2
         setValue = 2
         #genes_df.ix[genes_df.GeneID == IDquery,'GeneSet'] = 2
-    elif any(genes_df_all._e2g_PeptideSet > Pquery):
+    elif any(genes_df_all._e2g_PeptideSet.values > Pquery):
         setValue = 3
        # genes_df.at[pos,'GeneSet'] = 3
     try: GeneIDGroup = min(temp_df[temp_df._data_GeneID == IDquery]._data_PSM_IDG)
@@ -638,7 +639,7 @@ def GPG_helper(idset,peptideset, df_all,last):
         if idset == 1:    
             gpg =  last + 1
         elif idset == 2:
-            selection = df_all[df_all._e2g_PeptideSet == peptideset]._e2g_GPGroup
+            selection = df_all[df_all._e2g_PeptideSet.values == peptideset]._e2g_GPGroup
             selection = selection[selection!='']
             if len(selection) == 1:
                 gpg =  selection.values[0]

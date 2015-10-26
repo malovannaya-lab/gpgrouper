@@ -18,12 +18,13 @@ except ImportError:
     pass # don't use db
 
 
-program_title = 'PyGrouper v0.1.008'
-release_date = '4 October 2015'
+program_title = 'PyGrouper v0.1.009'
+release_date = '26 October 2015'
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 logfilename = program_title.replace(' ', '_') + '.log'
 logging.basicConfig(filename=logfilename, level=logging.DEBUG)
 logging.info('{}: Initiating {}'.format(datetime.now(), program_title))
+
 try:
     from PIL import Image, ImageFont, ImageDraw
     imagetitle = True
@@ -170,7 +171,7 @@ def Grouper(usrfile, usrdata, exp_setup, FilterValues, usedb=False, outdir=''):
     # ========================================================================= #
 
     logfile.write('{} | Starting peptide ranking.\n'.format(time.ctime()))
-    usrdata = usrdata.sort(['Spectrum File', '_data_GeneID', area_col,
+    usrdata = usrdata.sort_values(by=['Spectrum File', '_data_GeneID', area_col,
                             'Sequence', 'Modifications',
                             'Charge','_data_PSM_IDG','IonScore', 'PEP',
                             'q-Value'], ascending=[0, 1, 0, 1, 1, 1, 1, 0, 1, 1]) 
@@ -363,6 +364,8 @@ def Grouper(usrfile, usrdata, exp_setup, FilterValues, usedb=False, outdir=''):
             logfile.write('{} | Assigning gene sets and groups.\n'.format(
                 time.ctime()))
 
+            #quick_save(genes_df,name='genes_df_snapshot.p', path=None, q=False)
+            #quick_save(temp_df,name='temp_df_snapshot.p', path=None, q=True)
             genes_df['_e2g_IDSet'], genes_df['_e2g_IDGroup'],\
             genes_df['_e2g_IDGroup_u2g'] = list(
                 zip(*genes_df.apply(gene_setter, args=(
@@ -379,11 +382,11 @@ def Grouper(usrfile, usrdata, exp_setup, FilterValues, usedb=False, outdir=''):
             genes_df['_e2g_n_iBAQ_dstrAdj'] = \
                 genes_df._e2g_nGPArea_Sum_dstrAdj / genes_df._e2g_GeneCapacity
             genes_df['_e2g_GPGroup'] = ''
-            genes_df.sort(columns=['_e2g_PSMs'], ascending=False, inplace=True)
+            genes_df.sort_values(by=['_e2g_PSMs'], ascending=False, inplace=True)
             genes_df.index = list(range(0, len(genes_df)))
             last = 0
-            #quick_save(usrdata,name='usrdata.p', path=outdir, q=False)
-            #quick_save(genes_df,name='genedf.p', path=outdir, q=True)
+            #quick_save(genes_df,name='genes_df_snapshot.p', path=None, q=False)
+            #quick_save(temp_df,name='temp_df_snapshot.p', path=None, q=True)
             for i in range(len(genes_df)):  # The logic behind it makes
                 #sense,
                 #but the implementation is weird.
@@ -402,7 +405,7 @@ def Grouper(usrfile, usrdata, exp_setup, FilterValues, usedb=False, outdir=''):
             genes_df['_e2g_GPGroup'].replace(to_replace='', value=float('NaN'),
                                          inplace=True)  # can't sort int and
                                          #strings, convert all strings to NaN
-            genes_df.sort(columns=['_e2g_GPGroup'], ascending=True, inplace=True)
+            genes_df.sort_values(by=['_e2g_GPGroup'], ascending=True, inplace=True)
             genes_df.index = list(range(0, len(genes_df)))  # reset the index
             gpgcount += genes_df._e2g_GPGroup.max()  # do this before filling na
             genes_df['_e2g_GPGroup'].fillna('', inplace=True)  # convert all NaN
@@ -487,7 +490,9 @@ def Grouper(usrfile, usrdata, exp_setup, FilterValues, usedb=False, outdir=''):
         session = db.make_session()
         exprecord = session.query(db.ExperimentRun).\
                     filter_by(record_no=exp_setup['EXPRecNo']).\
-                    filter_by(run_no=exp_setup['EXPRunNo']).one()
+                    filter_by(run_no=exp_setup['EXPRunNo'],
+                              search_no=exp_setup['EXPSearchNo'],
+                              tech_repeat=exp_setup['EXPTechRepNo']).one()
         exprecord.GPGroup_count = int(gpgcount)
         exprecord.gene_count = int(genecount)
         exprecord.iBAQ_total = int(ibaqtot)
@@ -984,6 +989,8 @@ if __name__ == '__main__':
     options['inputdir'] = INPUT_DIR
     options['outputdir'] = OUTPUT_DIR
     if args.automated:
+        print('--automated is not obsolete. Please run auto_grouper.py instead')
+        sys.exit(0)
         options['automated'] = True
         while True:
             

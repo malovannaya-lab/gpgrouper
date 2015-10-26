@@ -7,6 +7,7 @@ from sqlalchemy import Column, ForeignKey, String, Integer, Float, \
 Text, Date, Boolean, create_engine, MetaData, Table, DateTime
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker, relationship, backref
+from sqlalchemy.orm.exc import NoResultFound, MultipleResultsFound
 
 
 
@@ -57,8 +58,8 @@ class ExperimentRun(Base):
     id = Column(Integer, primary_key=True)
     
     record_no = Column(Integer, ForeignKey('experiments.record_no'))    
-    run_no = Column(Integer)
-    search_no = Column(Integer)
+    run_no = Column(Integer, default=1)
+    search_no = Column(Integer, default=1)
     taxonid = Column(Integer)
     #added_by = Column(String(100), ForeignKey('experiments.added_by'))
     #creation_ts = Column(Date, ForeignKey('experiments.creation_ts'))
@@ -264,12 +265,17 @@ def add_experiments(newexps):
     expinfo=[]
 
     for e in newexps:
+        q = session.query(Experiment).filter(Experiment.record_no==e)
         expruninfo=[]
-        exp=Experiment(record_no = e,
-                       added_by = newexps[e][0].get('addedby'),
-                       creation_ts = newexps[e][0].get('creation_ts'),
-                       exp_type = newexps[e][0].get('exptype')
-        )
+        try:
+            exp = q.one()
+        except NoResultFound:
+            
+            exp=Experiment(record_no = e,
+                           added_by = newexps[e][0].get('addedby'),
+                           creation_ts = newexps[e][0].get('creation_ts'),
+                           exp_type = newexps[e][0].get('exptype')
+            )
         for rec in newexps[e]:
             exprun = ExperimentRun(
                 #record_no = rec.get('rec_no'),
@@ -288,9 +294,13 @@ def add_experiments(newexps):
                 digest_type = rec.get('digest_type'),
                 digest_enzyme = rec.get('digest_enzyme'),
             )
-            expruninfo.append(exprun)
-
-        exp.experimentruns = expruninfo  # a list of ExperimentRun() entries
+            if session.query(ExperimentRun).filter_by(record_no=e,
+                                                      run_no=rec.get('run_no'),
+                                                      search_no=rec.get('search_no'),
+                                                      tech_repeat=rec.get('techrep')).count()==0:
+                expruninfo.append(exprun)
+        for run in expruninfo:
+            exp.experimentruns.append(run)  # a list of ExperimentRun() entries
 
         expinfo.append(exp)
         

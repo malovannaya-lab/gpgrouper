@@ -6,4 +6,5 @@
 *.pdf
 *.gz
 *.tex
+*.p
 __pycache__/
