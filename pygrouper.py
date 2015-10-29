@@ -181,7 +181,7 @@ def Grouper(usrfile, usrdata, exp_setup, FilterValues, usedb=False, outdir=''):
                                                        #nans
     grouped = usrdata.drop_duplicates(subset=['Spectrum File', '_data_GeneID',
                                               'Sequence', 'Modifications',
-                                              'Charge']).groupby(
+                                              'Charge', area_col]).groupby(
                                                   ['Spectrum File',
                                                    '_data_GeneID'])  # each group
     #belongs to 1 gene, now we can rank on a per-gene basis
