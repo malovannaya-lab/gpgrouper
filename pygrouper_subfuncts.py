@@ -4,20 +4,222 @@ import os
 import csv
 import numpy as np
 from datetime import datetime
-from collections import namedtuple, defaultdict
-from configparser import SafeConfigParser
+from collections import namedtuple, defaultdict, OrderedDict
+from configparser import ConfigParser
 from statistics import mean
 import logging
+import json
 from collections import defaultdict
 try : 
-     from PIL import Image, ImageFont, ImageDraw
+    from PIL import Image, ImageFont, ImageDraw
     #imagetitle = True
 except ImportError: pass
     #imagetitle = False
 
-
 RefseqInfo = namedtuple('RefseqInfo',
                         'taxonid, geneid, homologeneid,proteingi,genefraglen')
+
+def column_constructor(columndict=None):
+    print(columndict)
+    if not columndict:
+        columndict = defaultdict(list)
+    columns = OrderedDict([
+        ('Sequence','the peptide sequence'),
+        ('Modifications', 'post translational modifications'),
+        ('PSM_Ambiguity', ''),
+        ('ActivationType', 'Activation method for MS2'),
+        ('DeltaScore', ''),
+        ('DeltaCn', ''),
+        ('Rank', ''),
+        ('SearchEngineRank', ''),
+        ('PrecursorArea','MS1 integrated peptide area'),
+        ('Intensity','peptide intensity'),
+        ('q_value','FDR adjusted q-value'),
+        ('PEP','Posterior Error Probability'),
+        ('IonScore', 'Mascot Ion Score'),
+        ('MissedCleavages', ''),
+        ('IsolationInterference', ''),
+        ('IonInjectTime', ''),
+        ('Charge', 'Ion charge'),
+        ('m/z [Da]', ''),
+        ('MH+ [Da]', ''),
+        ('MatchedIons', ''),
+        ('TotalIons', ''),
+        ('Delta Mass [Da]',''),
+        ('Delta Mass [PPM]',''),
+        ('RT [min]', ''),
+        ('MS Order', ''),
+        ('SpectrumFile', ''),
+        
+        ('psm_EXPRecNo', 'Experiment record number'),
+        ('psm_EXPRunNo', 'Experiment run number'),
+        ('psm_EXPSearchNo', 'Experiment search number'),
+        ('psm_EXPTechRepNo', 'Experiment tech rep number'),
+        ('psm_AddedBy', 'Person who added the experiment'),
+        ('psm_CreationTS', 'experiment creation timestamp'),
+        ('psm_ModificationTS', 'experiment modification timestamp'),
+        ('psm_GeneID', 'geneID for a given peptide'),
+        ('psm_GeneList', 'all genes that a given peptide maps to'),
+        ('psm_GeneCount', 'count of the number of genes for a given peptide'),
+        ('psm_ProteinGI', 'ProteinGI for a given peptide'),
+        ('psm_ProteinList', 'all proteinGIs for a given peptide'),
+        ('psm_ProteinCount', 'number of proteins for a given peptide'),
+        ('psm_HID', 'homologene ID for a given peptide geneID'),
+        ('psm_HID_list','list of all homologenes for a given peptide'),
+        ('psm_HID_count', 'count of all homologenes for a given peptide'),
+        ('psm_TaxonID','taxonID for a given peptide'),
+        ('psm_TaxonIDlist', 'list of all taxonIDs for a given peptide,'\
+          ' useful when searching against multiple species'),
+        ('psm_TaxonCount', 'count of the number of taxons for a given peptide'),
+        ('psm_PSM_IDG', 'PSM IDG for a given peptide'),
+        ('psm_SequenceModi', 'string of sequence with modifications'),
+        ('psm_SequenceModiCount', 'count of total modifications'),
+        ('psm_ModiCount', 'number of modifications for a given peptide'),
+        ('psm_LabelFLAG', 'label number for a given peptide'),
+        ('psm_PeptideRank', 'rank for a given peptide within its geneID'),
+        ('psm_AUC_useflag', 'boolean value for use of peptide for calculating area'),
+        ('psm_PSM_useflag', 'boolean value for use of peptide for psm'),
+        ('psm_Area_taxonAdj','taxon adjusted area'),
+        ('psm_PrecursorArea_dstrAdj','redistributed peptide precursor area'),
+        
+        ('gene_EXPRecNo', 'Experiment Record Number'),
+        ('gene_EXPRunNo', 'Experiment Run Number'),
+        ('gene_EXPSearchNo', 'Experiment Search Number'),
+        ('gene_EXPLabelFLAG', 'label type, eg. None, TNT, etc'),
+        ('gene_AddedBy', 'Person who added the experiment'),
+        ('gene_CreationTS', 'experiment creation timestamp'),
+        ('gene_ModificationTS', 'experiment modification timestamp'),
+        ('gene_GeneID', 'gene product GeneID'),
+        ('gene_IDSet', 'IDSet'),
+        ('gene_IDGroup','IDGroup'),
+        ('gene_IDGroup_u2g','IDGroup for unique to gene peptide'),
+        ('gene_GPGroup', 'GPGroup'),
+        ('gene_GPGroups_All','GPGroups All'),
+        ('gene_PSMs', 'number of psms for that gene product'),
+        ('gene_PSMs_u2g', 'number of unique psms for that gene product'),
+        ('gene_PeptidePrint', 'Print of the peptides identified for a given gene product'),
+        ('gene_PeptideCount', 'count of peptides for a given gene product'),
+        ('gene_PeptideCount_u2g', 'count of unique peptides for a given gene product'),
+        ('gene_PeptideCount_S', 'count of strict peptides for a given gene product'),
+        ('gene_PeptideCount_S_u2g','count of strict, unique peptides for a given gene product'),
+
+        ('gene_GeneArea_gpcAdj','gene product area adjusted for gene product counts'),
+        ('gene_GeneArea_Sum_cgpAdj', ''),
+        ('gene_GeneArea_gpcAdj_u2g','gene product area adjusted for gene product counts, u2g'),
+        ('gene_GeneArea_gpcAdj_u2g_all','description goes here'),
+        ('gene_GeneArea_gpcAdj_max','maximum potential gene product area'),
+        ('gene_GeneArea_dstrAdj', 'gene product area after peptide area distribution'),
+        ('gene_GeneCapacity', 'number of tryptic peptides for a given gene product'),
+        ('gene_iBAQ', 'dstrAdj gene area divided by the gene capacity'),
+
+    ])
+
+                
+    existing_values = [item for sublist in
+                       columndict.values() for
+                       item in sublist]
+    proceed = True
+    skipall = False
+    for col in columns:
+        if not proceed:
+            break
+        print()
+        if col not in existing_values:
+            columndict[col].append(col)
+            existing_values.append(col)
+        while True and not skipall:
+            print('Enter an alias for '\
+                  'the column name {} or '\
+                  'type [Done] if finished.\n'\
+                  'Type [description] to get a description '\
+                  'of a given column.'.
+                  format(col))
+            print('Type done without entering anything to use the '\
+                  'default name.')
+            print('')
+            print('The current values are : {}'.format(
+                ', '.join(columndict[col])))
+            newValue = input('>>> ')
+            if newValue.strip().lower() == 'exit':
+                proceed = False
+                break
+            elif newValue.strip().lower() == 'done':
+                break
+            elif newValue.strip().lower() == 'description':
+                print('{} : {}\n'.format(col, columns[col]))
+                input('[OK')
+            elif newValue == 'skipall':
+                skipall = True
+                break
+            elif newValue and newValue not in existing_values:
+                columndict[col].append(newValue)
+                existing_values.append(newValue)
+            elif newValue in existing_values:
+                print('Alias already exists! '\
+                        'Please choose another.\n')
+                input('[OK]')
+            elif not newValue:
+                print('Invalid entry!\n')
+
+    return columndict
+
+def column_to_ini(BASE=''):
+    parser = ConfigParser()
+    parser.optionxform = str
+    if os.path.isfile('py_config.ini'):
+        parser.read('py_config.ini')
+    elif not os.path.isfile('py_config.ini'):
+        print('No config file found.')
+        pysetup()
+        parser.read('py_config.ini')
+    if 'column names' not in parser.sections():
+        parser.add_section('column names')
+    column_aliases = defaultdict(list)  # load previous 
+    for key in parser['column names'].keys():
+        value = parser.get('column names',key)
+        aliases = list(filter(None,(x.strip() for
+                                    x in value.splitlines())))
+        column_aliases[key] = aliases
+    #column_aliases = dict(parser['column names'])
+    column_aliases = column_constructor(columndict=column_aliases)
+    print(column_aliases)
+    for key in column_aliases:
+        value = '\n'+'\n'.join(column_aliases[key])
+        parser.set('column names', key, value)
+    parser.write(open('py_config.ini','w'))    
+    return parser
+    #return column_aliases
+
+def column_identifier(df, aliases):
+    column_names = dict()
+    for col in aliases:
+        for alias in aliases[col]:
+            name = [dfcolumn for dfcolumn in df.columns if dfcolumn==alias]
+            if len(name)==1:
+                column_names[col] = name[0]
+                break
+    return column_names
+       
+        
+
+def json_column_constructor(BASE='',append=False ):
+    '''Function for reading (and creating if necessary) a json
+       file for mapping custom column names to a universal name set'''
+    jsonFile = os.path.join(Base,'column_headers.json')
+    to_json = False
+    if os.path.isfile(jsonFile):
+         columndict = json.load(jsonFile)
+         if append:
+            columndict = column_constructor(columndict)
+            to_json = True
+    elif not os.path.isfile(jsonFile):
+       columndict = column_constructor()
+       to_json = True
+    if to_json:
+        json.dump(os.path.join(BASE,columndict),
+                   indent=4, sort_keys=True)
+    columndict = json.load(jsonFile)
+    return
     
 def bufcount(filename):
     '''fast way to count lines in a file'''
@@ -36,35 +238,49 @@ def bufcount(filename):
     
 def pysetup():
     
-    parser = SafeConfigParser()
+    parser = ConfigParser()
+    
     cancel = False
+    sections = []
     if os.path.isfile('py_config.ini'):
-        while True:
-            del_confirm = input('A config file is already detected? '\
-               'Are you sure you want to delete and re-run the setup(Y/n)? ')
-            if del_confirm == 'Y' :
-                os.remove('py_config.ini')
-                break
-            elif 'n' in del_confirm.lower() : cancel = True
+        parser.read('py_config.ini')
+        sections = parser.sections()
+        #while True:
+            #del_confirm = input('A config file is already detected? '\
+            #   'Are you sure you want to delete and re-run the setup(Y/n)? ')
+            #if del_confirm == 'Y' :
+                #    os.remove('py_config.ini')
+                #    break
+            #elif 'n' in del_confirm.lower() : cancel = True
     if not cancel:    
+        for section in ['refseq locations', 'refseq file sizes']:
+            if section not in sections:
+                parser.add_section(section)
         print('Welcome to PyGrouper setup wizard. First we need to get a '\
               'list of all taxons you wish to be able to search for.')
         print('Note this requires that you have refseq data for each taxon'\
               ' you list.')
-        taxons = set()
+        taxons = set(parser['refseq locations'].keys())
         while True:
             try:
-                if len(taxons) > 0 : print('\nCurrently added taxons : '\
-                                           ' {}\n'.format(' '.join(taxons)))
+                if len(taxons) > 0 :
+                    print('\nCurrently added taxons : '\
+                             ' {}\n'.format(' '.join(taxons)))
                 newtaxon = input('Enter a taxon ID to add (human is 9606) '\
                                  'or Ctrl+C if done : ')
                 taxons.add(newtaxon)
             except KeyboardInterrupt:
-                break   
-        parser.add_section('refseq locations')
-        parser.add_section('refseq file sizes')        
+                break
         for taxon in taxons:
-            while True:
+            print()
+            cancel = False
+            if parser['refseq locations'].get(taxon):
+                print('Taxon {} already has a location assigned : {}'.format(
+                    taxon, parser.get('refseq locations',taxon)))
+                reassign = input('Would you like to reassign? [Y/n] ')
+                if reassign != 'Y':
+                    cancel = True
+            while True and not cancel:
                 taxon_loc = input('\nEnter location of the refseq file'\
                                   ' for taxon {} : '.format(taxon))
                 if os.path.isfile(taxon_loc):
@@ -329,27 +545,27 @@ def AUC_PSM_flagger(df,d):
         AUC_flag = 0
         PSM_flag = 0
 
-    elif df['_data_SequenceModiCount'] > d['Filter_Modi'] : 
+    elif df['psm_SequenceModiCount'] > d['Filter_Modi'] : 
         AUC_flag = 0
         PSM_flag = 0
 
-    elif np.isnan(df['IonScore']) and np.isnan(df['q-Value']): 
+    elif np.isnan(df['IonScore']) and np.isnan(df['q_value']): 
         AUC_flag = 1 #retains WLs Q2up assignments
         PSM_flag = 0
 
     elif df['IonScore'] < d['Filter_IS'] : 
         AUC_flag = 0
         PSM_flag = 0
-    elif df['q-Value'] > d['Filter_qV'] : 
+    elif df['q_value'] > d['Filter_qV'] : 
         AUC_flag = 0
         PSM_flag = 0
     elif df['PEP'] > d['Filter_PEP'] : 
         AUC_flag = 0
         PSM_flag = 0
-    elif df['_data_PSM_IDG'] > d['Filter_IDG'] : 
+    elif df['psm_PSM_IDG'] > d['Filter_IDG'] : 
         AUC_flag = 0
         PSM_flag = 0
-    elif df['_data_PeptRank'] == 0 : 
+    elif df['psm_PeptideRank'] == 0 : 
         AUC_flag = 0 # omit multiPSM peak areas
         PSM_flag = 1  # Change from 0 in grouper
     else: 
@@ -475,10 +691,10 @@ def pept_print(df,usrdata):
     Lookup info from userdata. Also sorts based on alphabet. 
     '''
 
-    IDquery = df['_e2g_GeneID']
+    IDquery = df['gene_GeneID']
     #print(IDquery)  # for debugging
     try : 
-        matches = usrdata[usrdata._data_GeneID == IDquery]
+        matches = usrdata[usrdata.psm_GeneID == IDquery]
         # need to do check for if matches is empty
         #print('matches : {}'.format(matches))
 
@@ -489,10 +705,10 @@ def pept_print(df,usrdata):
                                 inplace=True)
 
         protcount = matches.Sequence.count() # counting peptides (not proteins)
-        protcount_S = matches[matches['_data_PSM_IDG' ] < 4].Sequence.count()
-        uniques = matches[matches._data_GeneCount == 1].Sequence.count()
-        uniques_S = matches[(matches._data_GeneCount == 1) &
-                            (matches['_data_PSM_IDG' ] < 4)].Sequence.count()
+        protcount_S = matches[matches['psm_PSM_IDG' ] < 4].Sequence.count()
+        uniques = matches[matches.psm_GeneCount == 1].Sequence.count()
+        uniques_S = matches[(matches.psm_GeneCount == 1) &
+                            (matches['psm_PSM_IDG' ] < 4)].Sequence.count()
         pepts_str = '_'.join(sorted(matches.Sequence))
     except AttributeError as e: #have never had this happen. Shouldn't occur
          #since the df is derived from usrdata in the first place
@@ -505,29 +721,29 @@ def pept_print(df,usrdata):
     
 def e2g_PSM_helper(gene_df_ID, data,EXPTechRepNo):
     total = sum(data[
-                data['_data_GeneID']==gene_df_ID]
-                ['_data_PSM_nUseFLAG'])/EXPTechRepNo
-    total_u2g = sum(data[(data['_data_GeneID']==gene_df_ID) &
-                         (data['_data_GeneCount' ] == 1)
-                        ]['_data_PSM_nUseFLAG'])/EXPTechRepNo
+                data['psm_GeneID']==gene_df_ID]
+                ['psm_PSM_useflag'])/EXPTechRepNo
+    total_u2g = sum(data[(data['psm_GeneID']==gene_df_ID) &
+                         (data['psm_GeneCount' ] == 1)
+                        ]['psm_PSM_useflag'])/EXPTechRepNo
 
-    total_S = sum(data[(data['_data_GeneID']==gene_df_ID) &
-                       (data['_data_PSM_IDG' ] < 4)
-                  ]['_data_PSM_nUseFLAG'])/EXPTechRepNo
-    total_S_u2g = sum(data[(data['_data_GeneID']==gene_df_ID) &
-                           (data['_data_PSM_IDG' ] < 4) &
-                           (data['_data_GeneCount' ] == 1)
-                      ]['_data_PSM_nUseFLAG'])/EXPTechRepNo
+    total_S = sum(data[(data['psm_GeneID']==gene_df_ID) &
+                       (data['psm_PSM_IDG' ] < 4)
+                  ]['psm_PSM_useflag'])/EXPTechRepNo
+    total_S_u2g = sum(data[(data['psm_GeneID']==gene_df_ID) &
+                           (data['psm_PSM_IDG' ] < 4) &
+                           (data['psm_GeneCount' ] == 1)
+                      ]['psm_PSM_useflag'])/EXPTechRepNo
     #for match in matches:
     return total, total_u2g, total_S, total_S_u2g
     
    
 def area_calculator(gene_df, usrdata, EXPTechRepNo,area_col, normalization):
 
-    matches  = usrdata[(usrdata['_data_GeneID'] == gene_df['_e2g_GeneID']) &
-                           (usrdata['_data_AUC_nUseFLAG']==1)] [
-                                [area_col, '_data_GeneCount',
-                                 '_data_PSM_IDG', '# Missed Cleavages']]
+    matches  = usrdata[(usrdata['psm_GeneID'] == gene_df['gene_GeneID']) &
+                           (usrdata['psm_AUC_useflag']==1)] [
+                                [area_col, 'psm_GeneCount',
+                                 'psm_PSM_IDG', 'MissedCleavages']]
  
 
     #else : 
@@ -536,23 +752,23 @@ def area_calculator(gene_df, usrdata, EXPTechRepNo,area_col, normalization):
              #datetime.now()))
         #sys.exit(1)
         
-    uniq_matches = matches[matches['_data_GeneCount']==1]
-    uniq_matches_0 = uniq_matches[uniq_matches['# Missed Cleavages']==0]
-    matches_strict = matches[matches['_data_PSM_IDG'] < 4] 
+    uniq_matches = matches[matches['psm_GeneCount']==1]
+    uniq_matches_0 = uniq_matches[uniq_matches['MissedCleavages']==0]
+    matches_strict = matches[matches['psm_PSM_IDG'] < 4] 
 
 
     values_max = nan_popper([value for value in
                              matches[area_col].values])
 
     values_adj = nan_popper([value/count for value,count in
-                             matches[[area_col,'_data_GeneCount']
+                             matches[[area_col,'psm_GeneCount']
                              ].values])
     uniq_values_adj = nan_popper([value/count for value,count in
                                   uniq_matches[[area_col,
-                                                '_data_GeneCount']].values])
+                                                'psm_GeneCount']].values])
     uniq_values_adj_0 = nan_popper([value/count for value,count in
                                     uniq_matches_0[[area_col,
-                                                    '_data_GeneCount']].values])
+                                                    'psm_GeneCount']].values])
     result = (sum(values_max)/normalization,  sum(values_adj)/normalization,
               sum(uniq_values_adj_0)/normalization,
               sum(uniq_values_adj)/normalization)
@@ -569,59 +785,59 @@ def AUC_distributor(inputdata,genes_df,area_col):
     #         datetime.now()))
     #    sys.exit(1)
     inputvalue = inputdata[area_col]
-    u2gPept = genes_df[genes_df['_e2g_GeneID']==inputdata['_data_GeneID']
-    ]['_e2g_nGPArea_Sum_u2g_all'].values
+    u2gPept = genes_df[genes_df['gene_GeneID']==inputdata['psm_GeneID']
+    ]['gene_GeneArea_gpcAdj_u2g_all'].values
     
     if len(u2gPept) == 1: u2gPept = u2gPept[0] # grab u2g info, should always be
     #of length 1
     elif len(u2gPept) > 1 : 
         print('{} Error - distArea is not singular at GeneID : {}'.format(
-             datetime.now(),inputdata['_data_GeneID']))
+             datetime.now(),inputdata['psm_GeneID']))
         # this should never happen (and never has)
     else : 
         distArea = 0
-        print('No distArea for GeneID : {}'.format(inputdata['_data_GeneID']))  
+        print('No distArea for GeneID : {}'.format(inputdata['psm_GeneID']))  
     if u2gPept != 0 : 
         totArea = 0
-        gene_list = inputdata._data_tGeneList.split(',')
+        gene_list = inputdata.psm_GeneList.split(',')
         totArea = sum(genes_df[
-             genes_df['_e2g_GeneID'].isin(gene_list)
-                              ]._e2g_nGPArea_Sum_u2g_all)
+             genes_df['gene_GeneID'].isin(gene_list)
+                              ].gene_GeneArea_gpcAdj_u2g_all)
         distArea = (u2gPept/totArea) * inputvalue
         #ratio of u2g peptides over total area
 
     elif u2gPept == 0:  # no uniques, normalize by genecount
-        try: distArea = inputvalue/inputdata._data_GeneCount   
+        try: distArea = inputvalue/inputdata.psm_GeneCount   
         except ZeroDivisionError: distArea = inputvalue
 
     return distArea
     
 def gene_AUC_sum(genes_df,temp_df,normalization):
-    gene = genes_df['_e2g_GeneID']
-    if genes_df['_e2g_IDSet'] in [1,2]:
+    gene = genes_df['gene_GeneID']
+    if genes_df['gene_IDSet'] in [1,2]:
         return sum(temp_df[temp_df[
-             '_data_GeneID'
-        ] == gene]._data_PrecursorArea_dstrAdj)/normalization
-    elif genes_df['_e2g_IDSet'] == 3:
+             'psm_GeneID'
+        ] == gene].psm_PrecursorArea_dstrAdj)/normalization
+    elif genes_df['gene_IDSet'] == 3:
         return 0
 
 def gene_setter(genes_df,genes_df_all, temp_df ):
-    IDquery, Pquery = genes_df[['_e2g_GeneID','_e2g_PeptideSet']]
+    IDquery, Pquery = genes_df[['gene_GeneID','gene_PeptideSet']]
     
        # Pquery = set(Pquery.split('_'))
-    if any(temp_df[temp_df._data_GeneID==IDquery]['_data_GeneCount']==1):
+    if any(temp_df[temp_df.psm_GeneID==IDquery]['psm_GeneCount']==1):
        # genes_df.at[pos,'GeneSet'] = 1
         setValue = 1
-    elif not any(genes_df_all._e2g_PeptideSet.values > Pquery):
+    elif not any(genes_df_all.gene_PeptideSet.values > Pquery):
         #genes_df.at[pos,'GeneSet'] = 2
         setValue = 2
         #genes_df.ix[genes_df.GeneID == IDquery,'GeneSet'] = 2
-    elif any(genes_df_all._e2g_PeptideSet.values > Pquery):
+    elif any(genes_df_all.gene_PeptideSet.values > Pquery):
         setValue = 3
        # genes_df.at[pos,'GeneSet'] = 3
-    try: GeneIDGroup = min(temp_df[temp_df._data_GeneID == IDquery]._data_PSM_IDG)
+    try: GeneIDGroup = min(temp_df[temp_df.psm_GeneID == IDquery].psm_PSM_IDG)
     except ValueError: GeneIDGroup = 0
-    try : GeneIDGroup_u2g  = min(temp_df[(temp_df._data_GeneID == IDquery) & (temp_df._data_GeneCount == 1)]._data_PSM_IDG)
+    try : GeneIDGroup_u2g  = min(temp_df[(temp_df.psm_GeneID == IDquery) & (temp_df.psm_GeneCount == 1)].psm_PSM_IDG)
     except ValueError : GeneIDGroup_u2g = 0   
        
     return setValue, GeneIDGroup, GeneIDGroup_u2g   
@@ -639,7 +855,7 @@ def GPG_helper(idset,peptideset, df_all,last):
         if idset == 1:    
             gpg =  last + 1
         elif idset == 2:
-            selection = df_all[df_all._e2g_PeptideSet.values == peptideset]._e2g_GPGroup
+            selection = df_all[df_all.gene_PeptideSet.values == peptideset].gene_GPGroup
             selection = selection[selection!='']
             if len(selection) == 1:
                 gpg =  selection.values[0]
@@ -655,7 +871,7 @@ def GPG_helper(idset,peptideset, df_all,last):
                     elif len(uniq_sel) > 1:
                         print('Warning, more than one IDSet type 2 genes '\
                               'already has assignment')
-                        gpg =  genes_df['_e2g_GPGroup'] 
+                        gpg =  genes_df['gene_GPGroup'] 
                      
     return gpg, greaterthan(gpg, last)    
 
@@ -664,10 +880,10 @@ def GPG_helper(idset,peptideset, df_all,last):
 def GPG_all_helper(genes_df,df_all):
 
     GPGall = set()
-    for pept in genes_df._e2g_PeptideSet:
+    for pept in genes_df.gene_PeptideSet:
         shared_values = [value for value in
-                         df_all[df_all['_e2g_PeptidePrint'].str.contains(
-                              pept,regex=False)]._e2g_GPGroup.values]
+                         df_all[df_all['gene_PeptidePrint'].str.contains(
+                              pept,regex=False)].gene_GPGroup.values]
         # regex=False since we don't need regex, and is faster.
         for s in shared_values: 
             if s !='' : GPGall.add(s)
@@ -680,13 +896,13 @@ def capacity_grabber(geneid, gene_metadata):
 
     for data in gene_metadata[geneid]:
          genefraglengths.append(data[3])
-    #sel = df[df._data_GeneID == geneid][['_data_tProteinList',
-    #                                     '_data_ProteinCapacity']]
+    #sel = df[df.psm_GeneID == geneid][['psm_tProteinList',
+    #                                     'psm_ProteinCapacity']]
     #capacity = 0    
     #if len(sel) > 0:
     #    sel.reset_index(inplace = True)
-    #    lst_indx = sel.loc[0]['_data_tProteinList'].split(',').index(geneid)
-    #    capacity = sel.loc[0]['_data_ProteinCapacity'].split(',')[lst_indx]
+    #    lst_indx = sel.loc[0]['psm_tProteinList'].split(',').index(geneid)
+    #    capacity = sel.loc[0]['psm_ProteinCapacity'].split(',')[lst_indx]
     if not genefraglengths:
          genefraglengths.append(0)
          

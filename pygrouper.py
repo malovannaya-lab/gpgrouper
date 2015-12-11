@@ -8,7 +8,7 @@ from collections import namedtuple, defaultdict
 from math import ceil
 from statistics import mean
 # from sets import Set #python2 only
-from configparser import SafeConfigParser, ParsingError, NoSectionError, NoOptionError
+from configparser import ConfigParser, ParsingError, NoSectionError, NoOptionError
 import pandas as pd
 from pygrouper_subfuncts import *
 try :
@@ -18,8 +18,8 @@ except ImportError:
     pass # don't use db
 
 
-program_title = 'PyGrouper v0.1.009'
-release_date = '26 October 2015'
+program_title = 'PyGrouper v0.1.010'
+release_date = '10 December 2015'
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 logfilename = program_title.replace(' ', '_') + '.log'
 logging.basicConfig(filename=logfilename, level=logging.DEBUG)
@@ -53,7 +53,7 @@ def PeptidomeMatcher(usrdata, ref_dict):
     return usrdata
 
 
-def Grouper(usrfile, usrdata, exp_setup, FilterValues, usedb=False, outdir=''):
+def Grouper(usrfile, usrdata, exp_setup, FilterValues, usedb=False, outdir='', *args):
     #import RefseqInfo
 
     global program_title
@@ -73,7 +73,7 @@ def Grouper(usrfile, usrdata, exp_setup, FilterValues, usedb=False, outdir=''):
         gid_ignore_list = gid_ignore_read
 
     if exp_setup['EXPQuantSource'] == 'AUC':
-        area_col = 'Precursor Area'  # we always use Precursor Area
+        area_col = 'PrecursorArea'  # we always use Precursor Area
         normalize = 10**9
     elif exp_setup['EXPQuantSource'] == 'Intensity':
         area_col = 'Intensity'
@@ -102,10 +102,10 @@ def Grouper(usrfile, usrdata, exp_setup, FilterValues, usedb=False, outdir=''):
     for gene in gene_metadata:
         gene_taxon_dict[gene] = gene_metadata[gene][0][0]
 
-    usrdata['_data_tGeneList'], usrdata['_data_GeneCount'], \
-        usrdata['_data_tTaxonIDList'],\
-        usrdata['_data_TaxonCount'], usrdata['_data_tProteinList'], \
-        usrdata['_data_ProteinCount'] = list(zip(
+    usrdata['psm_GeneList'], usrdata['psm_GeneCount'], \
+        usrdata['psm_TaxonIDList'],\
+        usrdata['psm_TaxonCount'], usrdata['psm_ProteinList'], \
+        usrdata['psm_ProteinCount'] = list(zip(
         *usrdata.apply(lambda x : genelist_extractor(x['metadatainfo'],
                                                      ),
                        axis=1)))
@@ -123,21 +123,21 @@ def Grouper(usrfile, usrdata, exp_setup, FilterValues, usedb=False, outdir=''):
     #                   meta_extractor(x['metadatainfo']),axis=1)))
     #------------------------------------------------------------------------- #
 
-    usrdata['_data_HID'], usrdata['_data_ProteinGI'] = '', ''
+    usrdata['psm_HID'], usrdata['psm_ProteinGI'] = '', ''
     
     # potentially filled in later,
     #fields will exist in database at least
 
     logfile.write('{} | Finished matching PSMs to {} '\
                   'refseq\n'.format(time.ctime(),
-                                    usrdata.loc[0]['_data_TaxonID']))
+                                    usrdata.loc[0]['psm_TaxonID']))
     logging.info('Starting Grouper for exp number'\
                  '{}'.format(exp_setup['EXPRecNo']))
         
-    nomatches = usrdata[usrdata['_data_GeneCount'] == 0].Sequence  # select all
+    nomatches = usrdata[usrdata['psm_GeneCount'] == 0].Sequence  # select all
     #PSMs that didn't get a match to the refseq peptidome
     logfile.write('{} | Total identified PSMs : {}\n'.format(
-        time.ctime(), len(usrdata[usrdata['_data_GeneCount'] != 0])))
+        time.ctime(), len(usrdata[usrdata['psm_GeneCount'] != 0])))
     logfile.write('{} | Total unidentified PSMs : {}\n'.format(time.ctime(),
                                                                len(nomatches)))
     for missing_seq in nomatches:
@@ -150,9 +150,9 @@ def Grouper(usrfile, usrdata, exp_setup, FilterValues, usedb=False, outdir=''):
     resultout_dir = os.getcwd()  
 
     logfile.write('{} | Starting grouper.\n'.format(time.ctime()))
-    usrdata['_data_PSM_IDG'] = usrdata.apply(lambda x:
+    usrdata['psm_PSM_IDG'] = usrdata.apply(lambda x:
                                              IDG_picker(x['IonScore'],
-                                                        x['q-Value']), axis=1) 
+                                                        x['q_value']), axis=1) 
     #usrdata['Sequence'], usrdata['_data_SequenceModi'],
     #usrdata['_data_SequenceModiCount'], usrdata['_data_LabelFLAG'] =
     #list(zip(*usrdata.apply(lambda x : \
@@ -160,35 +160,35 @@ def Grouper(usrfile, usrdata, exp_setup, FilterValues, usedb=False, outdir=''):
     # We now move this to earlier, before we search against refseq
                                   #(this will deal with the Xs)
     # ============= Gather all genes that all peptides map to =============== #
-    glstsplitter = usrdata['_data_tGeneList'].str.split(',').apply(pd.Series,
+    glstsplitter = usrdata['psm_GeneList'].str.split(',').apply(pd.Series,
                                                                    1).stack()
     glstsplitter.index = glstsplitter.index.droplevel(-1)  # get rid of
     # multi-index
-    glstsplitter.name = '_data_GeneID'  # give the series a name
-    usrdata = usrdata.join(glstsplitter)  # usrdata gains column '_data_GeneID'
+    glstsplitter.name = 'psm_GeneID'  # give the series a name
+    usrdata = usrdata.join(glstsplitter)  # usrdata gains column 'psm_GeneID'
                                           #from glstsplitter Series
 
     # ========================================================================= #
 
     logfile.write('{} | Starting peptide ranking.\n'.format(time.ctime()))
-    usrdata = usrdata.sort_values(by=['Spectrum File', '_data_GeneID', area_col,
+    usrdata = usrdata.sort_values(by=['SpectrumFile', 'psm_GeneID', area_col,
                             'Sequence', 'Modifications',
-                            'Charge','_data_PSM_IDG','IonScore', 'PEP',
-                            'q-Value'], ascending=[0, 1, 0, 1, 1, 1, 1, 0, 1, 1]) 
+                                      'Charge','psm_PSM_IDG','IonScore', 'PEP',
+                            'q_value'], ascending=[0, 1, 0, 1, 1, 1, 1, 0, 1, 1]) 
     usrdata.reset_index(inplace=True)
     usrdata.Modifications.fillna('', inplace=True)  # must do this to compare nans
     usrdata[area_col].fillna(0, inplace=True)  # must do this to compare
                                                        #nans
-    grouped = usrdata.drop_duplicates(subset=['Spectrum File', '_data_GeneID',
+    grouped = usrdata.drop_duplicates(subset=['SpectrumFile', 'psm_GeneID',
                                               'Sequence', 'Modifications',
                                               'Charge', area_col]).groupby(
-                                                  ['Spectrum File',
-                                                   '_data_GeneID'])  # each group
+                                                  ['SpectrumFile',
+                                                   'psm_GeneID'])  # each group
     #belongs to 1 gene, now we can rank on a per-gene basis
     ranks = grouped.cumcount() + 1  # add 1 to start the peptide rank at 1, not 0
-    ranks.name = '_data_PeptRank'
+    ranks.name = 'psm_PeptideRank'
     usrdata = usrdata.join(ranks)
-    usrdata['_data_PeptRank'] = usrdata['_data_PeptRank'].fillna(0)  # anyone who
+    usrdata['psm_PeptideRank'] = usrdata['psm_PeptideRank'].fillna(0)  # anyone who
                               # didn't get a rank gets a rank of 0
     logfile.write('{} | Peptide ranking complete.\n'.format(time.ctime()))
     print('{}: Peptide ranking complete for {}.'.format(datetime.now(), usrfile))
@@ -198,18 +198,18 @@ def Grouper(usrfile, usrdata, exp_setup, FilterValues, usedb=False, outdir=''):
     #quick_save(usrdata, q=False)
     #quick_save(gene_metadata, name='metadata.p', q=False)
     
-    usrdata['_data_AUC_nUseFLAG'], usrdata['_data_PSM_nUseFLAG'] = \
+    usrdata['psm_AUC_useflag'], usrdata['psm_PSM_useflag'] = \
     list(zip(*usrdata.apply(AUC_PSM_flagger, args=(FilterValues,), axis=1)))
     # Flag good quality peptides
 
         # ======================== Plugin for multiple taxons  ===================== #
 
     usrdata['gene_taxon_map'] = usrdata.apply(lambda x : gene_to_taxon(
-        x['_data_GeneID'], gene_taxon_dict), axis=1)
+        x['psm_GeneID'], gene_taxon_dict), axis=1)
     
-    taxon_ids = set(','.join(x for x in usrdata._data_tTaxonIDList.tolist()
+    taxon_ids = set(','.join(x for x in usrdata.psm_TaxonIDList.tolist()
                              if x).split(','))    
-    area_col_new = '_data_taxonArea_redistrib'
+    area_col_new = 'psm_Area_taxonAdj'
     #quick_save(usrdata, q=False)
     #quick_save(gene_taxon_dict, name='gene_taxon_dict.p', q=True)
     if len(taxon_ids) == 1:  # just 1 taxon id present
@@ -226,12 +226,12 @@ def Grouper(usrfile, usrdata, exp_setup, FilterValues, usedb=False, outdir=''):
             uniq_taxon = usrdata[
                 #(usrdata._data_tTaxonIDList.str.contains(taxon)) &
                 #(~usrdata._data_tTaxonIDList.str.contains('|'.join(all_others)))&
-                (usrdata._data_tTaxonIDList==taxon) &
-                #(usrdata._data_PSM_IDG<9) &  # this is redunant with AUC_UseFLAG
-                (~usrdata._data_GeneID.isin(gid_ignore_list)) &
-                (usrdata._data_AUC_nUseFLAG == 1)
+                (usrdata['psm_TaxonIDList']==taxon) &
+                #(usrdata['psm_PSM_IDG']<9) &  # this is redunant with AUC_UseFLAG
+                (~usrdata['psm_GeneID'].isin(gid_ignore_list)) &
+                (usrdata['psm_AUC_useflag'] == 1)
                 ]
-            taxon_totals[taxon] = (uniq_taxon[area_col] / uniq_taxon['_data_GeneCount']).sum()
+            taxon_totals[taxon] = (uniq_taxon[area_col] / uniq_taxon['psm_GeneCount']).sum()
 
 
         tot_unique = sum(taxon_totals.values())  #sum of unique
@@ -246,11 +246,11 @@ def Grouper(usrfile, usrdata, exp_setup, FilterValues, usedb=False, outdir=''):
         for taxons, pattern in zip(all_combos, patterns):
             for taxon in taxons:
                 ratio = taxon_totals[taxon]
-                usrdata.ix[(usrdata._data_tTaxonIDList.str.contains(pattern)) &
+                usrdata.ix[(usrdata.psm_tTaxonIDList.str.contains(pattern)) &
                            (usrdata.gene_taxon_map == taxon),
                            area_col_new] = usrdata[area_col] * ratio
 
-        usrdata.ix[usrdata._data_TaxonCount==1, area_col_new] = usrdata[area_col]
+        usrdata.ix[usrdata.psm_TaxonCount==1, area_col_new] = usrdata[area_col]
         area_col = area_col_new  # use new area col as the area column now
         print()
         #sys.exit(0)    
@@ -275,21 +275,21 @@ def Grouper(usrfile, usrdata, exp_setup, FilterValues, usedb=False, outdir=''):
         logfile.write('{} | Starting gene assignment for label {}.\n'.format(
             time.ctime(), labeltypes[label]))
         # ==========Select only peptides flagged  with good quality=========== #
-        temp_df = usrdata[(usrdata['_data_LabelFLAG'] == label) &
-                          (usrdata['_data_AUC_nUseFLAG'] == 1) &
-                          (usrdata['_data_GeneCount'] > 0)]  # should keep WL's
+        temp_df = usrdata[(usrdata['psm_LabelFLAG'] == label) &
+                          (usrdata['psm_AUC_useflag'] == 1) &
+                          (usrdata['psm_GeneCount'] > 0)]  # should keep WL's
                                             #peptides too (if they have a mass)
-        gene_cols = ['_e2g_EXPRecNo', '_e2g_EXPRunNo', '_e2g_EXPSearchNo',
-                     '_e2g_EXPLabelFLAG', '_e2g_AddedBy',
-                     '_e2g_CreationTS', '_e2g_ModificationTS', '_e2g_GeneID',
-                     '_e2g_IDSet', '_e2g_IDGroup','_e2g_IDGroup_u2g',
-                     '_e2g_GPGroup', '_e2g_GPGroups_All', '_e2g_PSMs',
-                     '_e2g_PSMs_u2g', '_e2g_PeptidePrint', '_e2g_PeptideCount',
-                     '_e2g_PeptideCount_u2g', '_e2g_PeptideCount_S',
-                     '_e2g_PeptideCount_S_u2g','_e2g_nGPArea_Sum_cgpAdj',
-                     '_e2g_nGPArea_Sum_u2g', '_e2g_nGPArea_Sum_u2g_all',
-                     '_e2g_nGPArea_Sum_max', '_e2g_nGPArea_Sum_dstrAdj',
-                     '_e2g_GeneCapacity', '_e2g_n_iBAQ_dstrAdj']  # cols of
+        gene_cols = ['gene_EXPRecNo', 'gene_EXPRunNo', 'gene_EXPSearchNo',
+                     'gene_EXPLabelFLAG', 'gene_AddedBy',
+                     'gene_CreationTS', 'gene_ModificationTS', 'gene_GeneID',
+                     'gene_IDSet', 'gene_IDGroup','gene_IDGroup_u2g',
+                     'gene_GPGroup', 'gene_GPGroups_All', 'gene_PSMs',
+                     'gene_PSMs_u2g', 'gene_PeptidePrint', 'gene_PeptideCount',
+                     'gene_PeptideCount_u2g', 'gene_PeptideCount_S',
+                     'gene_PeptideCount_S_u2g','gene_GeneArea_gpcAdj',
+                     'gene_GeneArea_gpcAdj_u2g', 'gene_GeneArea_gpcAdj_u2g_all',
+                     'gene_GeneArea_gpcAdj_max', 'gene_GeneArea_dstrAdj',
+                     'gene_GeneCapacity', 'gene_iBAQ']  # cols of
                                                                   #interest
 
         # ==================================================================== #
@@ -305,28 +305,36 @@ def Grouper(usrfile, usrdata, exp_setup, FilterValues, usedb=False, outdir=''):
             print('{}: Populating gene table for {}.'.format(datetime.now(),
                                                              usrfile))
             # genes_df['_e2g_GeneID'] = Set(temp_df['_data_GeneID']) #only in 2.7
-            genes_df = pd.DataFrame({'_e2g_GeneID':
-                                     list(set(temp_df['_data_GeneID']))})
-            genes_df['_e2g_GeneCapacity'] = genes_df.apply(lambda x:
+            genes_df = pd.DataFrame({'gene_GeneID':
+                                     list(set(temp_df['psm_GeneID']))})
+
+            genes_df['gene_GeneCapacity'] = genes_df.apply(lambda x:
                                                            capacity_grabber(
-                                                               x['_e2g_GeneID'],
+                                                               x['gene_GeneID'],
                                                                gene_metadata),
                                                            axis=1)
-            genes_df['_e2g_EXPLabelFLAG'] = label
-            for i, j in exp_setup.items(): genes_df[i] = j  # creates genes_df
+            genes_df['gene_EXPLabelFLAG'] = label
+            #for k, v in exp_setup.items():
+            #    if k.startswith('EXP'):
+            #        genekey = [key for key in exp_setup if
+            #                   key.startswith('gene_') and k[3:] in key]
+            #        print(genekey)
+            #        if len(genekey)==1:
+            #            genekey = genekey[0]
+            #            genes_df[genekey] = v  # creates genes_df
             #columns and populates them with  exp_setup values.
             #Quick, easy, labeling
 
-            genes_df['_e2g_PeptideSet'], genes_df['_e2g_PeptidePrint'], \
-            genes_df['_e2g_PeptideCount'], genes_df['_e2g_PeptideCount_u2g'],\
-            genes_df['_e2g_PeptideCount_S'],\
-            genes_df['_e2g_PeptideCount_S_u2g'] =\
+            genes_df['gene_PeptideSet'], genes_df['gene_PeptidePrint'], \
+            genes_df['gene_PeptideCount'], genes_df['gene_PeptideCount_u2g'],\
+            genes_df['gene_PeptideCount_S'],\
+            genes_df['gene_PeptideCount_S_u2g'] =\
             list(zip(*genes_df.apply(pept_print, args=(temp_df,), axis=1)))
 
-            genes_df['_e2g_PSMs'], genes_df['_e2g_PSMs_u2g'],\
-            genes_df['_e2g_PSMs_S'],genes_df['_e2g_PSMs_S_u2g'] = \
+            genes_df['gene_PSMs'], genes_df['gene_PSMs_u2g'],\
+            genes_df['gene_PSMs_S'],genes_df['gene_PSMs_S_u2g'] = \
             list(zip(*genes_df.apply(lambda x:
-                                     e2g_PSM_helper(x['_e2g_GeneID'],
+                                     e2g_PSM_helper(x['gene_GeneID'],
                                                     temp_df,
                                                     exp_setup['EXPTechRepNo']),
                                      axis=1)))
@@ -337,9 +345,9 @@ def Grouper(usrfile, usrdata, exp_setup, FilterValues, usedb=False, outdir=''):
                 datetime.now(), usrfile))
             logfile.write('{} | Calculating peak areas.\n'.format(time.ctime()))
 
-            genes_df['_e2g_nGPArea_Sum_max'],genes_df['_e2g_nGPArea_Sum_cgpAdj'],\
-            genes_df['_e2g_nGPArea_Sum_u2g'],\
-            genes_df['_e2g_nGPArea_Sum_u2g_all']  = \
+            genes_df['gene_GeneArea_gpcAdj_max'],genes_df['gene_GeneArea_gpcAdj'],\
+            genes_df['gene_GeneArea_gpcAdj_u2g'],\
+            genes_df['gene_GeneArea_gpcAdj_u2g_all']  = \
             list(zip(*genes_df.apply(area_calculator,
                                      args=(temp_df,
                                            exp_setup['EXPTechRepNo'],
@@ -352,7 +360,9 @@ def Grouper(usrfile, usrdata, exp_setup, FilterValues, usedb=False, outdir=''):
                 datetime.now(), usrfile))
             logfile.write('{} | Calculating distributed area ratio.\n'.format(
                 time.ctime()))
-            temp_df['_data_PrecursorArea_dstrAdj'] = temp_df.apply(
+            #quick_save(genes_df,name='genesdf_snapshot.p', path=None, q=False)
+            #quick_save(temp_df,name='tempdf_snapshot.p', path=None, q=True)
+            temp_df['psm_PrecursorArea_dstrAdj'] = temp_df.apply(
                 AUC_distributor,args=(genes_df,
                                       area_col,),
                                       axis=1)
@@ -366,23 +376,23 @@ def Grouper(usrfile, usrdata, exp_setup, FilterValues, usedb=False, outdir=''):
 
             #quick_save(genes_df,name='genes_df_snapshot.p', path=None, q=False)
             #quick_save(temp_df,name='temp_df_snapshot.p', path=None, q=True)
-            genes_df['_e2g_IDSet'], genes_df['_e2g_IDGroup'],\
-            genes_df['_e2g_IDGroup_u2g'] = list(
+            genes_df['gene_IDSet'], genes_df['gene_IDGroup'],\
+            genes_df['gene_IDGroup_u2g'] = list(
                 zip(*genes_df.apply(gene_setter, args=(
                     genes_df, temp_df,), axis=1)))
 
-            genes_df['_e2g_nGPArea_Sum_dstrAdj'] = genes_df.apply(gene_AUC_sum,
+            genes_df['gene_GeneArea_dstrAdj'] = genes_df.apply(gene_AUC_sum,
                                                                   args=(temp_df,
                                                                   normalize,), 
                                                                   axis=1)
-            genes_df['_e2g_GeneCapacity'] =\
-                                        genes_df._e2g_GeneCapacity.astype('float')
-            # print(genes_df._e2g_nGPArea_Sum_dstrAdj.dtype,
+            genes_df['gene_GeneCapacity'] =\
+                                        genes_df.gene_GeneCapacity.astype('float')
+            # print(genes_df._e2g_nGPArea_Sum_dstrAdj.dtype,1
             #genes_df._e2g_GeneCapacity.dtype)  # for debugging
-            genes_df['_e2g_n_iBAQ_dstrAdj'] = \
-                genes_df._e2g_nGPArea_Sum_dstrAdj / genes_df._e2g_GeneCapacity
-            genes_df['_e2g_GPGroup'] = ''
-            genes_df.sort_values(by=['_e2g_PSMs'], ascending=False, inplace=True)
+            genes_df['gene_iBAQ'] = \
+                genes_df.gene_GeneArea_dstrAdj / genes_df.gene_GeneCapacity
+            genes_df['gene_GPGroup'] = ''
+            genes_df.sort_values(by=['gene_PSMs'], ascending=False, inplace=True)
             genes_df.index = list(range(0, len(genes_df)))
             last = 0
             #quick_save(genes_df,name='genes_df_snapshot.p', path=None, q=False)
@@ -391,46 +401,54 @@ def Grouper(usrfile, usrdata, exp_setup, FilterValues, usedb=False, outdir=''):
                 #sense,
                 #but the implementation is weird.
             # print(last)  # for debugging
-                if genes_df.loc[i]['_e2g_IDSet'] != 3:
-                    genes_df.loc[i,'_e2g_GPGroup'], lessthan = \
-                    GPG_helper(genes_df.at[i,'_e2g_IDSet'],
-                               genes_df.at[i,'_e2g_PeptideSet'], \
+                if genes_df.loc[i]['gene_IDSet'] != 3:
+                    genes_df.loc[i,'gene_GPGroup'], lessthan = \
+                    GPG_helper(genes_df.at[i,'gene_IDSet'],
+                               genes_df.at[i,'gene_PeptideSet'], \
                                genes_df, last)
-                if type(genes_df.loc[i]['_e2g_GPGroup']) is int and not lessthan:
-                    last = genes_df.loc[i, '_e2g_GPGroup']
+                if type(genes_df.loc[i]['gene_GPGroup']) is int and not lessthan:
+                    last = genes_df.loc[i, 'gene_GPGroup']
 
-            genes_df['_e2g_GPGroups_All'] = genes_df.apply(GPG_all_helper,
+            genes_df['gene_GPGroups_All'] = genes_df.apply(GPG_all_helper,
                                                            args=(genes_df,),
                                                            axis=1)
-            genes_df['_e2g_GPGroup'].replace(to_replace='', value=float('NaN'),
+            genes_df['gene_GPGroup'].replace(to_replace='', value=float('NaN'),
                                          inplace=True)  # can't sort int and
                                          #strings, convert all strings to NaN
-            genes_df.sort_values(by=['_e2g_GPGroup'], ascending=True, inplace=True)
+            genes_df.sort_values(by=['gene_GPGroup'], ascending=True, inplace=True)
             genes_df.index = list(range(0, len(genes_df)))  # reset the index
-            gpgcount += genes_df._e2g_GPGroup.max()  # do this before filling na
-            genes_df['_e2g_GPGroup'].fillna('', inplace=True)  # convert all NaN
+            gpgcount += genes_df.gene_GPGroup.max()  # do this before filling na
+            genes_df['gene_GPGroup'].fillna('', inplace=True)  # convert all NaN
                                                            #back to empty string
             # =============================================================#
-            genes_df['_e2g_EXPRecNo'] = exp_setup['EXPRecNo']
-            genes_df['_e2g_EXPRunNo'] = exp_setup['EXPRunNo']
-            genes_df['_e2g_EXPSearchNo'] = exp_setup['EXPSearchNo']
-            genes_df['_e2g_EXPTechRepNo'] = exp_setup['EXPTechRepNo']
-            genes_df['_e2g_AddedBy'] = usrdata.loc[1]['_data_AddedBy']
-            genes_df['_e2g_CreationTS'] = datetime.now().ctime()
-            genes_df['_e2g_ModificationTS'] = datetime.now().ctime()
-            genes_df.to_csv(os.path.join(outdir,genedata_out), columns=gene_cols,
+            genes_df['gene_EXPRecNo'] = exp_setup['EXPRecNo']
+            genes_df['gene_EXPRunNo'] = exp_setup['EXPRunNo']
+            genes_df['gene_EXPSearchNo'] = exp_setup['EXPSearchNo']
+            genes_df['gene_EXPTechRepNo'] = exp_setup['EXPTechRepNo']
+            genes_df['gene_AddedBy'] = usrdata.loc[1]['psm_AddedBy']
+            genes_df['gene_CreationTS'] = datetime.now().ctime()
+            genes_df['gene_ModificationTS'] = datetime.now().ctime()
+            quick_save(genes_df,name='genes_df_snapshot.p', path=None, q=False)
+            quick_save(gene_metadata,name='genemetadata_snapshot.p', path=None, q=False)
+            quick_save(temp_df,name='tempdf_snapshot.p', path=None, q=False)
+            renamed_genecols = [exp_setup.get(genecol, genecol) for genecol in gene_cols]
+            torename = {k:v for k,v in exp_setup.items() if k.startswith('gene_')}
+            # get a log of gene info
+            genecount += len(genes_df)
+            ibaqtot += genes_df[~genes_df.gene_GeneID.isin(
+                gid_ignore_list)].gene_iBAQ.sum()
+            if usedb:
+                #db.add_exp2gene(genes_df)
+                pass
+
+            genes_df.rename(columns=torename, inplace=True)
+            genes_df.to_csv(os.path.join(outdir,genedata_out), columns=renamed_genecols,
                             index=False,encoding='utf-8', sep='\t')
             logfile.write('{} | Export of genetable for labeltype {}'\
                           'completed.\n'.format(
                               time.ctime(), 
                               labeltypes[label]))
 
-            genecount += len(genes_df)
-            ibaqtot += genes_df[~genes_df._e2g_GeneID.isin(
-                gid_ignore_list)]._e2g_n_iBAQ_dstrAdj.sum()
-            if usedb:
-                #db.add_exp2gene(genes_df)
-                pass
 
     # ----------------End of none/silac loop--------------------------------- #
     usrdata.drop('metadatainfo', axis=1, inplace=True)  # Don't need this
@@ -438,38 +456,38 @@ def Grouper(usrfile, usrdata, exp_setup, FilterValues, usedb=False, outdir=''):
 
     
     usrdata = pd.merge(usrdata, temp_df, how='outer')
-    usrdata['_data_EXPRecNo'], usrdata['_data_EXPRunNo'],\
-    usrdata['_data_EXPSearchNo'],\
-    usrdata['_data_EXPTechRepNo'] = exp_setup['EXPRecNo'],\
+    usrdata['psm_EXPRecNo'], usrdata['psm_EXPRunNo'],\
+    usrdata['psm_EXPSearchNo'],\
+    usrdata['psm_EXPTechRepNo'] = exp_setup['EXPRecNo'],\
     exp_setup['EXPRunNo'], exp_setup['EXPSearchNo'],\
     exp_setup['EXPTechRepNo']
 
-    usrdata['_data_CreationTS'] = datetime.now().ctime()
-    usrdata['_data_ModificationTS'] = datetime.now().ctime()
-    usrdata['_data_tHIDList'] = ''  # will be populated later
-    usrdata['_data_HIDCount'] = ''  # will be populated later
-    data_cols = ['_data_EXPRecNo', '_data_EXPRunNo', '_data_EXPSearchNo',
-                 '_data_EXPTechRepNo', 'Sequence',
-                 'PSM Ambiguity', 'Modifications', 'Activation Type',
-                 'DeltaScore', 'DeltaCn', 'Rank', 'Search Engine Rank',
-                 'Precursor Area', 'QuanResultID', 'q-Value', 'PEP',
+    usrdata['psm_CreationTS'] = datetime.now().ctime()
+    usrdata['psm_ModificationTS'] = datetime.now().ctime()
+    usrdata['psm_HID_list'] = ''  # will be populated later
+    usrdata['psm_HID_Count'] = ''  # will be populated later
+    data_cols = ['psm_EXPRecNo', 'psm_EXPRunNo', 'psm_EXPSearchNo',
+                 'psm_EXPTechRepNo', 'Sequence',
+                 'PSM Ambiguity', 'Modifications', 'ActivationType',
+                 'DeltaScore', 'DeltaCn', 'Rank', 'SearchEngineRank',
+                 'PrecursorArea', 'QuanResultID', 'q_value', 'PEP',
                  'Decoy Peptides Matched', 'Exp Value', 'Homology Threshold', 
                  'Identity High', 'Identity Middle', 'IonScore',
-                 'Peptides Matched', '# Missed Cleavages',
-                 'Isolation Interference [%]', 'Ion Inject Time [ms]',
+                 'Peptides Matched', 'MissedCleavages',
+                 'IsolationInterference', 'IonInjectTime',
                  'Intensity', 'Charge', 'm/z [Da]', 'MH+ [Da]',
                  'Delta Mass [Da]', 'Delta Mass [PPM]', 'RT [min]',
-                 'First Scan','Last Scan', 'MS Order', 'Matched Ions', 
-                 'Total Ions', 'Spectrum File', 'Annotation', '_data_AddedBy',
-                 '_data_CreationTS','_data_ModificationTS', '_data_GeneID',
-                 '_data_tGeneList', '_data_ProteinGI',
-                 '_data_tProteinList','_data_ProteinCount', '_data_GeneCount',
-                 '_data_HID', '_data_tHIDList', '_data_HIDCount',
-                 '_data_TaxonID', '_data_tTaxonIDList', '_data_TaxonCount',
-                 '_data_PSM_IDG', '_data_SequenceModi', 
-                 '_data_SequenceModiCount', '_data_LabelFLAG', '_data_GeneID',
-                 '_data_PeptRank', '_data_AUC_nUseFLAG','_data_PSM_nUseFLAG',
-                 area_col_new, '_data_PrecursorArea_dstrAdj']
+                 'First Scan','Last Scan', 'MS Order', 'MatchedIons', 
+                 'TotalIons', 'SpectrumFile', 'Annotation', 'psm_AddedBy',
+                 'psm_CreationTS','psm_ModificationTS', 'psm_GeneID',
+                 'psm_GeneList', 'psm_GeneCount', 'psm_ProteinGI',
+                 'psm_ProteinList','psm_ProteinCount', 
+                 'psm_HID', 'psm_HIDList', 'psm_HID_Count',
+                 'psm_TaxonID', 'psm_TaxonIDList', 'psm_TaxonCount',
+                 'psm_PSM_IDG', 'psm_SequenceModi', 
+                 'psm_SequenceModiCount', 'psm_LabelFLAG', 
+                 'psm_PeptideRank', 'psm_AUC_useflag','psm_PSM_useflag',
+                 area_col_new, 'psm_PrecursorArea_dstrAdj']
     #usrdata.to_csv(usrdata_out, columns=usrdata.columns,
                                 #encoding='utf-8', sep='\t')
     #print(usrdata.columns.values)  # for debugging
@@ -478,13 +496,7 @@ def Grouper(usrfile, usrdata, exp_setup, FilterValues, usedb=False, outdir=''):
         print([x for x in data_cols if x not in usrdata.columns.values])                                
         data_cols = [x for x in data_cols if x in usrdata.columns.values]
         # will still export successfully
-    usrdata.to_csv(os.path.join(outdir,usrdata_out), columns=data_cols,
-                   index=False, encoding='utf-8',sep='\t')
-    
-    logfile.write('{} | Export of datatable completed.\n'.format(time.ctime()))
-    logfile.write('Successful grouping of file completed.')
-    logfile.close()
-    
+
     # update database
     if usedb:
         session = db.make_session()
@@ -496,7 +508,7 @@ def Grouper(usrfile, usrdata, exp_setup, FilterValues, usedb=False, outdir=''):
         exprecord.GPGroup_count = int(gpgcount)
         exprecord.gene_count = int(genecount)
         exprecord.iBAQ_total = int(ibaqtot)
-        exprecord.PSM_count = len(usrdata[usrdata._data_PSM_nUseFLAG==1])
+        exprecord.PSM_count = len(usrdata[usrdata.psm_PSM_useflag==1])
         exprecord.grouped = True
         exprecord.failed = False
         exprecord.group_date = datetime.now()
@@ -504,6 +516,16 @@ def Grouper(usrfile, usrdata, exp_setup, FilterValues, usedb=False, outdir=''):
         session.add(exprecord)
         session.commit()
         session.close()
+
+    renamed_datacols = [exp_setup.get(datacol, datacol) for datacol in data_cols]
+    usrdata.rename(columns={k:v for k,v in exp_setup.items()}, inplace=True)
+    usrdata.to_csv(os.path.join(outdir,usrdata_out), columns=renamed_datacols,
+                   index=False, encoding='utf-8',sep='\t')
+    
+    logfile.write('{} | Export of datatable completed.\n'.format(time.ctime()))
+    logfile.write('Successful grouping of file completed.')
+    logfile.close()
+    
 
                                 
     print('Successful grouping of {} completed.\n' \
@@ -523,7 +545,8 @@ def main(usrfiles=[], exp_setups=[], automated=False, usepeptidome=True, setup=F
         pysetup()
     elif setup:
         pysetup()
-    parser = SafeConfigParser()
+    parser = ConfigParser(comment_prefixes=(';')) # allow number sign to be read in configfile
+    parser.optionxform = str  # preserve case
     parser.read('py_config.ini')
     pept_breakups = {}
     breakup_size = 4
@@ -693,26 +716,50 @@ def main(usrfiles=[], exp_setups=[], automated=False, usepeptidome=True, setup=F
     logging.info('Start at {}'.format(startTime))
     if fullpeptread: print('Running with fullpeptread option')
     usrdatas = []
+    column_aliases = dict(parser.items('column names'))
+    for key in column_aliases:  # find the right column name
+        if key.startswith('psm_') or key.startswith('gene_'):
+            column_aliases[key] = list(filter(None,
+                                              (x.strip() for
+                                               x in column_aliases[key].splitlines())))[-1]
+            
+        else:
+            column_aliases[key] = list(filter(None,
+                                          (x.strip() for
+                                           x in column_aliases[key].splitlines())))
     for usrfile in usrfiles:  # load all data
         usrdatas.append(pd.read_csv(os.path.join(inputdir,usrfile), sep='\t'))
     for usrdata, exp_setup in zip(usrdatas, exp_setups):
-        usrdata.rename(columns={'Annotated Sequence': 'Sequence', 'Area':
-                                'Precursor Area','Percolator q-Value':
-                                'q-Value','Percolator PEP': 'PEP',
-                                'Ions Score': 'IonScore', 'DeltaM [ppm]':
-                                'Delta Mass [PPM]',
-                                'Deltam/z [Da]' : 'Delta Mass [Da]',
-                                }, inplace=True)  # PD 2.0 column name changes
+        standard_names = column_identifier(usrdata, column_aliases)
+        for name in standard_names:
+            exp_setup[name] = standard_names[name]
+        for alias in column_aliases:
+            if alias.startswith('psm_') or alias.startswith('gene_'):
+                exp_setup[alias] = column_aliases[alias]
+
+        #for key in exp_setup: print(key,'   :   ', exp_setup[key])
+        usrdata.rename(columns={v: k
+                                for k,v in standard_names.items()},
+                       inplace=True)
+        
+        
+        #usrdata.rename(columns={'Annotated Sequence': 'Sequence', 'Area':
+        #                        'Precursor Area','Percolator q-Value':
+        #                        'q-Value','Percolator PEP': 'PEP',
+        #                        'Ions Score': 'IonScore', 'DeltaM [ppm]':
+        #                        'Delta Mass [PPM]',
+        #                        'Deltam/z [Da]' : 'Delta Mass [Da]',
+        #                        }, inplace=True)  # PD 2.0 column name changes
         if not automated:
-            usrdata['_data_AddedBy'] = usr_name
+            usrdata['psm_AddedBy'] = usr_name
 
         elif automated:
-            usrdata['_data_AddedBy'] = exp_setup['AddedBy']
+            usrdata['psm_AddedBy'] = exp_setup['AddedBy']
 
-        usrdata['_data_TaxonID'] = exp_setup['taxonID']
-        usrdata['_data_tGeneList'], usrdata['_data_tProteinList'],\
-        usrdata['_data_GeneCount'],usrdata['_data_ProteinCount'],\
-        usrdata['_data_HomologeneID'], usrdata['_data_ProteinCapacity'], \
+        usrdata['psm_TaxonID'] = exp_setup['taxonID']
+        usrdata['psm_tGeneList'], usrdata['psm_ProteinList'],\
+        usrdata['psm_GeneCount'],usrdata['psm_ProteinCount'],\
+        usrdata['psm_HomologeneID'], usrdata['psm_ProteinCapacity'], \
         usrdata['metadatainfo'] = '', '', 0, 0, '', '', ''
 
     # ============== Load refseq and start matching peptides ================ #
@@ -721,7 +768,7 @@ def main(usrfiles=[], exp_setups=[], automated=False, usepeptidome=True, setup=F
     #                    'taxonid, geneid, homologeneid,proteingi,genefraglen')
     
     for organism in refs.keys():
-        if any(any(x['_data_TaxonID'].isin([int(organism)])) for x in\
+        if any(any(x['psm_TaxonID'].isin([int(organism)])) for x in\
                usrdatas):  # check if we even need to read the
                            #peptidome for that organism
             ref_reader = csv_reader(refs[organism]['loc'])
@@ -753,12 +800,12 @@ def main(usrfiles=[], exp_setups=[], automated=False, usepeptidome=True, setup=F
 
                 for usrdata, usrfile in zip(usrdatas, usrfiles):
                     #print(usrdata.loc[0]['_data_TaxonID'])
-                    if usrdata.loc[0]['_data_TaxonID'] == int(organism):
+                    if usrdata.loc[0]['psm_TaxonID'] == int(organism):
                         # check to see if the inputdata 
                         #taxonID matches with the proteome
-                        usrdata['Sequence'], usrdata['_data_SequenceModi'],\
-                        usrdata['_data_SequenceModiCount'],\
-                        usrdata['_data_LabelFLAG'] = \
+                        usrdata['Sequence'], usrdata['psm_SequenceModi'],\
+                        usrdata['psm_SequenceModiCount'],\
+                        usrdata['psm_LabelFLAG'] = \
                         list(zip(*usrdata.apply(lambda x :
                                                 seq_modi(x['Sequence'],
                                                          x['Modifications']),
@@ -951,8 +998,10 @@ def schedule(INTERVAL, options):
 
 if __name__ == '__main__':
 
-    parser = SafeConfigParser()
+    parser = ConfigParser(comment_prefixes=(';')) # allow number sign to be read in configfile
+    parser.optionxform = str  # preserve case
     parser.read('py_config.ini')
+
     INPUT_DIR = parser['directories']['inputdir']  # where to look
                                                    # for files to group
     OUTPUT_DIR = parser['directories']['outputdir']
