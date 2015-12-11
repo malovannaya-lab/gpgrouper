@@ -18,6 +18,14 @@ def create_tables(engine):
     ''' Create a brand new database with tables'''
     Base.metadata.create_all(engine)
 
+def get_connection():
+    """Returns an sql connection with a cursor accessible"""
+    dbname = os.path.join(BASE_DIR, 'piSPEC.sqlite3')
+    engine = create_engine('sqlite:///{}'.format(dbname), echo=False)
+    if not os.path.isfile(dbname):  # make db if doesn't exist
+        create_tables(engine)
+    return engine
+    
 def make_session():
     dbname = os.path.join(BASE_DIR, 'piSPEC.sqlite3')
     engine = create_engine('sqlite:///{}'.format(dbname), echo=False)
@@ -69,7 +77,7 @@ class ExperimentRun(Base):
     MS_instrument = Column(String(100))
     MS_experimenter = Column(String(100))
     MS_comments = Column(String(100))
-    quant_source = Column(String(30))
+    quant_source = Column(String(30), default='AUC')
     search_experimenter = Column(String(100))
 
     #exp_type = Column(String(100))
@@ -126,13 +134,13 @@ def add_exp2gene(df):
     ''' add pygrouper df to exp2gene table
     still in development, don't use yet
     '''
-    rec = df[['_e2g_EXPRecNo', '_e2g_EXPRunNo','_e2g_GeneID','_e2g_IDSet',
-              '_e2g_IDGroup', '_e2g_IDGroup_u2g', '_e2g_GPGroup', '_e2g_GPGroups_All',
-              '_e2g_PSMs','_e2g_PSMs_u2g','_e2g_PeptidePrint','_e2g_PeptideCount',
-              '_e2g_PeptideCount_u2g','_e2g_PeptideCount_S','_e2g_PeptideCount_S_u2g',
-              '_e2g_nGPArea_Sum_cgpAdj','_e2g_nGPArea_Sum_u2g', '_e2g_nGPArea_Sum_u2g_all',
-              '_e2g_nGPArea_Sum_max','_e2g_nGPArea_Sum_dstrAdj', '_e2g_GeneCapacity',
-              '_e2g_n_iBAQ_dstrAdj']].to_records(index=False)
+    rec = df[['e2g_EXPRecNo', 'e2g_EXPRunNo','e2g_GeneID','e2g_IDSet',
+              'e2g_IDGroup', 'e2g_IDGroup_u2g', 'e2g_GPGroup', 'e2g_GPGroups_All',
+              'e2g_PSMs','e2g_PSMs_u2g','e2g_PeptidePrint','e2g_PeptideCount',
+              'e2g_PeptideCount_u2g','e2g_PeptideCount_S','e2g_PeptideCount_S_u2g',
+              'e2g_nGPArea_Sum_cgpAdj','e2g_nGPArea_Sum_u2g', 'e2g_nGPArea_Sum_u2g_all',
+              'e2g_nGPArea_Sum_max','e2g_nGPArea_Sum_dstrAdj', 'e2g_GeneCapacity',
+              'e2g_n_iBAQ_dstrAdj']].to_records(index=False)
     genes = []
     session = make_session()
     #exprecord = session.query(db.ExperimentRun).\
@@ -343,8 +351,8 @@ def get_ispec_experiment_info(ispecf, todb=False, norepeats=False):
         d = get_all_experiment_records()
     newexps = defaultdict(list)
     ispecdata = pd.read_excel(ispecf)
-    intfields = ['_exprun_EXPRecNo','_exprun_EXPRunNo', '_exprun_EXPSearchNo',
-                 '_exprun_TaxonID', 'exprun_nTechRepeats']
+    intfields = ['exprun_EXPRecNo','exprun_EXPRunNo', 'exprun_EXPSearchNo',
+                 'exprun_TaxonID', 'exprun_nTechRepeats']
     for field in intfields:
         ispecdata[field] = ispecdata[field].fillna(0)
         ispecdata[field] = ispecdata[field].astype('int')  # get rid of decimals
@@ -353,26 +361,26 @@ def get_ispec_experiment_info(ispecf, todb=False, norepeats=False):
         ispecdata[col] = ispecdata[col].fillna('')
 
     for ix, row in ispecdata.iterrows():
-        if isinstance(row._exprun_CreationTS, str):
+        if isinstance(row.exprun_CreationTS, str):
             try:
-                creation = datetime.strptime(row._exprun_CreationTS, '%m/%d/%Y %H:%M:%S')
+                creation = datetime.strptime(row.exprun_CreationTS, '%m/%d/%Y %H:%M:%S')
             except ValueError:
                 creation = None
         else:
-             creation = row._exprun_CreationTS
+             creation = row.exprun_CreationTS
 
         passflag = True     
         if norepeats:
             
-            if row._exprun_EXPRecNo in d:
-                if row._exprun_EXPRunNo in d.get(row._exprun_EXPRecNo):
+            if row.exprun_EXPRecNo in d:
+                if row.exprun_EXPRunNo in d.get(row.exprun_EXPRecNo):
                     passflag = False
             
         if passflag:
-            newexps[row._exprun_EXPRecNo].append(
-                {'run_no':row._exprun_EXPRunNo,
-                 'search_no': row._exprun_EXPSearchNo, 'taxon': row._exprun_TaxonID,
-                 'addedby': row._exprun_AddedBy, 'creation_ts': creation,
+            newexps[row.exprun_EXPRecNo].append(
+                {'run_no':row.exprun_EXPRunNo,
+                 'search_no': row.exprun_EXPSearchNo, 'taxon': row.exprun_TaxonID,
+                 'addedby': row.exprun_AddedBy, 'creation_ts': creation,
                  'purpose': row.exprun_Purpose, 'label': row.exprun_LabelType,
                  'techrep': row.exprun_nTechRepeats, 'instrument':row.exprun_MS_Instrument,
                  'msexperimenter': row.exprun_MS_Experimenter, 'mscomment':row.exprun_MS_Experimenter,
