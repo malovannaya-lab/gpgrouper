@@ -428,9 +428,9 @@ def Grouper(usrfile, usrdata, exp_setup, FilterValues, usedb=False, outdir='', *
             genes_df['gene_AddedBy'] = usrdata.loc[1]['psm_AddedBy']
             genes_df['gene_CreationTS'] = datetime.now().ctime()
             genes_df['gene_ModificationTS'] = datetime.now().ctime()
-            quick_save(genes_df,name='genes_df_snapshot.p', path=None, q=False)
-            quick_save(gene_metadata,name='genemetadata_snapshot.p', path=None, q=False)
-            quick_save(temp_df,name='tempdf_snapshot.p', path=None, q=False)
+            #quick_save(genes_df,name='genes_df_snapshot.p', path=None, q=False)
+            #quick_save(gene_metadata,name='genemetadata_snapshot.p', path=None, q=False)
+            #quick_save(temp_df,name='tempdf_snapshot.p', path=None, q=False)
             renamed_genecols = [exp_setup.get(genecol, genecol) for genecol in gene_cols]
             torename = {k:v for k,v in exp_setup.items() if k.startswith('gene_')}
             # get a log of gene info
@@ -517,8 +517,9 @@ def Grouper(usrfile, usrdata, exp_setup, FilterValues, usedb=False, outdir='', *
         session.commit()
         session.close()
 
-    renamed_datacols = [exp_setup.get(datacol, datacol) for datacol in data_cols]
-    usrdata.rename(columns={k:v for k,v in exp_setup.items()}, inplace=True)
+    renamed_datacols = [exp_setup.get(datacol, datacol)  if datacol.startswith('psm_') else datacol
+                        for datacol in data_cols]
+    usrdata.rename(columns={k:v for k,v in exp_setup.items() if k.startswith('psm_')}, inplace=True)
     usrdata.to_csv(os.path.join(outdir,usrdata_out), columns=renamed_datacols,
                    index=False, encoding='utf-8',sep='\t')
     
