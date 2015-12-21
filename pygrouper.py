@@ -72,10 +72,10 @@ def Grouper(usrfile, usrdata, exp_setup, FilterValues, usedb=False, outdir='', *
         # don't convert to int, GIDs are not ints
         gid_ignore_list = gid_ignore_read
 
-    if exp_setup['EXPQuantSource'] == 'AUC':
+    if exp_setup['EXPQuantSource'].strip() == 'AUC':
         area_col = 'PrecursorArea'  # we always use Precursor Area
         normalize = 10**9
-    elif exp_setup['EXPQuantSource'] == 'Intensity':
+    elif exp_setup['EXPQuantSource'].strip() == 'Intensity':
         area_col = 'Intensity'
         normalize = 10**5    
 
