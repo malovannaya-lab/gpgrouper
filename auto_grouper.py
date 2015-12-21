@@ -109,7 +109,7 @@ def file_checker(INPUT_DIR, OUTPUT_DIR):
                      'EXPTechRepNo': exp.tech_repeat,
                      'EXPLabelType': exp.label_type
                      }
-        expfilematch = str(setup['EXPRecNo'])+'_'+str(setup['EXPRunNo'])
+        expfilematch = str(setup['EXPRecNo'])+'_'+str(setup['EXPRunNo']+'_')
         usrfilelist = [f for f in validfiles if f.startswith(expfilematch)]
         if len(usrfilelist) == 1: # ensure we have just one match
             usrfile = usrfilelist[0]
