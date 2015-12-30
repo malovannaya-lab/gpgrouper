@@ -10,7 +10,7 @@ from statistics import mean
 # from sets import Set #python2 only
 from configparser import ConfigParser, ParsingError, NoSectionError, NoOptionError
 import pandas as pd
-from pygrouper_subfuncts import *
+from subfuncts import *
 try :
     import database_config as db
 except ImportError:
@@ -209,17 +209,17 @@ def Grouper(usrfile, usrdata, exp_setup, FilterValues, usedb=False, outdir='', *
     
     taxon_ids = set(','.join(x for x in usrdata.psm_TaxonIDList.tolist()
                              if x).split(','))    
-    area_col_new = 'psm_Area_taxonAdj'
+    #area_col_new = 'psm_Area_taxonAdj'
     #quick_save(usrdata, q=False)
     #quick_save(gene_taxon_dict, name='gene_taxon_dict.p', q=True)
-    if len(taxon_ids) == 1:  # just 1 taxon id present
-        usrdata[area_col_new] = usrdata[area_col]
-    elif len(taxon_ids) > 1:  # more than 1 taxon id
+    #if len(taxon_ids) == 1:  # just 1 taxon id present
+    #    usrdata[area_col_new] = usrdata[area_col]
+    if len(taxon_ids) > 1:  # more than 1 taxon id
         print('Multiple taxons found, redistributing areas...')
         logfile.write('{} | Multiple taxons found, '\
                       'redistributing areas.\n'.format(time.ctime()))
         usrdata.reset_index(inplace=True)
-        usrdata[area_col_new] = 0
+        #usrdata[area_col_new] = 0
         taxon_totals = dict()
         for taxon in taxon_ids:
             #all_others = [x for x in taxon_ids if x != taxon]
@@ -240,18 +240,20 @@ def Grouper(usrfile, usrdata, exp_setup, FilterValues, usedb=False, outdir='', *
             taxon_totals[taxon] = taxon_totals[taxon] / tot_unique
             print(taxon, ' ratio : ', taxon_totals[taxon])
             logfile.write('{} ratio : {}\n'.format(taxon, taxon_totals[taxon]))
-        all_combos = [x for i in range(2, len(taxon_ids)+1) for x in
-                      itertools.combinations(taxon_ids, i)] # list of tuples
-        patterns = regex_pattern_all(all_combos)
-        for taxons, pattern in zip(all_combos, patterns):
-            for taxon in taxons:
-                ratio = taxon_totals[taxon]
-                usrdata.ix[(usrdata.psm_tTaxonIDList.str.contains(pattern)) &
-                           (usrdata.gene_taxon_map == taxon),
-                           area_col_new] = usrdata[area_col] * ratio
 
-        usrdata.ix[usrdata.psm_TaxonCount==1, area_col_new] = usrdata[area_col]
-        area_col = area_col_new  # use new area col as the area column now
+        ### We don't want to do this... ###
+        #all_combos = [x for i in range(2, len(taxon_ids)+1) for x in
+        #              itertools.combinations(taxon_ids, i)] # list of tuples
+        #patterns = regex_pattern_all(all_combos)
+        #for taxons, pattern in zip(all_combos, patterns):
+        #    for taxon in taxons:
+        #        ratio = taxon_totals[taxon]
+        #        usrdata.ix[(usrdata.psm_tTaxonIDList.str.contains(pattern)) &
+        #                   (usrdata.gene_taxon_map == taxon),
+        #                   area_col_new] = usrdata[area_col] * ratio
+        #
+        #usrdata.ix[usrdata.psm_TaxonCount==1, area_col_new] = usrdata[area_col]
+        #area_col = area_col_new  # use new area col as the area column now
         print()
         #sys.exit(0)    
     # ========================================================================= #
@@ -465,29 +467,29 @@ def Grouper(usrfile, usrdata, exp_setup, FilterValues, usedb=False, outdir='', *
     usrdata['psm_CreationTS'] = datetime.now().ctime()
     usrdata['psm_ModificationTS'] = datetime.now().ctime()
     usrdata['psm_HID_list'] = ''  # will be populated later
-    usrdata['psm_HID_Count'] = ''  # will be populated later
+    usrdata['psm_HID_count'] = ''  # will be populated later
     data_cols = ['psm_EXPRecNo', 'psm_EXPRunNo', 'psm_EXPSearchNo',
                  'psm_EXPTechRepNo', 'Sequence',
-                 'PSM Ambiguity', 'Modifications', 'ActivationType',
+                 'PSMAmbiguity', 'Modifications', 'ActivationType',
                  'DeltaScore', 'DeltaCn', 'Rank', 'SearchEngineRank',
                  'PrecursorArea', 'QuanResultID', 'q_value', 'PEP',
                  'Decoy Peptides Matched', 'Exp Value', 'Homology Threshold', 
                  'Identity High', 'Identity Middle', 'IonScore',
                  'Peptides Matched', 'MissedCleavages',
                  'IsolationInterference', 'IonInjectTime',
-                 'Intensity', 'Charge', 'm/z [Da]', 'MH+ [Da]',
-                 'Delta Mass [Da]', 'Delta Mass [PPM]', 'RT [min]',
-                 'First Scan','Last Scan', 'MS Order', 'MatchedIons', 
+                 'Intensity', 'Charge', 'mzDa', 'MHDa',
+                 'DeltaMassDa', 'DeltaMassPPM', 'RTmin',
+                 'FirstScan', 'LastScan', 'MSOrder', 'MatchedIons', 
                  'TotalIons', 'SpectrumFile', 'Annotation', 'psm_AddedBy',
                  'psm_CreationTS','psm_ModificationTS', 'psm_GeneID',
                  'psm_GeneList', 'psm_GeneCount', 'psm_ProteinGI',
                  'psm_ProteinList','psm_ProteinCount', 
-                 'psm_HID', 'psm_HIDList', 'psm_HID_Count',
+                 'psm_HID', 'psm_HID_list', 'psm_HID_count',
                  'psm_TaxonID', 'psm_TaxonIDList', 'psm_TaxonCount',
                  'psm_PSM_IDG', 'psm_SequenceModi', 
                  'psm_SequenceModiCount', 'psm_LabelFLAG', 
                  'psm_PeptideRank', 'psm_AUC_useflag','psm_PSM_useflag',
-                 area_col_new, 'psm_PrecursorArea_dstrAdj']
+                 'psm_PrecursorArea_dstrAdj']
     #usrdata.to_csv(usrdata_out, columns=usrdata.columns,
                                 #encoding='utf-8', sep='\t')
     #print(usrdata.columns.values)  # for debugging
@@ -517,7 +519,7 @@ def Grouper(usrfile, usrdata, exp_setup, FilterValues, usedb=False, outdir='', *
         session.commit()
         session.close()
 
-    renamed_datacols = [exp_setup.get(datacol, datacol)  if datacol.startswith('psm_') else datacol
+    renamed_datacols = [exp_setup.get(datacol, datacol) if datacol.startswith('psm_') else datacol
                         for datacol in data_cols]
     usrdata.rename(columns={k:v for k,v in exp_setup.items() if k.startswith('psm_')}, inplace=True)
     usrdata.to_csv(os.path.join(outdir,usrdata_out), columns=renamed_datacols,
@@ -540,7 +542,7 @@ def main(usrfiles=[], exp_setups=[], automated=False, usepeptidome=True, setup=F
     global program_title
     global release_date
     refs = {}
-    if not os.path.isfile('py_config.ini'):
+    if not os.path.isfile(os.path.join(BASE_DIR,'py_config.ini')):
         input("No config file detected. Don't worry, we'll make one now\n"\
               "Press [Enter] to continue")
         pysetup()
@@ -548,7 +550,7 @@ def main(usrfiles=[], exp_setups=[], automated=False, usepeptidome=True, setup=F
         pysetup()
     parser = ConfigParser(comment_prefixes=(';')) # allow number sign to be read in configfile
     parser.optionxform = str  # preserve case
-    parser.read('py_config.ini')
+    parser.read(os.path.join(BASE_DIR,'py_config.ini'))
     pept_breakups = {}
     breakup_size = 4
     for taxon, location in parser.items('refseq locations'):
@@ -758,7 +760,7 @@ def main(usrfiles=[], exp_setups=[], automated=False, usepeptidome=True, setup=F
             usrdata['psm_AddedBy'] = exp_setup['AddedBy']
 
         usrdata['psm_TaxonID'] = exp_setup['taxonID']
-        usrdata['psm_tGeneList'], usrdata['psm_ProteinList'],\
+        usrdata['psm_GeneList'], usrdata['psm_ProteinList'],\
         usrdata['psm_GeneCount'],usrdata['psm_ProteinCount'],\
         usrdata['psm_HomologeneID'], usrdata['psm_ProteinCapacity'], \
         usrdata['metadatainfo'] = '', '', 0, 0, '', '', ''
@@ -767,7 +769,7 @@ def main(usrfiles=[], exp_setups=[], automated=False, usepeptidome=True, setup=F
     print('{}: Loading refseq database.'.format(datetime.now()))
     #RefseqInfo = namedtuple('RefseqInfo',
     #                    'taxonid, geneid, homologeneid,proteingi,genefraglen')
-    
+
     for organism in refs.keys():
         if any(any(x['psm_TaxonID'].isin([int(organism)])) for x in\
                usrdatas):  # check if we even need to read the

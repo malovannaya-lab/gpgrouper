@@ -31,6 +31,7 @@ def column_constructor(columndict=None):
         ('DeltaScore', ''),
         ('DeltaCn', ''),
         ('Rank', ''),
+        ('FirstScan','The very first scan...'),
         ('SearchEngineRank', ''),
         ('PrecursorArea','MS1 integrated peptide area'),
         ('Intensity','peptide intensity'),
@@ -41,14 +42,14 @@ def column_constructor(columndict=None):
         ('IsolationInterference', ''),
         ('IonInjectTime', ''),
         ('Charge', 'Ion charge'),
-        ('m/z [Da]', ''),
-        ('MH+ [Da]', ''),
+        ('mzDa', ''),
+        ('MHDa', ''),
         ('MatchedIons', ''),
         ('TotalIons', ''),
-        ('Delta Mass [Da]',''),
-        ('Delta Mass [PPM]',''),
-        ('RT [min]', ''),
-        ('MS Order', ''),
+        ('DeltaMassDa',''),
+        ('DeltaMassPPM',''),
+        ('RTmin', ''),
+        ('MSOrder', ''),
         ('SpectrumFile', ''),
         
         ('psm_EXPRecNo', 'Experiment record number'),
@@ -588,7 +589,7 @@ def IDG_picker(IonScore, qvalue):
     return IDGout
  
         
-def seq_modi(sequence, modifications):
+def seq_modi(sequence, modifications, keeplog=True):
 
     '''
     function to output a modified string of sequence that includes all 
@@ -678,9 +679,10 @@ def seq_modi(sequence, modifications):
                     elif modi in amino_acids:
                         seqmodi += modi  # for the X amino acids
                     else:
-                        logging.warning('New modification {} that'\
-                                        ' is not found in sequence {}'.format(
-                                             modi, sequence))                
+                        if keeplog:
+                            logging.warning('New modification {} that'\
+                                            ' is not found in sequence {}'.format(
+                                                modi, sequence))                
 
     sequence = ''.join(seqlist)
     return sequence, seqmodi, modi_len, label
