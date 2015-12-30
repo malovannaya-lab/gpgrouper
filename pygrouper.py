@@ -1,21 +1,18 @@
 #===============================================================================#
 # PyGrouper - Alex Saltzman
-import re, csv, os, sys, itertools, time
+import re, os, sys, time
 import logging
 import argparse
-import threading
-from collections import namedtuple, defaultdict
+from collections import defaultdict
 from math import ceil
-from statistics import mean
 # from sets import Set #python2 only
-from configparser import ConfigParser, ParsingError, NoSectionError, NoOptionError
+from configparser import ConfigParser
 import pandas as pd
 from subfuncts import *
-try :
+try:
     import database_config as db
 except ImportError:
     print('Not using databse_config')
-    pass # don't use db
 
 
 program_title = 'PyGrouper v0.1.010'
@@ -37,15 +34,14 @@ def quick_save(df,name='df_snapshot.p', path=None, q=False):
 
     if path:
         name = path+name
-        
     #df.to_csv('test_matched.tab', index=False, sep='\t')
-    pickle.dump( df, open( name, 'wb' ) )
+    pickle.dump(df, open(name, 'wb'))
     print('Pickling...')
     if q:
         print('Exiting prematurely')
         sys.exit(0)
 
-def PeptidomeMatcher(usrdata, ref_dict):
+def peptidome_matcher(usrdata, ref_dict):
     usrdata['metadatainfo'] = usrdata.apply(lambda x:
                                             genematcher(x['Sequence'],
                                                         x['metadatainfo'],
@@ -53,7 +49,7 @@ def PeptidomeMatcher(usrdata, ref_dict):
     return usrdata
 
 
-def Grouper(usrfile, usrdata, exp_setup, FilterValues, usedb=False, outdir='', *args):
+def grouper(usrfile, usrdata, exp_setup, FilterValues, usedb=False, outdir='', *args):
     #import RefseqInfo
 
     global program_title
@@ -66,7 +62,7 @@ def Grouper(usrfile, usrdata, exp_setup, FilterValues, usedb=False, outdir='', *
 
     if os.path.isfile(gid_ignore_file):
         print('Using gene filter file for normalization.')
-        gid_ignore_read=[x.strip() for x in open(gid_ignore_file,'r') if
+        gid_ignore_read=[x.strip() for x in open(gid_ignore_file, 'r') if
                          not x.strip().startswith('#')]
         #gid_ignore_list = [int(x) for x in gid_ignore_read if x.isdigit()]
         # don't convert to int, GIDs are not ints
@@ -77,9 +73,8 @@ def Grouper(usrfile, usrdata, exp_setup, FilterValues, usedb=False, outdir='', *
         normalize = 10**9
     elif exp_setup['EXPQuantSource'].strip() == 'Intensity':
         area_col = 'Intensity'
-        normalize = 10**5    
+        normalize = 10**5
 
-                
     print('Starting Grouper for exp file {}'.format(usrfile))
     logfilestr = '_'.join(str(x) for x in [exp_setup['EXPRecNo'],
                                            exp_setup['EXPRunNo'],
@@ -90,15 +85,13 @@ def Grouper(usrfile, usrdata, exp_setup, FilterValues, usedb=False, outdir='', *
     logfile = open(os.path.join(outdir,logfilestr), 'w+')  # append to previously opened log file
     logfile.write('{} | Starting {} for file : {}\n'.format(
         time.ctime(),program_title, usrfile))
-
     # ==================== Populate gene info ================================ #
     gene_metadata = defaultdict(list)
     gene_taxon_dict = dict()
-    
     for metadata in usrdata.metadatainfo:
         for data in metadata:
             gene_metadata[data.geneid].append((data.taxonid, data.homologeneid,
-                                          data.proteingi, data.genefraglen))
+                                               data.proteingi, data.genefraglen))
     for gene in gene_metadata:
         gene_taxon_dict[gene] = gene_metadata[gene][0][0]
 
@@ -124,7 +117,6 @@ def Grouper(usrfile, usrdata, exp_setup, FilterValues, usedb=False, outdir='', *
     #------------------------------------------------------------------------- #
 
     usrdata['psm_HID'], usrdata['psm_ProteinGI'] = '', ''
-    
     # potentially filled in later,
     #fields will exist in database at least
 
@@ -133,7 +125,6 @@ def Grouper(usrfile, usrdata, exp_setup, FilterValues, usedb=False, outdir='', *
                                     usrdata.loc[0]['psm_TaxonID']))
     logging.info('Starting Grouper for exp number'\
                  '{}'.format(exp_setup['EXPRecNo']))
-        
     nomatches = usrdata[usrdata['psm_GeneCount'] == 0].Sequence  # select all
     #PSMs that didn't get a match to the refseq peptidome
     logfile.write('{} | Total identified PSMs : {}\n'.format(
@@ -146,13 +137,10 @@ def Grouper(usrfile, usrdata, exp_setup, FilterValues, usedb=False, outdir='', *
         logging.warning('No match for sequence {} in {}'.format(missing_seq,
                                                                 usrfile))
         # Store all of these sequences in the big log file, not per experiment.
-
-    resultout_dir = os.getcwd()  
-
     logfile.write('{} | Starting grouper.\n'.format(time.ctime()))
     usrdata['psm_PSM_IDG'] = usrdata.apply(lambda x:
-                                             IDG_picker(x['IonScore'],
-                                                        x['q_value']), axis=1) 
+                                           IDG_picker(x['IonScore'],
+                                                      x['q_value']), axis=1) 
     #usrdata['Sequence'], usrdata['_data_SequenceModi'],
     #usrdata['_data_SequenceModiCount'], usrdata['_data_LabelFLAG'] =
     #list(zip(*usrdata.apply(lambda x : \
@@ -161,9 +149,9 @@ def Grouper(usrfile, usrdata, exp_setup, FilterValues, usedb=False, outdir='', *
                                   #(this will deal with the Xs)
     # ============= Gather all genes that all peptides map to =============== #
     glstsplitter = usrdata['psm_GeneList'].str.split(',').apply(pd.Series,
-                                                                   1).stack()
+                                                                1).stack()
     glstsplitter.index = glstsplitter.index.droplevel(-1)  # get rid of
-    # multi-index
+                                                           # multi-index
     glstsplitter.name = 'psm_GeneID'  # give the series a name
     usrdata = usrdata.join(glstsplitter)  # usrdata gains column 'psm_GeneID'
                                           #from glstsplitter Series
@@ -172,9 +160,9 @@ def Grouper(usrfile, usrdata, exp_setup, FilterValues, usedb=False, outdir='', *
 
     logfile.write('{} | Starting peptide ranking.\n'.format(time.ctime()))
     usrdata = usrdata.sort_values(by=['SpectrumFile', 'psm_GeneID', area_col,
-                            'Sequence', 'Modifications',
-                                      'Charge','psm_PSM_IDG','IonScore', 'PEP',
-                            'q_value'], ascending=[0, 1, 0, 1, 1, 1, 1, 0, 1, 1]) 
+                                      'Sequence', 'Modifications',
+                                      'Charge', 'psm_PSM_IDG', 'IonScore', 'PEP',
+                                      'q_value'], ascending=[0, 1, 0, 1, 1, 1, 1, 0, 1, 1])
     usrdata.reset_index(inplace=True)
     usrdata.Modifications.fillna('', inplace=True)  # must do this to compare nans
     usrdata[area_col].fillna(0, inplace=True)  # must do this to compare
@@ -195,22 +183,15 @@ def Grouper(usrfile, usrdata, exp_setup, FilterValues, usedb=False, outdir='', *
     logging.info('{}: Peptide ranking complete for {}.'.format(datetime.now(),
                                                                usrfile))
     # ========================================================================= #
-    #quick_save(usrdata, q=False)
-    #quick_save(gene_metadata, name='metadata.p', q=False)
-    
     usrdata['psm_AUC_useflag'], usrdata['psm_PSM_useflag'] = \
     list(zip(*usrdata.apply(AUC_PSM_flagger, args=(FilterValues,), axis=1)))
     # Flag good quality peptides
-
         # ======================== Plugin for multiple taxons  ===================== #
-
     usrdata['gene_taxon_map'] = usrdata.apply(lambda x : gene_to_taxon(
         x['psm_GeneID'], gene_taxon_dict), axis=1)
-    
     taxon_ids = set(','.join(x for x in usrdata.psm_TaxonIDList.tolist()
                              if x).split(','))    
     #area_col_new = 'psm_Area_taxonAdj'
-    #quick_save(usrdata, q=False)
     #quick_save(gene_taxon_dict, name='gene_taxon_dict.p', q=True)
     #if len(taxon_ids) == 1:  # just 1 taxon id present
     #    usrdata[area_col_new] = usrdata[area_col]
@@ -226,7 +207,7 @@ def Grouper(usrfile, usrdata, exp_setup, FilterValues, usedb=False, outdir='', *
             uniq_taxon = usrdata[
                 #(usrdata._data_tTaxonIDList.str.contains(taxon)) &
                 #(~usrdata._data_tTaxonIDList.str.contains('|'.join(all_others)))&
-                (usrdata['psm_TaxonIDList']==taxon) &
+                (usrdata['psm_TaxonIDList'] == taxon) &
                 #(usrdata['psm_PSM_IDG']<9) &  # this is redunant with AUC_UseFLAG
                 (~usrdata['psm_GeneID'].isin(gid_ignore_list)) &
                 (usrdata['psm_AUC_useflag'] == 1)
@@ -255,11 +236,8 @@ def Grouper(usrfile, usrdata, exp_setup, FilterValues, usedb=False, outdir='', *
         #usrdata.ix[usrdata.psm_TaxonCount==1, area_col_new] = usrdata[area_col]
         #area_col = area_col_new  # use new area col as the area column now
         print()
-        #sys.exit(0)    
+        #sys.exit(0)
     # ========================================================================= #
-            
-
-    
     pd.options.mode.chained_assignment = None  # default='warn'
 
     # Make the name for the peptide data table :
@@ -272,7 +250,7 @@ def Grouper(usrfile, usrdata, exp_setup, FilterValues, usedb=False, outdir='', *
     # none/SILAC loop
     labeltypes = ['nolabel', 'heavy']  # right now only using nolabel, but in
                                        # future this can grow
-    gpgcount, genecount, ibaqtot, = 0, 0, 0                                   
+    gpgcount, genecount, ibaqtot, = 0, 0, 0
     for label in range(1):  # increase the range to go through more label types
         logfile.write('{} | Starting gene assignment for label {}.\n'.format(
             time.ctime(), labeltypes[label]))
@@ -284,16 +262,14 @@ def Grouper(usrfile, usrdata, exp_setup, FilterValues, usedb=False, outdir='', *
         gene_cols = ['gene_EXPRecNo', 'gene_EXPRunNo', 'gene_EXPSearchNo',
                      'gene_EXPLabelFLAG', 'gene_AddedBy',
                      'gene_CreationTS', 'gene_ModificationTS', 'gene_GeneID',
-                     'gene_IDSet', 'gene_IDGroup','gene_IDGroup_u2g',
+                     'gene_IDSet', 'gene_IDGroup', 'gene_IDGroup_u2g',
                      'gene_GPGroup', 'gene_GPGroups_All', 'gene_PSMs',
                      'gene_PSMs_u2g', 'gene_PeptidePrint', 'gene_PeptideCount',
                      'gene_PeptideCount_u2g', 'gene_PeptideCount_S',
-                     'gene_PeptideCount_S_u2g','gene_GeneArea_gpcAdj',
+                     'gene_PeptideCount_S_u2g', 'gene_GeneArea_gpcAdj',
                      'gene_GeneArea_gpcAdj_u2g', 'gene_GeneArea_gpcAdj_u2g_all',
                      'gene_GeneArea_gpcAdj_max', 'gene_GeneArea_dstrAdj',
-                     'gene_GeneCapacity', 'gene_iBAQ']  # cols of
-                                                                  #interest
-
+                     'gene_GeneCapacity', 'gene_iBAQ']  # cols of interest
         # ==================================================================== #
         #print(len(temp_df))  # for debugging
         if len(temp_df) > 0:  # only do if we actually have peptides selected
@@ -368,7 +344,6 @@ def Grouper(usrfile, usrdata, exp_setup, FilterValues, usedb=False, outdir='', *
                 AUC_distributor,args=(genes_df,
                                       area_col,),
                                       axis=1)
-            
             print('{}: Assigning gene sets and groups for {}.'.format(
                 datetime.now(), usrfile))
             logging.info('{}: Assigning gene sets and groups for {}.'.format(
@@ -384,9 +359,9 @@ def Grouper(usrfile, usrdata, exp_setup, FilterValues, usedb=False, outdir='', *
                     genes_df, temp_df,), axis=1)))
 
             genes_df['gene_GeneArea_dstrAdj'] = genes_df.apply(gene_AUC_sum,
-                                                                  args=(temp_df,
-                                                                  normalize,), 
-                                                                  axis=1)
+                                                               args=(temp_df,
+                                                                     normalize,), 
+                                                               axis=1)
             genes_df['gene_GeneCapacity'] =\
                                         genes_df.gene_GeneCapacity.astype('float')
             # print(genes_df._e2g_nGPArea_Sum_dstrAdj.dtype,1
@@ -408,15 +383,16 @@ def Grouper(usrfile, usrdata, exp_setup, FilterValues, usedb=False, outdir='', *
                     GPG_helper(genes_df.at[i,'gene_IDSet'],
                                genes_df.at[i,'gene_PeptideSet'], \
                                genes_df, last)
-                if type(genes_df.loc[i]['gene_GPGroup']) is int and not lessthan:
+                    
+                if isinstance(genes_df.loc[i]['gene_GPGroup'],int) and not lessthan:
                     last = genes_df.loc[i, 'gene_GPGroup']
 
             genes_df['gene_GPGroups_All'] = genes_df.apply(GPG_all_helper,
                                                            args=(genes_df,),
                                                            axis=1)
             genes_df['gene_GPGroup'].replace(to_replace='', value=float('NaN'),
-                                         inplace=True)  # can't sort int and
-                                         #strings, convert all strings to NaN
+                                             inplace=True)  # can't sort int and
+            #strings, convert all strings to NaN
             genes_df.sort_values(by=['gene_GPGroup'], ascending=True, inplace=True)
             genes_df.index = list(range(0, len(genes_df)))  # reset the index
             gpgcount += genes_df.gene_GPGroup.max()  # do this before filling na
@@ -430,11 +406,8 @@ def Grouper(usrfile, usrdata, exp_setup, FilterValues, usedb=False, outdir='', *
             genes_df['gene_AddedBy'] = usrdata.loc[1]['psm_AddedBy']
             genes_df['gene_CreationTS'] = datetime.now().ctime()
             genes_df['gene_ModificationTS'] = datetime.now().ctime()
-            #quick_save(genes_df,name='genes_df_snapshot.p', path=None, q=False)
-            #quick_save(gene_metadata,name='genemetadata_snapshot.p', path=None, q=False)
-            #quick_save(temp_df,name='tempdf_snapshot.p', path=None, q=False)
             renamed_genecols = [exp_setup.get(genecol, genecol) for genecol in gene_cols]
-            torename = {k:v for k,v in exp_setup.items() if k.startswith('gene_')}
+            torename = {k:v for k, v in exp_setup.items() if k.startswith('gene_')}
             # get a log of gene info
             genecount += len(genes_df)
             ibaqtot += genes_df[~genes_df.gene_GeneID.isin(
@@ -444,8 +417,8 @@ def Grouper(usrfile, usrdata, exp_setup, FilterValues, usedb=False, outdir='', *
                 pass
 
             genes_df.rename(columns=torename, inplace=True)
-            genes_df.to_csv(os.path.join(outdir,genedata_out), columns=renamed_genecols,
-                            index=False,encoding='utf-8', sep='\t')
+            genes_df.to_csv(os.path.join(outdir, genedata_out), columns=renamed_genecols,
+                            index=False, encoding='utf-8', sep='\t')
             logfile.write('{} | Export of genetable for labeltype {}'\
                           'completed.\n'.format(
                               time.ctime(), 
@@ -455,8 +428,6 @@ def Grouper(usrfile, usrdata, exp_setup, FilterValues, usedb=False, outdir='', *
     # ----------------End of none/silac loop--------------------------------- #
     usrdata.drop('metadatainfo', axis=1, inplace=True)  # Don't need this
                                       # column anymore.
-
-    
     usrdata = pd.merge(usrdata, temp_df, how='outer')
     usrdata['psm_EXPRecNo'], usrdata['psm_EXPRunNo'],\
     usrdata['psm_EXPSearchNo'],\
@@ -473,29 +444,29 @@ def Grouper(usrfile, usrdata, exp_setup, FilterValues, usedb=False, outdir='', *
                  'PSMAmbiguity', 'Modifications', 'ActivationType',
                  'DeltaScore', 'DeltaCn', 'Rank', 'SearchEngineRank',
                  'PrecursorArea', 'QuanResultID', 'q_value', 'PEP',
-                 'Decoy Peptides Matched', 'Exp Value', 'Homology Threshold', 
+                 'Decoy Peptides Matched', 'Exp Value', 'Homology Threshold',
                  'Identity High', 'Identity Middle', 'IonScore',
                  'Peptides Matched', 'MissedCleavages',
                  'IsolationInterference', 'IonInjectTime',
                  'Intensity', 'Charge', 'mzDa', 'MHDa',
                  'DeltaMassDa', 'DeltaMassPPM', 'RTmin',
-                 'FirstScan', 'LastScan', 'MSOrder', 'MatchedIons', 
+                 'FirstScan', 'LastScan', 'MSOrder', 'MatchedIons',
                  'TotalIons', 'SpectrumFile', 'Annotation', 'psm_AddedBy',
-                 'psm_CreationTS','psm_ModificationTS', 'psm_GeneID',
+                 'psm_CreationTS', 'psm_ModificationTS', 'psm_GeneID',
                  'psm_GeneList', 'psm_GeneCount', 'psm_ProteinGI',
-                 'psm_ProteinList','psm_ProteinCount', 
+                 'psm_ProteinList', 'psm_ProteinCount',
                  'psm_HID', 'psm_HID_list', 'psm_HID_count',
                  'psm_TaxonID', 'psm_TaxonIDList', 'psm_TaxonCount',
-                 'psm_PSM_IDG', 'psm_SequenceModi', 
-                 'psm_SequenceModiCount', 'psm_LabelFLAG', 
-                 'psm_PeptideRank', 'psm_AUC_useflag','psm_PSM_useflag',
+                 'psm_PSM_IDG', 'psm_SequenceModi',
+                 'psm_SequenceModiCount', 'psm_LabelFLAG',
+                 'psm_PeptideRank', 'psm_AUC_useflag', 'psm_PSM_useflag',
                  'psm_PrecursorArea_dstrAdj']
     #usrdata.to_csv(usrdata_out, columns=usrdata.columns,
                                 #encoding='utf-8', sep='\t')
     #print(usrdata.columns.values)  # for debugging
     if not all(x in usrdata.columns.values for x in data_cols):
         print('Potential error, not all columns filled.')
-        print([x for x in data_cols if x not in usrdata.columns.values])                                
+        print([x for x in data_cols if x not in usrdata.columns.values])
         data_cols = [x for x in data_cols if x in usrdata.columns.values]
         # will still export successfully
 
@@ -510,33 +481,29 @@ def Grouper(usrfile, usrdata, exp_setup, FilterValues, usedb=False, outdir='', *
         exprecord.GPGroup_count = int(gpgcount)
         exprecord.gene_count = int(genecount)
         exprecord.iBAQ_total = int(ibaqtot)
-        exprecord.PSM_count = len(usrdata[usrdata.psm_PSM_useflag==1])
+        exprecord.PSM_count = len(usrdata[usrdata.psm_PSM_useflag == 1])
         exprecord.grouped = True
         exprecord.failed = False
         exprecord.group_date = datetime.now()
-
         session.add(exprecord)
         session.commit()
         session.close()
 
     renamed_datacols = [exp_setup.get(datacol, datacol) if datacol.startswith('psm_') else datacol
                         for datacol in data_cols]
-    usrdata.rename(columns={k:v for k,v in exp_setup.items() if k.startswith('psm_')}, inplace=True)
-    usrdata.to_csv(os.path.join(outdir,usrdata_out), columns=renamed_datacols,
-                   index=False, encoding='utf-8',sep='\t')
-    
+    usrdata.rename(columns={k:v for k, v in exp_setup.items() if k.startswith('psm_')},
+                   inplace=True)
+    usrdata.to_csv(os.path.join(outdir, usrdata_out), columns=renamed_datacols,
+                   index=False, encoding='utf-8', sep='\t')
     logfile.write('{} | Export of datatable completed.\n'.format(time.ctime()))
     logfile.write('Successful grouping of file completed.')
     logfile.close()
-    
-
-                                
     print('Successful grouping of {} completed.\n' \
           .format('_'.join(
               [str(exp_setup['EXPRecNo'])+'_'+str(exp_setup['EXPRunNo']
               )])))
 
-def main(usrfiles=[], exp_setups=[], automated=False, usepeptidome=True, setup=False,fullpeptread=False,
+def main(usrfiles=[], exp_setups=[], automated=False, setup=False, fullpeptread=False,
          usedb=False, inputdir='', outputdir=''):
     # ===================Configuration Setup / Loading==========================#
     global program_title
@@ -814,7 +781,7 @@ def main(usrfiles=[], exp_setups=[], automated=False, usepeptidome=True, setup=F
                                                          x['Modifications']),
                                                 axis=1)))
                         # print 'Matching for {}'.format(usrfile)
-                        PeptidomeMatcher(usrdata, prot)  # call matcher
+                        peptidome_matcher(usrdata, prot)  # call matcher
                 del prot  # free up memory
 
     print('{}: Finished matching peptides to genes.'.format(datetime.now()))
@@ -824,7 +791,7 @@ def main(usrfiles=[], exp_setups=[], automated=False, usepeptidome=True, setup=F
     for usrfile, udata, esetup in zip(usrfiles, usrdatas, exp_setups):
         # print usrfile, esetup
         try:
-            Grouper(usrfile, udata, esetup, FilterValues, usedb=usedb, outdir=outputdir)
+            grouper(usrfile, udata, esetup, FilterValues, usedb=usedb, outdir=outputdir)
         except Exception as e:  # catch and store all exceptions, won't crash
                                 # the whole program at least
             failed_exps.append((usrfile, e))
@@ -860,144 +827,6 @@ def main(usrfiles=[], exp_setups=[], automated=False, usepeptidome=True, setup=F
             for usrfile in usrfiles:
                 explog.write('{} : grouped experiment file {}'\
                              '\n'.format(datetime.now(), usrfile))
-
-
-def expchecker(options):
-    '''Checks for new experimental data based on 
-    '''
-    global program_title
-    # exp_setup = {'taxonID' : 9606, 'EXPTechRepNo' : 1, 'EXPQuantSource' :
-    # 'AUC', 'EXPRunNo' : 1, 'EXPSearchNo': 9}
-    print('{} : Checking for new experiments...'.format(time.ctime()))
-    try:
-        explog = open('PyGrouper_grouped_exps.log', 'r+U')
-    except IOError:  # make a new file if doesn't exist
-        explog = open('PyGrouper_grouped_exps.log', 'a+')
-    try:
-        failedlog = open('PyGrouper_failed_exps.log', 'r+U')
-    except IOError:  # make a new file if doesn't exist
-        failedlog = open('PyGrouper_failed_exps.log', 'a+')
-    cwd = os.getcwd()
-    # grouped_exps = [int(value) for value in re.findall(r'(\d+)','
-    #'.join(explog.readlines()))]
-    grouped_exps = [value for value in re.findall(r'(\d+\S*\.txt)', ' '.join(
-        explog.readlines()))]  # starts with at least 1 digit, has unspecified amount of non-whitespace, and ends in .tab
-    failed_exps = [value for value in re.findall(r'(\d+\S*\.txt)', \
-                                                 ' '.join(failedlog.readlines()))]
-    # failed_exps = [int(value) for value in re.findall(r'(\d+)','
-    #'.join(failedlog.readlines()))]
-    validfiles = [f for f in os.listdir(os.getcwd()) if '.txt' in f]
-    ispec_export = '4PyGrouper_ExpRunDump.xlsx'
-    experiment_file = pd.read_excel(ispec_export)
-    # gen = experiment_file.iterrows()
-    exp_setups, usrfiles = [], []
-    required_fields = ['_exprun_EXPRecNo','_exprun_EXPRunNo']
-    experiment_file.fillna(0, inplace=True)  # Fill NAs with 0 so we can convert
-    #everything to int
-    for field in required_fields:
-        experiment_file[field] = experiment_file[field].astype('int')  # get rid
-        #of decimals
-    for row in experiment_file.iterrows():  # row is a tuple, [0] is index, [1]
-        #is actual row
-        if not any(row[1][required_fields].isin([0])):  # ensure all required
-            #info is present
-            record = str(row[1]._exprun_EXPRecNo) + '_' + \
-                     str(row[1]._exprun_EXPRunNo)
-            try:
-                if all(record not in exp for exp in grouped_exps) and all(
-                            record not in fexp for fexp in failed_exps):
-                    # then we group
-                    exp_setup = {'EXPRecNo': int(row[1]._exprun_EXPRecNo),
-                                 'EXPRunNo': int(row[1]._exprun_EXPRunNo),
-                                 'EXPSearchNo': int(row[1]._exprun_EXPSearchNo),
-                                 'taxonID': int(row[1]._exprun_TaxonID),
-                                 'EXPQuantSource':
-                                 str(row[1].exprun_Search_QuantSource),
-                                 'AddedBy': str(row[1]._exprun_AddedBy),
-                                 'EXPTechRepNo': int(row[1].exprun_nTechRepeats),
-                                 'EXPLabelType': str(row[1].exprun_LabelType)}
-                    passed = True  # flag for if we should group an experiment
-                else:
-                    passed = False
-            except ValueError:
-                # print('Experimental information not complete for experiment
-                #number')
-                passed = False
-                pass
-        
-            if passed:
-                usrfilelst = [x for x in validfiles if record in x]
-                # match exp record and run numbers
-                if len(usrfilelst) == 1:  # ensure we just have 1 file
-                    usrfile = usrfilelst[0]
-                elif len(usrfilelst) > 1:
-                    usrfilelst = [x for x in usrfilelst if 'all' in x]
-                    # find the file with 'all' in it,
-                    # this is based on how we name files for MudPIT
-                    if len(usrfilelst) == 1:
-                        usrfile = usrfilelst[0]
-                    else:  # can't find the correct file if we get to here
-                        print('Warning, more than one match for EXPRecNo {}'\
-                              ' detected, skipping...'.format(
-                                  exp_setup['EXPRecNo']))
-                        passed = False
-                elif len(usrfilelst) == 0:  # no file found
-                # print 'Warning, no file found for EXPRecNo
-                    #{}.'.format(exp_setup['EXPRecNo'])
-                    passed = False
-            if passed and len(exp_setups) <= 25:  # cap on how may files to group
-                                                  #at once, untested
-                exp_setups.append(exp_setup)
-                usrfiles.append(usrfile)
-                passed = False  # reset flag
-
-    if len(usrfiles) > 0:  # then we group
-        for usrfile, exp_setup in zip(usrfiles, exp_setups):
-            print('Found experiment {} from datafile'\
-                  ' {}.'.format(exp_setup['EXPRecNo'], usrfile))
-            logfilestr = '_'.join(
-                str(x) for x in [exp_setup['EXPRecNo'], exp_setup['EXPRunNo'],
-                                 exp_setup['EXPSearchNo'],
-                                 exp_setup['EXPTechRepNo'],
-                                 exp_setup['EXPLabelType'] + '.log'])
-            logfile = open(logfilestr, 'w')
-            logfile.write('{} | starting {} for {} with taxonID: {}\n'.format(time.ctime(), program_title, 
-                                                                              exp_setup['EXPRecNo'],      
-                                                                              exp_setup['taxonID']))
-            logfile.close()
-
-        try:
-            logging.info('{}: Initiating {}'.format(datetime.now(), program_title))
-            failed_exps = main(usrfiles, exp_setups, **options)
-            if failed_exps:  # list of failed experiments, is empty if no failures
-                for failed in failed_exps:
-                    # failed is a tuple with the datafile and then the reason for
-                    #failure
-                    usrfiles.remove(failed[0])
-                    # remove all of the failed experiments so they won't go in log
-                    failedlog.write('{} : failed grouping {}, reason :'\
-                                    '{}\n'.format(datetime.now(), *failed))
-            if usrfile:
-                for usrfile in usrfiles:
-                    explog.write('{} : grouped experiment file {}'\
-                                 '\n'.format(datetime.now(), usrfile))
-        except Exception as e:  # catch all exceptions
-            logging.exception('Fatal error with Grouper function : {}'.format(e))
-            raise  # crash and burn
-    failedlog.close()
-    explog.close()
-    #print('{} : Sleeping... Press Enter to wake or Ctrl+C to
-    #end.'.format(time.ctime()))
-
-
-def schedule(INTERVAL, options):
-    expchecker(options)
-    global thread
-    thread = threading.Timer(INTERVAL, schedule, [INTERVAL, options])
-    print('{} : Sleeping... Press Enter to wake or [exit] to'\
-          ' end.'.format(time.ctime()))
-    thread.start()
-
 
 if __name__ == '__main__':
 
@@ -1043,21 +872,6 @@ if __name__ == '__main__':
     if args.automated:
         print('--automated is not obsolete. Please run auto_grouper.py instead')
         sys.exit(0)
-        options['automated'] = True
-        while True:
-            
-            INTERVAL = 60 * 60
-            schedule(INTERVAL, options)
-            #print('{} : Sleeping... Press Enter to wake or [exit] to
-            #end.'.format(time.ctime()))
-            usr = input()  # break from schedule interval and manually call
-            if usr.lower() =='exit':
-                print('Goodbye.\n')
-                thread.cancel()
-                break
-            else:
-                thread.cancel()  # Stop the timer and cancel the execution of the
-                #timer's action
 
     else:
         try:

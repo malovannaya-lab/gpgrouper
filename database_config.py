@@ -25,8 +25,9 @@ def get_connection():
     if not os.path.isfile(dbname):  # make db if doesn't exist
         create_tables(engine)
     return engine
-    
+
 def make_session():
+    """Returns an SQLAlchemy Session object for the piSPEC.sqlite3 database"""
     dbname = os.path.join(BASE_DIR, 'piSPEC.sqlite3')
     engine = create_engine('sqlite:///{}'.format(dbname), echo=False)
     if not os.path.isfile(dbname):  # make db if doesn't exist
@@ -35,15 +36,14 @@ def make_session():
     Session = sessionmaker(bind=engine)
     session = Session()
     return session
-    
-
 
 def get_metadata():
+    """Returns SQLAlchemy Metadata object for piSPEC.sqlite3 database"""
     dbname = os.path.join(BASE_DIR, 'piSPEC.sqlite3')
     engine = create_engine('sqlite:///{}'.format(dbname), echo=False)
     metadata = MetaData(bind=engine)
     return metadata
-    
+
 class Experiment(Base):
 
     __tablename__ = 'experiments'
@@ -56,7 +56,7 @@ class Experiment(Base):
                         order_by='ExperimentRun.id',
                         backref='experiments',
                         )
-    
+
     def __repr__(self):
         return "<Experiment(record_no=%s>" % self.record_no
 
@@ -64,8 +64,8 @@ class ExperimentRun(Base):
 
     __tablename__ = 'experimentruns'
     id = Column(Integer, primary_key=True)
-    
-    record_no = Column(Integer, ForeignKey('experiments.record_no'))    
+
+    record_no = Column(Integer, ForeignKey('experiments.record_no'))
     run_no = Column(Integer, default=1)
     search_no = Column(Integer, default=1)
     taxonid = Column(Integer)
@@ -119,27 +119,27 @@ class ExperimentRun(Base):
     )
     exp2gene = relationship('Gene',
                             backref='experimentruns',
-                                            
                             )
 
 
     def __repr__(self):
-        return "<ExperimentRun(record_no={0}, run_no={1}, search_no={2}, tech_repeat={3})>".format(self.record_no,
-                                                                                                  self.run_no,
-                                                                                                  self.search_no,
-                                                                                                  self.tech_repeat)
+        return ("<ExperimentRun(record_no={0}, run_no={1},"
+                "search_no={2}, tech_repeat={3})>").format(self.record_no,
+                                                           self.run_no,
+                                                           self.search_no,
+                                                           self.tech_repeat)
 
 
 def add_exp2gene(df):
     ''' add pygrouper df to exp2gene table
     still in development, don't use yet
     '''
-    rec = df[['e2g_EXPRecNo', 'e2g_EXPRunNo','e2g_GeneID','e2g_IDSet',
+    rec = df[['e2g_EXPRecNo', 'e2g_EXPRunNo', 'e2g_GeneID', 'e2g_IDSet',
               'e2g_IDGroup', 'e2g_IDGroup_u2g', 'e2g_GPGroup', 'e2g_GPGroups_All',
-              'e2g_PSMs','e2g_PSMs_u2g','e2g_PeptidePrint','e2g_PeptideCount',
-              'e2g_PeptideCount_u2g','e2g_PeptideCount_S','e2g_PeptideCount_S_u2g',
-              'e2g_nGPArea_Sum_cgpAdj','e2g_nGPArea_Sum_u2g', 'e2g_nGPArea_Sum_u2g_all',
-              'e2g_nGPArea_Sum_max','e2g_nGPArea_Sum_dstrAdj', 'e2g_GeneCapacity',
+              'e2g_PSMs', 'e2g_PSMs_u2g', 'e2g_PeptidePrint', 'e2g_PeptideCount',
+              'e2g_PeptideCount_u2g', 'e2g_PeptideCount_S', 'e2g_PeptideCount_S_u2g',
+              'e2g_nGPArea_Sum_cgpAdj', 'e2g_nGPArea_Sum_u2g', 'e2g_nGPArea_Sum_u2g_all',
+              'e2g_nGPArea_Sum_max', 'e2g_nGPArea_Sum_dstrAdj', 'e2g_GeneCapacity',
               'e2g_n_iBAQ_dstrAdj']].to_records(index=False)
     genes = []
     session = make_session()
@@ -159,28 +159,26 @@ def add_exp2gene(df):
             if isinstance(x, np.int64):
                 x = int(x)
 
-        gene=Gene(#record_no=record,
-                  #run_no=run,
-                  run_id=1,
-                  GeneID=int(r[2]),
-                  IDSet=int(r[3]),
-                  IDGroup=r[4],
-                  IDGroup_u2g=r[5],
-                  GPGroup=gpg,
-                  GPGroups=r[7],
-                  PSMs=r[8],
-                  PSMs_u2g=r[9],
-                  Peptide_Print=r[10],
-                  Peptide_Count=r[11],
-                  Peptide_Count_u2g=r[12],
+        gene = Gene(#record_no=record,
+            #run_no=run,
+            run_id=1,
+            GeneID=int(r[2]),
+            IDSet=int(r[3]),
+            IDGroup=r[4],
+            IDGroup_u2g=r[5],
+            GPGroup=gpg,
+            GPGroups=r[7],
+            PSMs=r[8],
+            PSMs_u2g=r[9],
+            Peptide_Print=r[10],
+            Peptide_Count=r[11],
+            Peptide_Count_u2g=r[12],
         )
         genes.append(gene)
     session.add_all(genes)
     session.commit()
     session.close()
-        
 
-    
 class Gene(Base):
 
     __tablename__ = 'genes'
@@ -210,18 +208,18 @@ class Gene(Base):
     Gene_Capacity = Column(Float)
     iBAQ_dstrAdj = Column(Float)
     def __repr__(self):
-        return "<Gene(id={0}, record_no={1}, run_no={2}, GeneID={3}, IDSet={4}, iBAQ={5})>".format(self.id,
-                                                                                                  self.id,
-                                                                                                  self.run_id,
-                                                                                                  self.GeneID,
-                                                                                                  self.IDSet,
-                                                                                                  self.iBAQ_dstrAdj)
+        return ("<Gene(id={0}, record_no={1}, run_no={2}, GeneID={3}, "
+                "IDSet={4}, iBAQ={5})>").format(self.id,
+                                                self.id,
+                                                self.run_id,
+                                                self.GeneID,
+                                                self.IDSet,
+                                                self.iBAQ_dstrAdj)
     #exp2gene = relationship('Experiment', secondary='experimentruns',
     #                        primaryjoin='Gene.run_no==ExperimentRun.run_no',
     #                        secondaryjoin='Experiment.record_no==ExperimentRun.record_no')
     #experiment = relationship('Experiment', backref=backref('genes'))
     experimentrun = relationship('ExperimentRun', backref=backref('genes'))
-    
 
 class Peptide(Base):
 
@@ -229,14 +227,14 @@ class Peptide(Base):
     id = Column(Integer, primary_key=True)
 
 def get_ungrouped_exps():
-
+    """Returns a list of all ungrouped experiments"""
     session = make_session()
     ungrouped = session.query(ExperimentRun).filter_by(grouped=False).filter_by(failed=False).all()
     session.close()
     return ungrouped
 
 def get_grouped_exps():
-
+    """Returns a list of all grouped experiments"""
     session = make_session()
     grouped = session.query(ExperimentRun).filter_by(grouped=True).filter_by(failed=False).all()
     session.close()
@@ -244,7 +242,7 @@ def get_grouped_exps():
     
 
 def update_exp_run(rec, run, passed=False, gpg=0, psms=0, ibaq=0):
-
+    """Updates experiment run record."""
     session = make_session()
     try:
         q = session.query(ExperimentRun).join(
@@ -252,7 +250,7 @@ def update_exp_run(rec, run, passed=False, gpg=0, psms=0, ibaq=0):
                 Experiment.record_no==rec).filter(
                     ExperimentRun.run_no==run).one()
     except (NoResultFound, MultipleResultsFound) as e:
-        print('Error updating experiment {}_{}').format(rec,run)
+        print('Error updating experiment {}_{}').format(rec, run)
         return
 
     if passed:
@@ -266,41 +264,40 @@ def update_exp_run(rec, run, passed=False, gpg=0, psms=0, ibaq=0):
     session.add(q)
     session.close()
 
-    
 def add_experiments(newexps):
     ''' newexps is a list of dictionaries'''
     session = make_session()
-    expinfo=[]
+    expinfo = []
 
     for e in newexps:
-        q = session.query(Experiment).filter(Experiment.record_no==e)
-        expruninfo=[]
+        q = session.query(Experiment).filter(Experiment.record_no == e)
+        expruninfo = []
         try:
             exp = q.one()
         except NoResultFound:
             
-            exp=Experiment(record_no = e,
-                           added_by = newexps[e][0].get('addedby'),
-                           creation_ts = newexps[e][0].get('creation_ts'),
-                           exp_type = newexps[e][0].get('exptype')
+            exp = Experiment(record_no=e,
+                             added_by=newexps[e][0].get('addedby'),
+                             creation_ts=newexps[e][0].get('creation_ts'),
+                             exp_type=newexps[e][0].get('exptype')
             )
         for rec in newexps[e]:
             exprun = ExperimentRun(
                 #record_no = rec.get('rec_no'),
-                run_no = rec.get('run_no'),
-                search_no = rec.get('search_no'),
-                taxonid = rec.get('taxon'),
-                #added_by = rec.get('addedby'),
-                #creation_ts = rec.get('creation_ts'),
-                purpose = rec.get('purpose'),
-                label_type = rec.get('label'),
-                tech_repeat = rec.get('techrep'),
-                MS_instrument = rec.get('instrument'),
-                MS_experimenter = rec.get('msexperimenter'),
-                quant_source = rec.get('quant'),
-                search_experimenter = rec.get('searchexperimenter'),
-                digest_type = rec.get('digest_type'),
-                digest_enzyme = rec.get('digest_enzyme'),
+                run_no=rec.get('run_no'),
+                search_no=rec.get('search_no'),
+                taxonid=rec.get('taxon'),
+                #added_by=rec.get('addedby'),
+                #creation_ts=rec.get('creation_ts'),
+                purpose=rec.get('purpose'),
+                label_type=rec.get('label'),
+                tech_repeat=rec.get('techrep'),
+                MS_instrument=rec.get('instrument'),
+                MS_experimenter=rec.get('msexperimenter'),
+                quant_source=rec.get('quant'),
+                search_experimenter=rec.get('searchexperimenter'),
+                digest_type=rec.get('digest_type'),
+                digest_enzyme=rec.get('digest_enzyme'),
             )
             if session.query(ExperimentRun).filter_by(record_no=e,
                                                       run_no=rec.get('run_no'),
@@ -311,7 +308,7 @@ def add_experiments(newexps):
             exp.experimentruns.append(run)  # a list of ExperimentRun() entries
 
         expinfo.append(exp)
-        
+
     session.add_all(expinfo)
     session.commit()
     session.close()
@@ -336,10 +333,10 @@ def get_all_experiment_records():
     for exp in session.query(Experiment).all():
         rec = exp.record_no
         for exp1, run in session.query(Experiment, ExperimentRun).\
-            filter(Experiment.record_no==rec).filter(ExperimentRun.record_no==rec).all():
+            filter(Experiment.record_no == rec).filter(ExperimentRun.record_no == rec).all():
 
             exps[rec].append(run.run_no)
-        
+
     session.close()
     return exps
 
@@ -351,7 +348,7 @@ def get_ispec_experiment_info(ispecf, todb=False, norepeats=False):
         d = get_all_experiment_records()
     newexps = defaultdict(list)
     ispecdata = pd.read_excel(ispecf)
-    intfields = ['exprun_EXPRecNo','exprun_EXPRunNo', 'exprun_EXPSearchNo',
+    intfields = ['exprun_EXPRecNo', 'exprun_EXPRunNo', 'exprun_EXPSearchNo',
                  'exprun_TaxonID', 'exprun_nTechRepeats']
     for field in intfields:
         ispecdata[field] = ispecdata[field].fillna(0)
@@ -367,15 +364,14 @@ def get_ispec_experiment_info(ispecf, todb=False, norepeats=False):
             except ValueError:
                 creation = None
         else:
-             creation = row.exprun_CreationTS
+            creation = row.exprun_CreationTS
 
-        passflag = True     
+        passflag = True
         if norepeats:
-            
             if row.exprun_EXPRecNo in d:
                 if row.exprun_EXPRunNo in d.get(row.exprun_EXPRecNo):
                     passflag = False
-            
+
         if passflag:
             newexps[row.exprun_EXPRecNo].append(
                 {'run_no':row.exprun_EXPRunNo,
@@ -383,11 +379,13 @@ def get_ispec_experiment_info(ispecf, todb=False, norepeats=False):
                  'addedby': row.exprun_AddedBy, 'creation_ts': creation,
                  'purpose': row.exprun_Purpose, 'label': row.exprun_LabelType,
                  'techrep': row.exprun_nTechRepeats, 'instrument':row.exprun_MS_Instrument,
-                 'msexperimenter': row.exprun_MS_Experimenter, 'mscomment':row.exprun_MS_Experimenter,
-                 'quant': row.exprun_Search_QuantSource, 'searchexperimenter': row.exprun_Search_Experimenter}
+                 'msexperimenter': row.exprun_MS_Experimenter,
+                 'mscomment':row.exprun_MS_Experimenter,
+                 'quant': row.exprun_Search_QuantSource,
+                 'searchexperimenter': row.exprun_Search_Experimenter}
                 )
 
-            
+
     if todb and newexps:
         print('Updating experiment records')
         add_experiments(newexps)
@@ -398,9 +396,5 @@ if __name__ == '__main__':
     ispecdir = 'C:\\Users\\saltzman\\Desktop\\testing'
     ispecf = '4PyGrouper_ExpRunDump.xlsx'
     f = os.path.join(ispecdir, ispecf)
-    get_experiment_info(f, todb=True, norepeats=True)  # add only new entries to database
-
-                  
-
-        
+    get_ispec_experiment_info(f, todb=True, norepeats=True)  # add only new entries to database
 

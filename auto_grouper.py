@@ -1,6 +1,5 @@
 import os
 import time
-import sys
 import threading
 from collections import defaultdict
 from configparser import ConfigParser
@@ -10,7 +9,7 @@ import database_config as db
 import pygrouper
 import bcmproteomics as bcm
 
-ispecf = '4PyGrouper_ExpRunDump.xlsx'
+#ispecf = '4PyGrouper_ExpRunDump.xlsx'
 
 def experiment_checker():
     """Looks for experiments that have records in ispec but have not been grouped yet
@@ -25,15 +24,13 @@ def experiment_checker():
     #elif len(result)==0:
     #    return
     exprun_cols = ['exprun_EXPRecNo', 'exprun_EXPRunNo', 'exprun_EXPSearchNo',
-                   'exprun_TaxonID',  'exprun_AddedBy',  'exprun_LabelType',
+                   'exprun_TaxonID', 'exprun_AddedBy', 'exprun_LabelType',
                    'exprun_nTechRepeats',
                    'exprun_Search_QuantSource', 'exprun_Purpose',
                    'exprun_MS_Instrument', 'exprun_MS_Experimenter',
-                   'exprun_Search_Experimenter',
-                   ]
+                   'exprun_Search_Experimenter', ]
     sql = 'SELECT {} FROM iSPEC_BCM.iSPEC_ExperimentRuns '\
           'WHERE exprun_cGeneCount=0'.format(', '.join(exprun_cols),)
-                                             
     #sql = 'SELECT {} FROM iSPEC_BCM.iSPEC_ExperimentRuns '\
     #      'WHERE exprun_EXPRecNo in ({})'.format(', '.join(exprun_cols),
     #                                             ', '.join(result))
@@ -42,7 +39,7 @@ def experiment_checker():
     sql = ('SELECT exp_EXPRecNO, exp_Digest_Type, exp_Digest_Enzyme, exp_CreationTS '
            'from iSPEC_BCM.iSPEC_Experiments '
            'WHERE exp_EXPRecNo in ({})').format(', '.join([str(rec) for
-                                                              rec in rundata.index.tolist()]))
+                                                           rec in rundata.index.tolist()]))
     recdata = pd.read_sql(sql, conn, index_col='exp_EXPRecNo')
     rundata = rundata.join(recdata)  # join on index, the record number
 
@@ -101,20 +98,21 @@ def file_checker(INPUT_DIR, OUTPUT_DIR):
             added_by = ''
 
         setup = {'EXPRecNo': exp.record_no,
-                     'EXPRunNo': exp.run_no,
-                     'EXPSearchNo': exp.search_no,
-                     'taxonID': exp.taxonid,
-                     'EXPQuantSource': exp.quant_source,
-                     'AddedBy': added_by,
-                     'EXPTechRepNo': exp.tech_repeat,
-                     'EXPLabelType': exp.label_type
-                     }
+                 'EXPRunNo': exp.run_no,
+                 'EXPSearchNo': exp.search_no,
+                 'taxonID': exp.taxonid,
+                 'EXPQuantSource': exp.quant_source,
+                 'AddedBy': added_by,
+                 'EXPTechRepNo': exp.tech_repeat,
+                 'EXPLabelType': exp.label_type,
+                 }
         expfilematch = str(setup['EXPRecNo'])+'_'+str(setup['EXPRunNo'])+'_'
         usrfilelist = [f for f in validfiles if f.startswith(expfilematch)]
         if len(usrfilelist) == 1: # ensure we have just one match
             usrfile = usrfilelist[0]
         elif len(usrfilelist) > 1:
-            usrfilelist = [f for f in usrfilelist if 'all' in f]  # 'all' should have all fractions combined
+            usrfilelist = [f for f in usrfilelist if 'all' in f]
+            # 'all' should have all fractions combined
 
             if len(usrfilelist) == 1:
                 usrfile == usrfilelist[0]
@@ -126,9 +124,7 @@ def file_checker(INPUT_DIR, OUTPUT_DIR):
             usrfile = None
         if usrfile:
             usrfilesize += os.stat(os.path.join(INPUT_DIR, usrfile)).st_size
-            
-
-        if setup and usrfile and (usrfilesize <= MAX_SIZE):  # if we have both, 
+        if setup and usrfile and (usrfilesize <= MAX_SIZE):  # if we have both,
             setups.append(setup)                     # a cap on max files to group at once
             usrfiles.append(usrfile)
             print('Found experiment {} from datafile'\
@@ -137,7 +133,7 @@ def file_checker(INPUT_DIR, OUTPUT_DIR):
         pygrouper.main(usrfiles=usrfiles, exp_setups=setups, automated=True,
                        inputdir=INPUT_DIR, outputdir=OUTPUT_DIR, usedb=True)
     session.close()
-        
+
 def schedule(INTERVAL, args):
     print('{} : Checking for new experiments.'.format(time.ctime()))
     INPUT_DIR = args[0]
@@ -149,7 +145,6 @@ def schedule(INTERVAL, args):
     print('{} : Sleeping... Press Enter to wake or [exit] to'\
           ' end.'.format(time.ctime()), end='\n\n')
     thread.start()
-    
 
 if __name__ == '__main__':
     parser = ConfigParser()
@@ -157,7 +152,6 @@ if __name__ == '__main__':
     INPUT_DIR = parser['directories']['inputdir']  # where to look
                                                    # for files to group
     OUTPUT_DIR = parser['directories']['outputdir']
-    
 
     while True:
         INTERVAL = 60 * 60
@@ -172,6 +166,3 @@ if __name__ == '__main__':
         else:
             thread.cancel()  # Stop the timer and cancel the execution of the
             #timer's action
-
-
-    
