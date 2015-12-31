@@ -13,9 +13,20 @@ try:
     import database_config as db
 except ImportError:
     print('Not using databse_config')
+try:
+    import bcmproteomics as bcm
+    bcmprot = True
+    
+except ImportError:
+    bcmprot = False
+    
+if bcmprot:
+    conn = bcm.filedb_connect()
+    if isinstance(conn, str):
+        print(conn)
+        sys.exit(1)
 
-
-program_title = 'PyGrouper v0.1.010'
+program_title = 'PyGrouper v0.1.011'
 release_date = '10 December 2015'
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 logfilename = program_title.replace(' ', '_') + '.log'
@@ -56,7 +67,6 @@ def grouper(usrfile, usrdata, exp_setup, FilterValues, usedb=False, outdir='', *
     global release_date
     usrfile = os.path.split(usrfile)[1]
     # file with entry of gene ids to ignore for normalizations
-
     gid_ignore_file = 'pygrouper_geneignore.txt'
     gid_ignore_list = []
 
@@ -127,10 +137,12 @@ def grouper(usrfile, usrdata, exp_setup, FilterValues, usedb=False, outdir='', *
                  '{}'.format(exp_setup['EXPRecNo']))
     nomatches = usrdata[usrdata['psm_GeneCount'] == 0].Sequence  # select all
     #PSMs that didn't get a match to the refseq peptidome
-    logfile.write('{} | Total identified PSMs : {}\n'.format(
-        time.ctime(), len(usrdata[usrdata['psm_GeneCount'] != 0])))
+    matched_psms = len(usrdata[usrdata['psm_GeneCount'] != 0])
+    unmatched_psms = len(nomatches)
+    logfile.write('{} | Total identified PSMs : {}\n'.format(time.ctime(),
+                                                             matched_psms))
     logfile.write('{} | Total unidentified PSMs : {}\n'.format(time.ctime(),
-                                                               len(nomatches)))
+                                                               unmatched_psms))
     for missing_seq in nomatches:
         # print('No match for sequence {} in {}').format(missing_seq,ursfile[0])
         # No need to print this to screen
@@ -193,15 +205,16 @@ def grouper(usrfile, usrdata, exp_setup, FilterValues, usedb=False, outdir='', *
                              if x).split(','))    
     #area_col_new = 'psm_Area_taxonAdj'
     #quick_save(gene_taxon_dict, name='gene_taxon_dict.p', q=True)
-    #if len(taxon_ids) == 1:  # just 1 taxon id present
+    taxon_totals = dict()
+    if len(taxon_ids) == 1:  # just 1 taxon id present
+        taxon_totals[list(taxon_ids)[0]] = 1  # taxon_ids is a set
     #    usrdata[area_col_new] = usrdata[area_col]
-    if len(taxon_ids) > 1:  # more than 1 taxon id
+    elif len(taxon_ids) > 1:  # more than 1 taxon id
         print('Multiple taxons found, redistributing areas...')
         logfile.write('{} | Multiple taxons found, '\
                       'redistributing areas.\n'.format(time.ctime()))
         usrdata.reset_index(inplace=True)
         #usrdata[area_col_new] = 0
-        taxon_totals = dict()
         for taxon in taxon_ids:
             #all_others = [x for x in taxon_ids if x != taxon]
             uniq_taxon = usrdata[
@@ -244,9 +257,8 @@ def grouper(usrfile, usrdata, exp_setup, FilterValues, usedb=False, outdir='', *
     usrdata_out = '_'.join(str(x) for x in [exp_setup['EXPRecNo'],
                                             exp_setup['EXPRunNo'],
                                             exp_setup['EXPSearchNo'],
-                                            exp_setup['EXPTechRepNo'],
                                             exp_setup['EXPLabelType'],
-                                            'data.tab'])
+                                            'psms.tab'])
     # none/SILAC loop
     labeltypes = ['nolabel', 'heavy']  # right now only using nolabel, but in
                                        # future this can grow
@@ -276,7 +288,6 @@ def grouper(usrfile, usrdata, exp_setup, FilterValues, usedb=False, outdir='', *
             genedata_out = '_'.join(str(x) for x in [exp_setup['EXPRecNo'],
                                                      exp_setup['EXPRunNo'],
                                                      exp_setup['EXPSearchNo'],
-                                                     exp_setup['EXPTechRepNo'],
                                                      exp_setup['EXPLabelType'],
                                                      labeltypes[label],
                                                      'e2g.tab'])
@@ -404,8 +415,8 @@ def grouper(usrfile, usrdata, exp_setup, FilterValues, usedb=False, outdir='', *
             genes_df['gene_EXPSearchNo'] = exp_setup['EXPSearchNo']
             genes_df['gene_EXPTechRepNo'] = exp_setup['EXPTechRepNo']
             genes_df['gene_AddedBy'] = usrdata.loc[1]['psm_AddedBy']
-            genes_df['gene_CreationTS'] = datetime.now().ctime()
-            genes_df['gene_ModificationTS'] = datetime.now().ctime()
+            genes_df['gene_CreationTS'] = datetime.now().strftime("%m/%d/%Y %H:%M:%S")
+            genes_df['gene_ModificationTS'] = datetime.now().strftime("%m/%d/%Y %H:%M:%S")
             renamed_genecols = [exp_setup.get(genecol, genecol) for genecol in gene_cols]
             torename = {k:v for k, v in exp_setup.items() if k.startswith('gene_')}
             # get a log of gene info
@@ -435,8 +446,8 @@ def grouper(usrfile, usrdata, exp_setup, FilterValues, usedb=False, outdir='', *
     exp_setup['EXPRunNo'], exp_setup['EXPSearchNo'],\
     exp_setup['EXPTechRepNo']
 
-    usrdata['psm_CreationTS'] = datetime.now().ctime()
-    usrdata['psm_ModificationTS'] = datetime.now().ctime()
+    usrdata['psm_CreationTS'] = datetime.now().strftime("%m/%d/%Y %H:%M:%S")
+    usrdata['psm_ModificationTS'] = datetime.now().strftime("%m/%d/%Y %H:%M:%S")
     usrdata['psm_HID_list'] = ''  # will be populated later
     usrdata['psm_HID_count'] = ''  # will be populated later
     data_cols = ['psm_EXPRecNo', 'psm_EXPRunNo', 'psm_EXPSearchNo',
@@ -489,15 +500,83 @@ def grouper(usrfile, usrdata, exp_setup, FilterValues, usedb=False, outdir='', *
         session.commit()
         session.close()
 
+
+    msfdata = pd.DataFrame()
+    msfdata['RawFileName']       = list(set(usrdata.SpectrumFile.tolist()))
+    msfdata['EXPRecNo']       = exp_setup['EXPRecNo']
+    msfdata['EXPRunNo']       = exp_setup['EXPRunNo']
+    msfdata['EXPSearchNo']    = exp_setup['EXPSearchNo']
+    msfdata['AddedBy']        = exp_setup['AddedBy']
+    msfdata['CreationTS']     = datetime.now().strftime("%m/%d/%Y %H:%M:%S")
+    msfdata['ModificationTS'] = datetime.now().strftime("%m/%d/%Y %H:%M:%S")
+    msfdata['RTmin_min'], msfdata['RTmin_max'], msfdata['IonScore_min'],\
+        msfdata['IonScore_max'], msfdata['qValue_min'], msfdata['qValue_max'],\
+        msfdata['PEP_min'], msfdata['PEP_max'], msfdata['Area_min'],\
+        msfdata['Area_max'], msfdata['PSMCount'] = \
+            list(zip(*msfdata.apply(lambda x:
+                                    spectra_summary(x['RawFileName'],
+                                                    usrdata),
+                                    axis=1)))
+
+    msfdata['RawFileSize'], msfdata['RawFileTS'] = \
+        list(zip(*msfdata.apply(lambda x:
+                                get_rawfile_info(exp_setup['rawfilepath'],
+                                                 x['RawFileName']),
+                                axis=1)))
+    msfdata.rename(columns={c: 'msf_'+c for c in msfdata.columns}, inplace=True)
+
+    if bcmprot:  # we have bcmprot installed
+        conn = bcm.filedb_connect()
+        sql = ("UPDATE iSPEC_ExperimentRuns "
+               "SET exprun_PyGrouperVersion='{version}', "
+               "exprun_SearchDatabase='{searchdb}', "
+               "exprun_FilterStamp='{filterstamp}', "
+               "exprun_PSMCount_matched={matched}, "
+               "exprun_PSMCount_unmatched={unmatched}, "
+               "exprun_InputFileName='{inputname}', "
+               "exprun_Fraction_9606={hu}, "
+               "exprun_Fraction_10090={mou} "
+               "WHERE exprun_EXPRecNo={recno} "
+               "AND exprun_EXPRunNo={runno} "
+               "AND exprun_EXPSearchNo={searchno}").format(version=program_title,
+                                                           searchdb=exp_setup['searchdb'],
+                                                           filterstamp=exp_setup['filterstamp'],
+                                                           matched=matched_psms,
+                                                           unmatched=unmatched_psms,
+                                                           inputname=usrfile,
+                                                           hu=taxon_totals.get('9606', 0),
+                                                           mou=taxon_totals.get('10090', 0),
+                                                           recno=exp_setup['EXPRecNo'],
+                                                           runno=exp_setup['EXPRunNo'],
+                                                           searchno=exp_setup['EXPSearchNo'])
+        print(sql)
+        #sys.exit(0)
+        cursor = conn.execute(sql)
+        cursor.commit()
+
+    msfname = '_'.join(str(x) for x in [exp_setup['EXPRecNo'],
+                                        exp_setup['EXPRunNo'],
+                                        exp_setup['EXPSearchNo'],
+                                        'msf.tab'])
+
     renamed_datacols = [exp_setup.get(datacol, datacol) if datacol.startswith('psm_') else datacol
                         for datacol in data_cols]
     usrdata.rename(columns={k:v for k, v in exp_setup.items() if k.startswith('psm_')},
                    inplace=True)
     usrdata.to_csv(os.path.join(outdir, usrdata_out), columns=renamed_datacols,
                    index=False, encoding='utf-8', sep='\t')
+
+    msfdata.to_csv(os.path.join(outdir, msfname), index=False, sep='\t')
+
+
+
+
+
+
     logfile.write('{} | Export of datatable completed.\n'.format(time.ctime()))
     logfile.write('Successful grouping of file completed.')
     logfile.close()
+
     print('Successful grouping of {} completed.\n' \
           .format('_'.join(
               [str(exp_setup['EXPRecNo'])+'_'+str(exp_setup['EXPRunNo']
@@ -518,6 +597,11 @@ def main(usrfiles=[], exp_setups=[], automated=False, setup=False, fullpeptread=
     parser = ConfigParser(comment_prefixes=(';')) # allow number sign to be read in configfile
     parser.optionxform = str  # preserve case
     parser.read(os.path.join(BASE_DIR,'py_config.ini'))
+    try:
+        rawfilepath = parser.items('rawfilepath')[0][1]
+    except NoSectionError:
+        rawfilepath = ''
+
     pept_breakups = {}
     breakup_size = 4
     for taxon, location in parser.items('refseq locations'):
@@ -701,6 +785,8 @@ def main(usrfiles=[], exp_setups=[], automated=False, setup=False, fullpeptread=
         usrdatas.append(pd.read_csv(os.path.join(inputdir,usrfile), sep='\t'))
     for usrdata, exp_setup in zip(usrdatas, exp_setups):
         standard_names = column_identifier(usrdata, column_aliases)
+        exp_setup['rawfilepath'] = rawfilepath
+        exp_setup['filterstamp'] = Filter_Stamp
         for name in standard_names:
             exp_setup[name] = standard_names[name]
         for alias in column_aliases:
@@ -742,7 +828,8 @@ def main(usrfiles=[], exp_setups=[], automated=False, setup=False, fullpeptread=
                usrdatas):  # check if we even need to read the
                            #peptidome for that organism
             ref_reader = csv_reader(refs[organism]['loc'])
-            print('Using peptidome {} '.format(refs[organism]))
+            searchdb = os.path.split(refs[organism]['loc'])[1]
+            print('Using peptidome {} '.format(searchdb))
             #print('Breakups : {}'.format(pept_breakups[organism]))
             #sys.exit(0)
             for breakup in pept_breakups[organism]:  # Read refseq in chunks,
@@ -768,11 +855,12 @@ def main(usrfiles=[], exp_setups=[], automated=False, setup=False, fullpeptread=
                         #move this up and use else clause
                         break
 
-                for usrdata, usrfile in zip(usrdatas, usrfiles):
+                for usrdata, usrfile, exp_setup in zip(usrdatas, usrfiles, exp_setups):
                     #print(usrdata.loc[0]['_data_TaxonID'])
                     if usrdata.loc[0]['psm_TaxonID'] == int(organism):
                         # check to see if the inputdata 
                         #taxonID matches with the proteome
+                        exp_setup['searchdb'] = searchdb
                         usrdata['Sequence'], usrdata['psm_SequenceModi'],\
                         usrdata['psm_SequenceModiCount'],\
                         usrdata['psm_LabelFLAG'] = \

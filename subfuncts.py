@@ -19,6 +19,68 @@ except ImportError: pass
 RefseqInfo = namedtuple('RefseqInfo',
                         'taxonid, geneid, homologeneid,proteingi,genefraglen')
 
+def byte_formatter(b):
+    conv = b/(2**10)
+    if conv < 1000:
+        return '{:.4f} KB'.format(conv)
+    elif conv > 1000:
+        conv = conv/(2**10)
+        if conv < 1000:
+            return '{:.4f} MB'.format(conv)
+        elif conv < 1000:
+            conv = conv/(2**10)
+            return '{:.4f} GB'.format(conv)
+
+def get_rawfile_info(path, spectraf):
+
+    if not os.path.isdir(path):
+        return ('not found, check rawfile path', 'not found')
+    for f in os.listdir(path):
+        if f==spectraf:
+            rawfile = os.path.join(path,f)
+            break
+    else:
+        return ('not found', 'not found')
+
+    fstats   = os.stat(rawfile)
+    mod_date = datetime.fromtimestamp(fstats.st_mtime).strftime("%m/%d/%Y %H:%M:%S")
+    size     = byte_formatter(fstats.st_size)
+    return (size, mod_date)
+
+def spectra_summary(spectraf, data):
+    """ Calculates metadata per spectra file.
+The return order is as follows:
+
+    -minimum RT_min
+    -maximum RT_min
+    -min IonScore
+    -max IonScore
+    -min q_value
+    -max q_value
+    -min PEP
+    -max PEP
+    -min Area (precursor, exculding zeros)
+    -max Area 
+    -PSM Count
+    """
+    data      = data[data.SpectrumFile==spectraf]
+
+    RT_min       = data.RTmin.min()
+    RT_max       = data.RTmin.max()
+    IonScore_min = data.IonScore.min()
+    IonScore_max = data.IonScore.max()
+    q_min        = data.q_value.min()
+    q_max        = data.q_value.max()
+    PEP_min      = data.PEP.min()
+    PEP_max      = data.PEP.max()
+    area_min     = data[data.PrecursorArea!=0].PrecursorArea.min()
+    area_max     = data.PrecursorArea.max()
+    PSM_count    = len(data[data.psm_PSM_useflag==1])
+
+    return(RT_min, RT_max, IonScore_min, IonScore_max, q_min, q_max,
+           PEP_min, PEP_max, area_min, area_max, PSM_count)
+
+
 def column_constructor(columndict=None):
     print(columndict)
     if not columndict:
@@ -688,7 +750,7 @@ def seq_modi(sequence, modifications, keeplog=True):
     return sequence, seqmodi, modi_len, label
     
 def pept_print(df,usrdata):
-     # Here, try this - returns peptides that are present within the data
+    # Here, try this - returns peptides that are present within the data
     '''
     Lookup info from userdata. Also sorts based on alphabet. 
     '''
