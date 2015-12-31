@@ -1,21 +1,20 @@
 import os
 import time
 import threading
-from collections import defaultdict
+import argparse
+#from collections import defaultdict
 from configparser import ConfigParser
-from datetime import datetime
+#from datetime import datetime
 import pandas as pd
-import database_config as db
+#import database_config as db
 import pygrouper
 import bcmproteomics as bcm
-
-#ispecf = '4PyGrouper_ExpRunDump.xlsx'
 
 def experiment_checker():
     """Looks for experiments that have records in ispec but have not been grouped yet
     """
     conn = bcm.filedb_connect()
-    print('Looking for ne experiments from iSPEC...')
+    print('Looking for new experiments from iSPEC...')
     #sql = 'SELECT exprun_EXPRecNo from iSPEC_BCM.iSPEC_ExperimentRuns where exprun_cGeneCount=0'
     #cursor = conn.execute(sql)
     #result = cursor.fetchall()
@@ -29,16 +28,21 @@ def experiment_checker():
                    'exprun_Search_QuantSource', 'exprun_Purpose',
                    'exprun_MS_Instrument', 'exprun_MS_Experimenter',
                    'exprun_Search_Experimenter', ]
-    sql = 'SELECT {} FROM iSPEC_BCM.iSPEC_ExperimentRuns '\
-          'WHERE exprun_cGeneCount=0'.format(', '.join(exprun_cols),)
+
+    sql = ("SELECT {} FROM iSPEC_BCM.iSPEC_ExperimentRuns "
+           "WHERE exprun_Grouper_EndFLAG != 1 AND "
+           "exprun_Grouper_StartFLAG != 1 AND "
+           "exprun_Grouper_FailedFLAG != 1").format(', '.join(exprun_cols))
     #sql = 'SELECT {} FROM iSPEC_BCM.iSPEC_ExperimentRuns '\
     #      'WHERE exprun_EXPRecNo in ({})'.format(', '.join(exprun_cols),
     #                                             ', '.join(result))
     rundata = pd.read_sql(sql, conn, index_col='exprun_EXPRecNo')
+    if len(rundata) == 0:
+        return rundata
     rundata = rundata[~rundata['exprun_EXPRunNo'].isnull()]  # only keep if has run number
-    sql = ('SELECT exp_EXPRecNO, exp_Digest_Type, exp_Digest_Enzyme, exp_CreationTS '
-           'from iSPEC_BCM.iSPEC_Experiments '
-           'WHERE exp_EXPRecNo in ({})').format(', '.join([str(rec) for
+    sql = ("SELECT exp_EXPRecNO, exp_Digest_Type, exp_Digest_Enzyme, exp_CreationTS, "
+           "exp_AddedBy from iSPEC_BCM.iSPEC_Experiments "
+           "WHERE exp_EXPRecNo in ({})").format(', '.join([str(rec) for
                                                            rec in rundata.index.tolist()]))
     recdata = pd.read_sql(sql, conn, index_col='exp_EXPRecNo')
     rundata = rundata.join(recdata)  # join on index, the record number
@@ -51,63 +55,71 @@ def experiment_checker():
 
     for col in [c for c in rundata.columns if c not in intfields]:
         rundata[col] = rundata[col].fillna('')
-    sql = ('SELECT record_no, run_no, search_no FROM experimentruns WHERE '
-           'record_no in ({})').format(', '.join([str(rec) for rec in rundata.index.tolist()]))
-    local_conn = db.get_connection()
-    local_recs = pd.read_sql(sql, local_conn, index_col='record_no')
-    newexps = defaultdict(list)
-    for ix, row in rundata.iterrows():
-        ix = int(ix)
-        if isinstance(row.exp_CreationTS, str):
-            try:
-                creation = datetime.strptime(row.exp_CreationTS, '%m/%d/%Y %H:%M:%S')
-            except ValueError:
-                creation = None
-        else:
-             creation = row.exp_CreationTS
-        in_local_db = False
-        if len(local_recs[(local_recs.index==ix) & (local_recs.run_no==row['exprun_EXPRunNo']) &
-                          (local_recs.search_no==row['exprun_EXPSearchNo'])]) == 0:
-            newexps[ix].append(
-                {'run_no':row.exprun_EXPRunNo,
-                 'search_no': row.exprun_EXPSearchNo, 'taxon': row.exprun_TaxonID,
-                 'addedby': row.exprun_AddedBy, 'creation_ts': creation,
-                 'purpose': row.exprun_Purpose, 'label': row.exprun_LabelType,
-                 'techrep': row.exprun_nTechRepeats, 'instrument':row.exprun_MS_Instrument,
-                 'msexperimenter': row.exprun_MS_Experimenter, 'mscomment':row.exprun_MS_Experimenter,
-                 'quant': row.exprun_Search_QuantSource, 'searchexperimenter': row.exprun_Search_Experimenter}
-                )
 
-    if newexps:
-        print('Updating experiment records')
-        db.add_experiments(newexps)
-    conn.close()
+    return rundata
+    #sql = ('SELECT record_no, run_no, search_no FROM experimentruns WHERE '
+    #       'record_no in ({})').format(', '.join([str(rec) for rec in rundata.index.tolist()]))
+    #local_conn = db.get_connection()
+    #local_recs = pd.read_sql(sql, local_conn, index_col='record_no')
+    #newexps = defaultdict(list)
+    #for ix, row in rundata.iterrows():
+    #    ix = int(ix)
+    #    if isinstance(row.exp_CreationTS, str):
+    #        try:
+    #            creation = datetime.strptime(row.exp_CreationTS, '%Y/%m/%d %H:%M:%S')
+    #        except ValueError:
+    #            creation = None
+    #    else:
+    #        creation = row.exp_CreationTS
+    #    in_local_db = False
+    #    if len(local_recs[(local_recs.index==ix) & (local_recs.run_no == row['exprun_EXPRunNo']) &
+    #                      (local_recs.search_no==row['exprun_EXPSearchNo'])]) == 0:
+    #        newexps[ix].append(
+    #            {'run_no':row.exprun_EXPRunNo,
+    #             'search_no': row.exprun_EXPSearchNo, 'taxon': row.exprun_TaxonID,
+    #             'addedby': row.exprun_AddedBy, 'creation_ts': creation,
+    #             'purpose': row.exprun_Purpose, 'label': row.exprun_LabelType,
+    #             'techrep': row.exprun_nTechRepeats, 'instrument':row.exprun_MS_Instrument,
+    #             'msexperimenter': row.exprun_MS_Experimenter, 'mscomment':row.exprun_MS_Experimenter,
+    #             'quant': row.exprun_Search_QuantSource, 'searchexperimenter': row.exprun_Search_Experimenter}
+    #            )
 
-def file_checker(INPUT_DIR, OUTPUT_DIR):
+    #if newexps:
+    #    print('Updating experiment records')
+    #    db.add_experiments(newexps)
+    #conn.close()
+
+def file_checker(INPUT_DIR, OUTPUT_DIR, maxqueue):
+    """Docstring
+    """
     validfiles = [f for f in os.listdir(INPUT_DIR) if '.txt' in f]
     setups, usrfiles = [], []
-    ungrouped = db.get_ungrouped_exps()
-    session = db.make_session()
+    #ungrouped = db.get_ungrouped_exps()
+    #session = db.make_session()
+    ungrouped = experiment_checker()  # may be empty, is ok
     usrfilesize = 0  # keep track of usrfile size so we don't group too many at once
     MAX_SIZE = 2796774193548.3867
-    for exp in ungrouped:
-        try:
-            query = session.query(db.Experiment).filter_by(record_no=exp.record_no).one()
-            added_by = query.added_by
-        except NoResultFound:  # should not occur do to how database is set up
-            added_by = ''
+    queue_size = 0
+    for recno, exp in ungrouped.iterrows():  # the index is the record number
+        recno = int(recno)  # int to remove decimal to match file name
+        #try:
+        #    query = session.query(db.Experiment).filter_by(record_no=exp.record_no).one()
+        #    added_by = query.added_by
+        #except NoResultFound:  # should not occur do to how database is set up
+        #    added_by = ''
 
-        setup = {'EXPRecNo': exp.record_no,
-                 'EXPRunNo': exp.run_no,
-                 'EXPSearchNo': exp.search_no,
-                 'taxonID': exp.taxonid,
-                 'EXPQuantSource': exp.quant_source,
-                 'AddedBy': added_by,
-                 'EXPTechRepNo': exp.tech_repeat,
-                 'EXPLabelType': exp.label_type,
+        setup = {'EXPRecNo': recno,
+                 'EXPRunNo': exp.exprun_EXPRunNo,
+                 'EXPSearchNo': exp.exprun_EXPSearchNo,
+                 'taxonID': exp.exprun_TaxonID,
+                 'EXPQuantSource': exp.exprun_Search_QuantSource,
+                 'AddedBy': exp.exprun_AddedBy,
+                 'EXPTechRepNo': exp.exprun_nTechRepeats,
+                 'EXPLabelType': exp.exprun_LabelType,
                  }
         expfilematch = str(setup['EXPRecNo'])+'_'+str(setup['EXPRunNo'])+'_'
         usrfilelist = [f for f in validfiles if f.startswith(expfilematch)]
+
         if len(usrfilelist) == 1: # ensure we have just one match
             usrfile = usrfilelist[0]
         elif len(usrfilelist) > 1:
@@ -124,15 +136,26 @@ def file_checker(INPUT_DIR, OUTPUT_DIR):
             usrfile = None
         if usrfile:
             usrfilesize += os.stat(os.path.join(INPUT_DIR, usrfile)).st_size
-        if setup and usrfile and (usrfilesize <= MAX_SIZE):  # if we have both,
+        if setup and usrfile and (usrfilesize <= MAX_SIZE) and queue_size<=maxqueue:  # if we have both,
             setups.append(setup)                     # a cap on max files to group at once
             usrfiles.append(usrfile)
+            queue_size += 1
             print('Found experiment {} from datafile'\
                   ' {}.'.format(setup['EXPRecNo'], usrfile))
+            conn = bcm.filedb_connect()
+            cursor = conn.cursor()
+            cursor.execute("""UPDATE iSPEC_ExperimentRuns 
+            SET exprun_Grouper_StartFLAG = ?
+            WHERE exprun_EXPRecNo= ? AND 
+            exprun_EXPRunNo = ? AND 
+            exprun_EXPSearchNo = ?
+            """, 1, setup['EXPRecNo'],
+                           setup['EXPRunNo'], setup['EXPSearchNo'])
+            conn.commit()
     if len(usrfiles) > 0:
         pygrouper.main(usrfiles=usrfiles, exp_setups=setups, automated=True,
                        inputdir=INPUT_DIR, outputdir=OUTPUT_DIR, usedb=True)
-    session.close()
+    #session.close()
 
 def schedule(INTERVAL, args):
     print('{} : Checking for new experiments.'.format(time.ctime()))
@@ -147,15 +170,31 @@ def schedule(INTERVAL, args):
     thread.start()
 
 if __name__ == '__main__':
-    parser = ConfigParser()
-    parser.read('py_config.ini')
-    INPUT_DIR = parser['directories']['inputdir']  # where to look
+    print('parser time first')
+    parser = argparse.ArgumentParser(
+        description="""Script to run pygrouper automatically.
+        Requires access to iSPEC (via pyodbc) and an iSPEC login.""",
+
+        epilog=""" """
+        )
+
+    parser.add_argument('-m','--max', type=int, default=999,
+                        help=('Set a maximum number of experiments to queue '
+                              'at once. Useful if you want to run pygrouper '
+                              'in small batches on multiple computers.')
+                        )
+
+    args = parser.parse_args()
+
+    configparser = ConfigParser()
+    configparser.read('py_config.ini')
+    INPUT_DIR = configparser['directories']['inputdir']  # where to look
                                                    # for files to group
-    OUTPUT_DIR = parser['directories']['outputdir']
+    OUTPUT_DIR = configparser['directories']['outputdir']
 
     while True:
         INTERVAL = 60 * 60
-        schedule(INTERVAL, [INPUT_DIR, OUTPUT_DIR])
+        schedule(INTERVAL, [INPUT_DIR, OUTPUT_DIR, args.max])
         #print('{} : Sleeping... Press Enter to wake or [exit] to
         #end.'.format(time.ctime()))
         usr = input()  # break from schedule interval and manually call

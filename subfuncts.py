@@ -62,6 +62,7 @@ The return order is as follows:
     -min Area (precursor, exculding zeros)
     -max Area 
     -PSM Count
+    -median DeltaMassPPM
     """
     data      = data[data.SpectrumFile==spectraf]
 
@@ -76,9 +77,9 @@ The return order is as follows:
     area_min     = data[data.PrecursorArea!=0].PrecursorArea.min()
     area_max     = data.PrecursorArea.max()
     PSM_count    = len(data[data.psm_PSM_useflag==1])
-
+    dmass_median = data.DeltaMassPPM.median()
     return(RT_min, RT_max, IonScore_min, IonScore_max, q_min, q_max,
-           PEP_min, PEP_max, area_min, area_max, PSM_count)
+           PEP_min, PEP_max, area_min, area_max, PSM_count, dmass_median)
 
 
 def column_constructor(columndict=None):
