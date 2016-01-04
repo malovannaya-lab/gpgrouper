@@ -10,12 +10,15 @@ from configparser import ConfigParser
 import pandas as pd
 from subfuncts import *
 try:
+    import bcmproteomics as bcm
+    bcmprot = True
+except ImportError:
+    bcmprot = False
+
+try:
     import database_config as db
 except ImportError:
     print('Not using databse_config')
-
-    
-
 
 program_title = 'PyGrouper v0.1.012'
 release_date = '31 December 2015'
@@ -134,8 +137,6 @@ def grouper(usrfile, usrdata, exp_setup, FilterValues, usedb=False, outdir='', *
     logfile.write('{} | Total unidentified PSMs : {}\n'.format(time.ctime(),
                                                                unmatched_psms))
     for missing_seq in nomatches:
-        # print('No match for sequence {} in {}').format(missing_seq,ursfile[0])
-        # No need to print this to screen
         logging.warning('No match for sequence {} in {}'.format(missing_seq,
                                                                 usrfile))
         # Store all of these sequences in the big log file, not per experiment.
@@ -149,6 +150,18 @@ def grouper(usrfile, usrdata, exp_setup, FilterValues, usedb=False, outdir='', *
         #seq_modi(x['Sequence'], x['Modifications']), axis=1)))
     # We now move this to earlier, before we search against refseq
                                   #(this will deal with the Xs)
+    usrdata['sequence_lower'] = usrdata.apply(lambda x: x['Sequence'].lower(), axis=1)
+    usrdata = usrdata.sort_values(by=['SpectrumFile', area_col,
+                                      'Sequence', 'Modifications',
+                                      'Charge', 'psm_PSM_IDG', 'IonScore', 'PEP',
+                                      'q_value'], ascending=[0, 0, 1, 1, 1, 1, 0, 1, 1])
+    peaks = usrdata.drop_duplicates(subset=['SpectrumFile','sequence_lower','PrecursorArea'])
+    peaks.is_copy = False
+    peaks['psm_Peak_UseFLAG'] = 1
+    usrdata = usrdata.join(peaks['psm_Peak_UseFLAG'])
+    usrdata['psm_Peak_UseFLAG'] = usrdata.psm_Peak_UseFLAG.fillna(0)
+    print('Redundant peak areas removed : ', len(usrdata)-len(peaks))
+    
     # ============= Gather all genes that all peptides map to =============== #
     glstsplitter = usrdata['psm_GeneList'].str.split(',').apply(pd.Series,
                                                                 1).stack()
@@ -162,9 +175,10 @@ def grouper(usrfile, usrdata, exp_setup, FilterValues, usedb=False, outdir='', *
 
     logfile.write('{} | Starting peptide ranking.\n'.format(time.ctime()))
     usrdata = usrdata.sort_values(by=['SpectrumFile', 'psm_GeneID', area_col,
-                                      'Sequence', 'Modifications',
-                                      'Charge', 'psm_PSM_IDG', 'IonScore', 'PEP',
-                                      'q_value'], ascending=[0, 1, 0, 1, 1, 1, 1, 0, 1, 1])
+                                                                   'Sequence', 'Modifications',
+                                                                   'Charge', 'psm_PSM_IDG', 'IonScore', 'PEP',
+                                                                   'q_value'],
+                                                               ascending=[0, 1, 0, 1, 1, 1, 1, 0, 1, 1])
     usrdata.reset_index(inplace=True)
     usrdata.Modifications.fillna('', inplace=True)  # must do this to compare nans
     usrdata[area_col].fillna(0, inplace=True)  # must do this to compare
@@ -174,6 +188,12 @@ def grouper(usrfile, usrdata, exp_setup, FilterValues, usedb=False, outdir='', *
                                               'Charge', area_col]).groupby(
                                                   ['SpectrumFile',
                                                    'psm_GeneID'])  # each group
+
+    #grouped = usrdata[usrdata.psm_Peak_UseFLAG!=0].drop_duplicates(subset=['SpectrumFile', 'psm_GeneID',
+    #                                          'Sequence', 'Modifications',
+    #                                          'Charge', area_col]).groupby(
+    #                                              ['SpectrumFile',
+    #                                               'psm_GeneID'])  # each group
     #belongs to 1 gene, now we can rank on a per-gene basis
     ranks = grouped.cumcount() + 1  # add 1 to start the peptide rank at 1, not 0
     ranks.name = 'psm_PeptideRank'
@@ -459,9 +479,9 @@ def grouper(usrfile, usrdata, exp_setup, FilterValues, usedb=False, outdir='', *
                  'psm_HID', 'psm_HID_list', 'psm_HID_count',
                  'psm_TaxonID', 'psm_TaxonIDList', 'psm_TaxonCount',
                  'psm_PSM_IDG', 'psm_SequenceModi',
-                 'psm_SequenceModiCount', 'psm_LabelFLAG',
+                 'psm_SequenceModiCount', 'psm_LabelFLAG', 
                  'psm_PeptideRank', 'psm_AUC_useflag', 'psm_PSM_useflag',
-                 'psm_PrecursorArea_dstrAdj']
+                 'psm_Peak_UseFLAG', 'psm_PrecursorArea_dstrAdj']
     #usrdata.to_csv(usrdata_out, columns=usrdata.columns,
                                 #encoding='utf-8', sep='\t')
     #print(usrdata.columns.values)  # for debugging
@@ -515,7 +535,7 @@ def grouper(usrfile, usrdata, exp_setup, FilterValues, usedb=False, outdir='', *
                                 axis=1)))
     msfdata.rename(columns={c: 'msf_'+c for c in msfdata.columns}, inplace=True)
 
-    if bcmprot and exp_setup['add_to_db']:  # we have bcmprot installed
+    if bcmprot and exp_setup.get('add_to_db',False):  # we have bcmprot installed
         conn = bcm.filedb_connect()
         sql = ("UPDATE iSPEC_ExperimentRuns "
                "SET exprun_Grouper_Version='{version}', "

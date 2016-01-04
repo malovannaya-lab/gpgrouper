@@ -632,6 +632,12 @@ def AUC_PSM_flagger(df,d):
     elif df['psm_PeptideRank'] == 0 : 
         AUC_flag = 0 # omit multiPSM peak areas
         PSM_flag = 1  # Change from 0 in grouper
+    elif df['psm_Peak_UseFLAG'] == 0 :
+        AUC_flag = 0
+        if df['PSMAmbiguity'].lower() == 'unambiguous':
+            PSM_flag = 1
+        else:
+            PSM_flag = 0
     else: 
         AUC_flag = 1
         PSM_flag = 1
