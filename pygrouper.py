@@ -15,11 +15,6 @@ try:
 except ImportError:
     bcmprot = False
 
-try:
-    import database_config as db
-except ImportError:
-    print('Not using databse_config')
-
 program_title = 'PyGrouper v0.1.012'
 release_date = '31 December 2015'
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -45,6 +40,105 @@ def quick_save(df,name='df_snapshot.p', path=None, q=False):
     if q:
         print('Exiting prematurely')
         sys.exit(0)
+
+
+def user_cli(FilterValues, usrfiles, exp_setups, usedb=False, inputdir='', outputdir='' ):
+    """Function to get files to group based on manual entry via user through CLI.
+    """
+    usr_name = input('Enter your name : ')
+    Filter_Stamp ='is{}_qv{}_pep{}_idg{}_z{}to{}mo{}'.format(
+        FilterValues['Filter_IS'],
+        FilterValues['Filter_qV'] * 100,
+        FilterValues['Filter_PEP'],
+        FilterValues['Filter_IDG'], 
+        FilterValues['Filter_Z_min'],
+        FilterValues['Filter_Z_max'], 
+        FilterValues['Filter_Modi'])
+
+    try:
+        explog = open(os.path.join(inputdir, 'PyGrouper_grouped_exps.log'),
+                      'r+U')
+    except IOError:
+        explog = open(os.path.join(inputdir, 'PyGrouper_grouped_exps.log'),
+                      'a+')
+    grouped_exps = [value for value in re.findall(r'(\d+\S*\.txt)',\
+                                                  ' '.join(explog.readlines()))]
+    try:
+        input('Press enter to continue, or Ctrl+C to modify the filter'\
+              'values.\n')
+    except KeyboardInterrupt:
+        print('\nFilter_PEP and Filter_IDG can be set to "all",'\
+              ' but all other values must be numbers only.')
+        dict_modifier(FilterValues, {'Filter_PEP': ['all'],
+                                     'Filter_IDG': ['all'], 'Filter_qV': []})
+        logging.info('Filter stamp : {}'.format(Filter_Stamp))
+
+    while True:
+        try:
+            exp_setup = {'taxonID': 9606, 'EXPTechRepNo': 1,
+                         'EXPQuantSource': 'AUC', 'EXPRunNo': 1,
+                         'EXPSearchNo': 1, 'EXPLabelType': 'none'}
+            usrfile_input = input('Enter a file to group or press'\
+                                  ' Ctrl+C if done : ')
+            if usrfile_input == 'forcequit':
+                logging.info('forcequit without selecting any files')
+                logging.shutdown()
+                sys.exit(0)
+            if os.path.isfile(usrfile_input):  # check to see if file exists
+                proceed = True
+                if usrfile_input.strip() in grouped_exps:  # strip any
+                    #whitespace to match correctly
+                    while True:
+                        proceed = input(
+                            'Records show that {} has been grouped before.'\
+                            'Are you sure you want to regroup (Y/n)? '\
+                            .format(usrfile_input))
+                        if 'Y' in proceed:
+                            proceed = True
+                            break
+                        elif 'n' in proceed.lower():
+                            proceed = False
+                            break
+                if proceed:
+                    try:
+                        exp_setup['EXPRecNo'] = int(re.search('(\d{3,})',
+                                                              usrfile_input).group())
+                        # find first number of at least 3 digits
+                    except AttributeError:
+                        exprecno = input("Couldn't locate experimental"\
+                                         " record automatically,"\
+                                         " please enter it now. ")
+                        exp_setup['EXPRecNo'] = int(exprecno)
+
+                    print('Experimental setup is : {}'.format(exp_setup))
+                    try:
+                        input('Press enter to accept values and continue,'\
+                              'or Ctrl+C to modify the experimental'\
+                              'values.\n')
+                    except KeyboardInterrupt:
+                        print(
+                            '\nEXPQuantSource can be set to AUC or '\
+                            'Intensity, but all other values must be '\
+                            'numbers only.')
+                        dict_modifier(exp_setup, {'EXPQuantSource':
+                                                  ['AUC', 'Intensity']}, 
+                                      exception_float=False)
+                    if usedb:
+                        exp_setup['add_to_db'] = True
+                    exp_setups.append(exp_setup)
+                    usrfiles.append(usrfile_input)
+            else:
+                print('File {} not found.'.format(usrfile_input))
+                # morefile = raw_input('Do you have more files to group? ')
+        except KeyboardInterrupt:
+            if len(usrfiles) > 0:
+                print()
+
+            else:
+                print('No files selected!')
+
+    return (usr_name, usrfiles, exp_setups)
+
 
 def peptidome_matcher(usrdata, ref_dict):
     usrdata['metadatainfo'] = usrdata.apply(lambda x:
@@ -651,8 +745,6 @@ def main(usrfiles=[], exp_setups=[], automated=False, setup=False, fullpeptread=
     print('Python version ' + sys.version)
     print('Pandas version: ' + pd.__version__)
 
-    if not automated: usr_name = input('Enter your name : ')
-
     FilterValues = {'Filter_IS': 7, 'Filter_qV': 0.05, 'Filter_PEP': 'all',
                     'Filter_IDG': 'all', 'Filter_Z_min': 2,'Filter_Z_max': 4,
                     'Filter_Modi': 3}  # defaults
@@ -666,125 +758,12 @@ def main(usrfiles=[], exp_setups=[], automated=False, setup=False, fullpeptread=
         FilterValues['Filter_Modi'])
 
     print('\nFilter values set to : {}'.format(Filter_Stamp))
-    if not automated and not usedb:
-        try:
-            explog = open('PyGrouper_grouped_exps.log', 'r+U')
-        except IOError:
-            explog = open('PyGrouper_grouped_exps.log', 'a+')
-        grouped_exps = [value for value in re.findall(r'(\d+\S*\.txt)',\
-                                                    ' '.join(explog.readlines()))]
-    #if not automated and usedb:
-    #    grouped_query = db.get_grouped_exps()
-    #    grouped_exps = [(group.record_no, group.run_no, group.search_no, group.tech_repeat)
-    #                    for group in grouped_query]
+
     if not automated:
-        try:
-            input('Press enter to continue, or Ctrl+C to modify the filter'\
-                  'values.\n')
-        except KeyboardInterrupt:
-            print('\nFilter_PEP and Filter_IDG can be set to "all",'\
-                  ' but all other values must be numbers only.')
-            dict_modifier(FilterValues, {'Filter_PEP': ['all'],
-                                         'Filter_IDG': ['all'], 'Filter_qV': []})
-
-        logging.info('Filter stamp : {}'.format(Filter_Stamp))
-
-        while True:
-            try:
-                exp_setup = {'taxonID': 9606, 'EXPTechRepNo': 1,
-                             'EXPQuantSource': 'AUC', 'EXPRunNo': 1,
-                             'EXPSearchNo': 1, 'EXPLabelType': 'none'}
-                usrfile_input = input('Enter a file to group or press'\
-                                      ' Ctrl+C if done : ')
-                if usrfile_input == 'forcequit':
-                    logging.info('forcequit without selecting any files')
-                    logging.shutdown()
-                    sys.exit(0)
-                if os.path.isfile(usrfile_input):  # check to see if file exists
-                    proceed = True
-                    if usrfile_input.strip() in grouped_exps and not usedb:  # strip any
-                        #whitespace to match correctly
-                        while True:
-                            proceed = input(
-                                'Records show that {} has been grouped before.'\
-                                'Are you sure you want to regroup (Y/n)? '\
-                                .format(usrfile_input))
-                            if 'Y' in proceed:
-                                break
-                            elif 'n' in proceed.lower():
-                                proceed = False
-                                break
-                    if proceed:
-                        try:
-                            exp_setup['EXPRecNo'] = int(re.search('(\d{3,})',
-                                                    usrfile_input).group())
-                            # find first number of at least 3 digits
-                        except AttributeError:
-                            exprecno = input("Couldn't locate experimental"\
-                                             " record automatically,"\
-                                             " please enter it now. ")
-                            exp_setup['EXPRecNo'] = int(exprecno)
-
-                        print('Experimental setup is : {}'.format(exp_setup))
-                        try:
-                            input('Press enter to accept values and continue,'\
-                                  'or Ctrl+C to modify the experimental'\
-                                  'values.\n')
-                        except KeyboardInterrupt:
-                            print(
-                                '\nEXPQuantSource can be set to AUC or '\
-                                'Intensity, but all other values must be '\
-                                'numbers only.')
-                            dict_modifier(exp_setup, {'EXPQuantSource':
-                                                      ['AUC', 'Intensity']}, 
-                                          exception_float=False)
-                            
-                        if usedb:
-                            exp_setup['add_to_db'] = True
-                            #print(grouped_exps)
-                            #print((exp_setup['EXPRecNo'], exp_setup['EXPRunNo'],
-                            #    exp_setup['EXPSearchNo'], exp_setup['EXPTechRepNo']))
-                        #     if (exp_setup['EXPRecNo'], exp_setup['EXPRunNo'],
-                        #         exp_setup['EXPSearchNo'], exp_setup['EXPTechRepNo']) in grouped_exps:
-                        #         while True:
-                        #             proceed = input(
-                        #                 'Records show that {} has been grouped before.'\
-                        #                 'Are you sure you want to regroup (Y/n)? '\
-                        #                 .format(usrfile_input))
-                        #             if 'Y' in proceed:
-                        #                 exp_setup['add_to_db'] = False
-                        #                 break
-                        #             elif 'n' in proceed.lower():
-                        #                 proceed = False
-                        #                 break
-                        # if proceed:            
-                        #     exp_setups.append(exp_setup)
-                        #     usrfiles.append(usrfile_input)
-                                                        
-                else:
-                    print('File {} not found.'.format(usrfile_input))
-                    # morefile = raw_input('Do you have more files to group? ')
-            except KeyboardInterrupt:
-                if len(usrfiles) > 0:
-                    print()
-                    # if usedb:
-                    #     newexps = defaultdict(list)
-                    #     for exp in exp_setups:
-                    #         if exp['add_to_db']:
-                    #             newexps[exp['EXPRecNo']].append(
-                    #                 {'run_no':exp['EXPRunNo'],
-                    #                  'search_no':exp['EXPSearchNo'],
-                    #                  'taxon':exp['taxonID'],
-                    #                  'addedby':usr_name,
-                    #                  'creation_ts':datetime.now(),
-                    #                  'techrep':exp['EXPTechRepNo'],
-                    #                  'label':exp['EXPLabelType'],
-                    #                  'quant':exp['EXPQuantSource'],
-                    #                  })
-                    #     db.add_experiments(newexps)
-                    # break
-                else:
-                    print('No files selected!')
+        usr_name, usrfiles, exp_setups = user_cli(FilterValues, usrfiles=[],
+                                                  exp_setups=[], usedb=usedb,
+                                                  inputdir='', outputdir='')
+        # user manually enters files to group
 
     startTime = datetime.now()
     if FilterValues['Filter_PEP'] == 'all' or FilterValues['Filter_IDG'] == 'all':
@@ -821,15 +800,6 @@ def main(usrfiles=[], exp_setups=[], automated=False, setup=False, fullpeptread=
         usrdata.rename(columns={v: k
                                 for k,v in standard_names.items()},
                        inplace=True)
-        
-        
-        #usrdata.rename(columns={'Annotated Sequence': 'Sequence', 'Area':
-        #                        'Precursor Area','Percolator q-Value':
-        #                        'q-Value','Percolator PEP': 'PEP',
-        #                        'Ions Score': 'IonScore', 'DeltaM [ppm]':
-        #                        'Delta Mass [PPM]',
-        #                        'Deltam/z [Da]' : 'Delta Mass [Da]',
-        #                        }, inplace=True)  # PD 2.0 column name changes
         if not automated:
             usrdata['psm_AddedBy'] = usr_name
 
@@ -893,7 +863,12 @@ def main(usrfiles=[], exp_setups=[], automated=False, setup=False, fullpeptread=
                                                          x['Modifications']),
                                                 axis=1)))
                         # print 'Matching for {}'.format(usrfile)
-                        peptidome_matcher(usrdata, prot)  # call matcher
+                        usrdata['metadatainfo'] = usrdata.apply(lambda x:
+                                                                genematcher(x['Sequence'],
+                                                                            x['metadatainfo'],
+                                                                            prot), axis=1)
+
+#                        peptidome_matcher(usrdata, prot)  # call matcher
                 del prot  # free up memory
 
     print('{}: Finished matching peptides to genes.'.format(datetime.now()))
@@ -968,7 +943,7 @@ if __name__ == '__main__':
                         'Use at your own risk.')
     parser.add_argument('-gs', '--genesets',
                         action='store_true',
-                        help='Optional inclusion of peptide sets for each gene.'\
+                        help='Optional inclusion of peptide sets for each gene. '\
                         'Legacy and not useful.')
     parser.add_argument('-s', '--setup',
                         action='store_true',
@@ -976,13 +951,14 @@ if __name__ == '__main__':
                         'Not necessary unless adding a new refseq or need to'\
                         'change refseq location.')
     parser.add_argument('-a', '--automated',
-                        action='store_true', help='Automated run of PyGrouper.'\
+                        action='store_true', help='(Depreciated) '\
+                        'Automated run of PyGrouper.'\
                         'Note, requires experiment dump from iSPEC to be set up'\
                         'seperately.\nIf you are not sure if this is correctly'\
                         'set up, automation will probably not work.')
-    parser.add_argument('-nd', '--nodatabase', action='store_true', 
-                        help='Do not use database to store'\
-                        'experiment info.')
+    parser.add_argument('-nd', '--nodatabase', action='store_true', default=True,
+                        help='Do not use database to store '\
+                        'experiment info. Default False.')
     args = parser.parse_args()
 
     options = {}
