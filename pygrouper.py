@@ -290,6 +290,7 @@ def grouper(usrfile, usrdata, exp_setup, FilterValues, usedb=False, outdir='', *
     glstsplitter.name = 'psm_GeneID'  # give the series a name
     usrdata = usrdata.join(glstsplitter)  # usrdata gains column 'psm_GeneID'
                                           #from glstsplitter Series
+    usrdata.reset_index(inplace=True)
     # ========================================================================= #
     # Now calculate AUC and PSM use flags
     usrdata['psm_AUC_useflag'], usrdata['psm_PSM_useflag'] = \
@@ -517,9 +518,6 @@ def grouper(usrfile, usrdata, exp_setup, FilterValues, usedb=False, outdir='', *
             genecount += len(genes_df)
             ibaqtot += genes_df[~genes_df.gene_GeneID.isin(
                 gid_ignore_list)].gene_iBAQ.sum()
-            if usedb:
-                #db.add_exp2gene(genes_df)
-                pass
 
             genes_df.rename(columns=torename, inplace=True)
             genes_df.to_csv(os.path.join(outdir, genedata_out), columns=renamed_genecols,
@@ -605,25 +603,6 @@ def grouper(usrfile, usrdata, exp_setup, FilterValues, usedb=False, outdir='', *
         print([x for x in data_cols if x not in usrdata.columns.values])
         data_cols = [x for x in data_cols if x in usrdata.columns.values]
         # will still export successfully
-
-    # update database
-    if usedb:
-        session = db.make_session()
-        exprecord = session.query(db.ExperimentRun).\
-                    filter_by(record_no=exp_setup['EXPRecNo']).\
-                    filter_by(run_no=exp_setup['EXPRunNo'],
-                              search_no=exp_setup['EXPSearchNo'],
-                              tech_repeat=exp_setup['EXPTechRepNo']).one()
-        exprecord.GPGroup_count = int(gpgcount)
-        exprecord.gene_count = int(genecount)
-        exprecord.iBAQ_total = int(ibaqtot)
-        exprecord.PSM_count = len(usrdata[usrdata.psm_PSM_useflag == 1])
-        exprecord.grouped = True
-        exprecord.failed = False
-        exprecord.group_date = datetime.now()
-        session.add(exprecord)
-        session.commit()
-        session.close()
 
 
     msfdata = pd.DataFrame()
@@ -970,14 +949,6 @@ def main(usrfiles=[], exp_setups=[], automated=False, setup=False, fullpeptread=
                     """, 1, exp_setup['EXPRecNo'],
                                    exp_setup['EXPRunNo'], exp_setup['EXPSearchNo'])
                     conn.commit()
-                    # session = db.make_session()
-                    # exprecord = session.query(db.ExperimentRun).\
-                    # filter_by(record_no=exp_setup['EXPRecNo']).\
-                    # filter_by(run_no=exp_setup['EXPRunNo']).one()
-                    # exprecord.failed = True
-                    # session.add(exprecord)
-                    # session.commit()
-                    # session.close()
                 failedlog.write('{} : failed grouping {},'\
                                 ' reason : {}\n'.format(datetime.now(), *failed))
         if usrfile and not usedb:

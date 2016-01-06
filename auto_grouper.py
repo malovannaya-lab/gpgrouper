@@ -156,7 +156,7 @@ def file_checker(INPUT_DIR, OUTPUT_DIR, maxqueue):
             conn.commit()
     if len(usrfiles) > 0:
         pygrouper.main(usrfiles=usrfiles, exp_setups=setups, automated=True,
-                       inputdir=INPUT_DIR, outputdir=OUTPUT_DIR, usedb=True)
+                       inputdir=INPUT_DIR, outputdir=OUTPUT_DIR)
     #session.close()
 
 def schedule(INTERVAL, args):
