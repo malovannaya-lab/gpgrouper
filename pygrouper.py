@@ -7,6 +7,8 @@ from collections import defaultdict
 from math import ceil
 # from sets import Set #python2 only
 from configparser import ConfigParser
+import multiprocessing as mp
+from itertools import repeat
 import pandas as pd
 from subfuncts import *
 try:
@@ -15,7 +17,7 @@ try:
 except ImportError:
     bcmprot = False
 
-program_title = 'PyGrouper v0.1.012'
+program_title = 'PyGrouper v0.1.013rc1'
 release_date = '31 December 2015'
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 logfilename = program_title.replace(' ', '_') + '.log'
@@ -150,13 +152,18 @@ def peptidome_matcher(usrdata, ref_dict):
 
 def grouper(usrfile, usrdata, exp_setup, FilterValues, usedb=False, outdir='', *args):
     #import RefseqInfo
-
     global program_title
     global release_date
     usrfile = os.path.split(usrfile)[1]
     # file with entry of gene ids to ignore for normalizations
     gid_ignore_file = 'pygrouper_geneignore.txt'
     gid_ignore_list = []
+
+    usrdata_out = '_'.join(str(x) for x in [exp_setup['EXPRecNo'],
+                                            exp_setup['EXPRunNo'],
+                                            exp_setup['EXPSearchNo'],
+                                            exp_setup['EXPLabelType'],
+                                            'psms.tab'])
 
     if os.path.isfile(gid_ignore_file):
         print('Using gene filter file for normalization.')
@@ -238,12 +245,7 @@ def grouper(usrfile, usrdata, exp_setup, FilterValues, usedb=False, outdir='', *
     usrdata['psm_PSM_IDG'] = usrdata.apply(lambda x:
                                            IDG_picker(x['IonScore'],
                                                       x['q_value']), axis=1) 
-    #usrdata['Sequence'], usrdata['_data_SequenceModi'],
-    #usrdata['_data_SequenceModiCount'], usrdata['_data_LabelFLAG'] =
-    #list(zip(*usrdata.apply(lambda x : \
-        #seq_modi(x['Sequence'], x['Modifications']), axis=1)))
-    # We now move this to earlier, before we search against refseq
-                                  #(this will deal with the Xs)
+
     usrdata['sequence_lower'] = usrdata.apply(lambda x: x['Sequence'].lower(), axis=1)
     usrdata = usrdata.sort_values(by=['SpectrumFile', area_col,
                                       'Sequence', 'Modifications',
@@ -255,7 +257,31 @@ def grouper(usrfile, usrdata, exp_setup, FilterValues, usedb=False, outdir='', *
     usrdata = usrdata.join(peaks['psm_Peak_UseFLAG'])
     usrdata['psm_Peak_UseFLAG'] = usrdata.psm_Peak_UseFLAG.fillna(0)
     print('Redundant peak areas removed : ', len(usrdata)-len(peaks))
-    
+
+    # remove ambiguous peaks
+    summed_area = pd.DataFrame(usrdata[usrdata.psm_Peak_UseFLAG==1][
+        ['psm_SequenceModi',
+         'Charge',
+         area_col]].groupby(['psm_SequenceModi',
+                             'Charge'])[area_col].sum())
+    summed_area.reset_index(inplace=True)
+    summed_area.rename(columns={area_col: 'psm_SequenceArea'}, inplace=True)
+    usrdata = usrdata.merge(summed_area, how='left', on=['psm_SequenceModi', 'Charge'])
+
+    # now remove duplicate sequence areas
+    no_dups = usrdata.sort_values(by=['psm_SequenceModi','Charge',area_col],
+                                  ascending=[1,1,0]).drop_duplicates(subset=
+                                                                   ['psm_SequenceArea',
+                                                                    'Charge',
+                                                                    'psm_SequenceModi',])
+    no_dups.is_copy = False
+    no_dups['AUC_reflagger'] = 1
+    usrdata = usrdata.join(no_dups[['AUC_reflagger']])
+    usrdata['AUC_reflagger'] = usrdata['AUC_reflagger'].fillna(0)
+    area_col = 'psm_SequenceArea'  
+    #usrdata.to_csv(os.path.join(outdir, usrdata_out),index=False, sep='\t')
+    #print('exiting...')
+    #return
     # ============= Gather all genes that all peptides map to =============== #
     glstsplitter = usrdata['psm_GeneList'].str.split(',').apply(pd.Series,
                                                                 1).stack()
@@ -264,43 +290,13 @@ def grouper(usrfile, usrdata, exp_setup, FilterValues, usedb=False, outdir='', *
     glstsplitter.name = 'psm_GeneID'  # give the series a name
     usrdata = usrdata.join(glstsplitter)  # usrdata gains column 'psm_GeneID'
                                           #from glstsplitter Series
-
     # ========================================================================= #
-
-    logfile.write('{} | Starting peptide ranking.\n'.format(time.ctime()))
-    usrdata = usrdata.sort_values(by=['SpectrumFile', 'psm_GeneID', area_col,
-                                                                   'Sequence', 'Modifications',
-                                                                   'Charge', 'psm_PSM_IDG', 'IonScore', 'PEP',
-                                                                   'q_value'],
-                                                               ascending=[0, 1, 0, 1, 1, 1, 1, 0, 1, 1])
-    usrdata.reset_index(inplace=True)
-    usrdata.Modifications.fillna('', inplace=True)  # must do this to compare nans
-    usrdata[area_col].fillna(0, inplace=True)  # must do this to compare
-                                                       #nans
-    grouped = usrdata.drop_duplicates(subset=['SpectrumFile', 'psm_GeneID',
-                                              'Sequence', 'Modifications',
-                                              'Charge', area_col]).groupby(
-                                                  ['SpectrumFile',
-                                                   'psm_GeneID'])  # each group
-
-    #grouped = usrdata[usrdata.psm_Peak_UseFLAG!=0].drop_duplicates(subset=['SpectrumFile', 'psm_GeneID',
-    #                                          'Sequence', 'Modifications',
-    #                                          'Charge', area_col]).groupby(
-    #                                              ['SpectrumFile',
-    #                                               'psm_GeneID'])  # each group
-    #belongs to 1 gene, now we can rank on a per-gene basis
-    ranks = grouped.cumcount() + 1  # add 1 to start the peptide rank at 1, not 0
-    ranks.name = 'psm_PeptideRank'
-    usrdata = usrdata.join(ranks)
-    usrdata['psm_PeptideRank'] = usrdata['psm_PeptideRank'].fillna(0)  # anyone who
-                              # didn't get a rank gets a rank of 0
-    logfile.write('{} | Peptide ranking complete.\n'.format(time.ctime()))
-    print('{}: Peptide ranking complete for {}.'.format(datetime.now(), usrfile))
-    logging.info('{}: Peptide ranking complete for {}.'.format(datetime.now(),
-                                                               usrfile))
-    # ========================================================================= #
+    # Now calculate AUC and PSM use flags
     usrdata['psm_AUC_useflag'], usrdata['psm_PSM_useflag'] = \
     list(zip(*usrdata.apply(AUC_PSM_flagger, args=(FilterValues,), axis=1)))
+
+
+
     # Flag good quality peptides
         # ======================== Plugin for multiple taxons  ===================== #
     usrdata['gene_taxon_map'] = usrdata.apply(lambda x : gene_to_taxon(
@@ -357,12 +353,6 @@ def grouper(usrfile, usrdata, exp_setup, FilterValues, usedb=False, outdir='', *
     # ========================================================================= #
     pd.options.mode.chained_assignment = None  # default='warn'
 
-    # Make the name for the peptide data table :
-    usrdata_out = '_'.join(str(x) for x in [exp_setup['EXPRecNo'],
-                                            exp_setup['EXPRunNo'],
-                                            exp_setup['EXPSearchNo'],
-                                            exp_setup['EXPLabelType'],
-                                            'psms.tab'])
     # none/SILAC loop
     labeltypes = ['nolabel', 'heavy']  # right now only using nolabel, but in
                                        # future this can grow
@@ -538,12 +528,43 @@ def grouper(usrfile, usrdata, exp_setup, FilterValues, usedb=False, outdir='', *
                           'completed.\n'.format(
                               time.ctime(), 
                               labeltypes[label]))
+            # ========================================================================= #
+            # Peptide ranking 
+            logfile.write('{} | Starting peptide ranking.\n'.format(time.ctime()))
 
+            temp_df = temp_df.sort_values(by=['psm_GeneID', area_col,
+                                              'Sequence', 'Modifications',
+                                              'Charge', 'psm_PSM_IDG', 'IonScore', 'PEP',
+                                              'q_value'],
+                                          ascending=[1, 0, 0, 1, 1, 1, 0, 1, 1])
+            temp_df.reset_index(inplace=True)
+            temp_df.Modifications.fillna('', inplace=True)  # must do this to compare nans
+            temp_df[area_col].fillna(0, inplace=True)  # must do this to compare
+                                                       #nans
+
+            grouped = temp_df.drop_duplicates(subset=['psm_GeneID',
+                                                      area_col]).groupby(
+                                                          ['psm_GeneID'])  # each group
+
+            ranks = grouped.cumcount() + 1  # add 1 to start the peptide rank at 1, not 0
+            ranks.name = 'psm_PeptideRank'
+            temp_df = temp_df.join(ranks)
+    
+            logfile.write('{} | Peptide ranking complete.\n'.format(time.ctime()))
+            print('{}: Peptide ranking complete for {}.'.format(datetime.now(), usrfile))
+            logging.info('{}: Peptide ranking complete for {}.'.format(datetime.now(),
+                                                               usrfile))
+    # ========================================================================= #
 
     # ----------------End of none/silac loop--------------------------------- #
+
+
     usrdata.drop('metadatainfo', axis=1, inplace=True)  # Don't need this
                                       # column anymore.
     usrdata = pd.merge(usrdata, temp_df, how='outer')
+    usrdata['psm_PeptideRank'] = usrdata['psm_PeptideRank'].fillna(0)  # anyone who
+                              # didn't get a rank gets a rank of 0
+
     usrdata['psm_EXPRecNo'], usrdata['psm_EXPRunNo'],\
     usrdata['psm_EXPSearchNo'],\
     usrdata['psm_EXPTechRepNo'] = exp_setup['EXPRecNo'],\
@@ -680,11 +701,6 @@ def grouper(usrfile, usrdata, exp_setup, FilterValues, usedb=False, outdir='', *
 
     msfdata.to_csv(os.path.join(outdir, msfname), index=False, sep='\t')
 
-
-
-
-
-
     logfile.write('{} | Export of datatable completed.\n'.format(time.ctime()))
     logfile.write('Successful grouping of file completed.')
     logfile.close()
@@ -693,6 +709,31 @@ def grouper(usrfile, usrdata, exp_setup, FilterValues, usedb=False, outdir='', *
           .format('_'.join(
               [str(exp_setup['EXPRecNo'])+'_'+str(exp_setup['EXPRunNo']
               )])))
+
+def determine_processes():
+    """Determine how many processes to set based on cpu cores"""
+    cores = mp.cpu_count()
+    if cores < 3:
+        return 1
+    elif cores < 5:
+        return 3
+    elif cores < 9:
+        return 6
+    else:
+        return 9
+
+def make_processes(max_processes, data_args):
+
+    processes = []
+    more = True
+    while len(processes) <= max_processes:
+        try:
+            inputs = next(data_args)
+            processes.append(mp.Process(target=grouper, args=inputs))
+        except StopIteration:
+            more = False
+
+    return (processes, more)
 
 def main(usrfiles=[], exp_setups=[], automated=False, setup=False, fullpeptread=False,
          usedb=False, inputdir='', outputdir=''):
@@ -875,10 +916,29 @@ def main(usrfiles=[], exp_setups=[], automated=False, setup=False, fullpeptread=
     logging.info('{}: Finished matching peptides to'\
                  'genes.'.format(datetime.now()))
     failed_exps = []
-    for usrfile, udata, esetup in zip(usrfiles, usrdatas, exp_setups):
-        # print usrfile, esetup
+    max_processes = determine_processes()
+    max_processes = 2
+    #pool = mp.Pool(processes=2)
+    grouperdata = zip(usrfiles, usrdatas, exp_setups, repeat(FilterValues),
+                      repeat(usedb), repeat(outputdir))
+    #pool.starmap(grouper, zip(usrfiles, usrdatas, exp_setups, repeat(FilterValues),
+    #                                repeat(usedb), repeat(outputdir)))
+    #pool.close()
+    #pool.join()
+    #more = True
+    #while more:
+    #    processes, more = make_processes(max_processes, grouperdata)
+    #    if processes:
+    #        for p in processes:
+    #            p.start()
+    #
+    #    pool.apply(grouper, args=(usrfile, usrdata, expsetup, FilterValues, usedb, outputdir,))
+
+    #pool.close()
+    #pool.join()
+    for usrfile, usrdata, esetup in zip(usrfiles, usrdatas, exp_setups):
         try:
-            grouper(usrfile, udata, esetup, FilterValues, usedb=usedb, outdir=outputdir)
+            grouper(usrfile, usrdata, esetup, FilterValues, usedb=usedb, outdir=outputdir)
         except Exception as e:  # catch and store all exceptions, won't crash
                                 # the whole program at least
             failed_exps.append((usrfile, e))

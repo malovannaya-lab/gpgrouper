@@ -608,15 +608,12 @@ def AUC_PSM_flagger(df,d):
          # if charge is empty (nan), this will not be true
         AUC_flag = 0
         PSM_flag = 0
-
     elif df['psm_SequenceModiCount'] > d['Filter_Modi'] : 
         AUC_flag = 0
         PSM_flag = 0
-
     elif np.isnan(df['IonScore']) and np.isnan(df['q_value']): 
         AUC_flag = 1 #retains WLs Q2up assignments
         PSM_flag = 0
-
     elif df['IonScore'] < d['Filter_IS'] : 
         AUC_flag = 0
         PSM_flag = 0
@@ -629,9 +626,6 @@ def AUC_PSM_flagger(df,d):
     elif df['psm_PSM_IDG'] > d['Filter_IDG'] : 
         AUC_flag = 0
         PSM_flag = 0
-    elif df['psm_PeptideRank'] == 0 : 
-        AUC_flag = 0 # omit multiPSM peak areas
-        PSM_flag = 1  # Change from 0 in grouper
     elif df['psm_Peak_UseFLAG'] == 0 :
         AUC_flag = 0
         if df['PSMAmbiguity'].lower() == 'unambiguous':
@@ -641,6 +635,10 @@ def AUC_PSM_flagger(df,d):
     else: 
         AUC_flag = 1
         PSM_flag = 1
+
+    if df['AUC_reflagger'] == 0:
+        AUC_flag = 0
+
     return AUC_flag, PSM_flag
     
 
@@ -754,6 +752,8 @@ def seq_modi(sequence, modifications, keeplog=True):
                                                 modi, sequence))                
 
     sequence = ''.join(seqlist)
+    if not seqmodi:
+        seqmodi = sequence
     return sequence, seqmodi, modi_len, label
     
 def pept_print(df,usrdata):

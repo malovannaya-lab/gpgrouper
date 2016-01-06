@@ -117,7 +117,9 @@ def file_checker(INPUT_DIR, OUTPUT_DIR, maxqueue):
                  'EXPTechRepNo': exp.exprun_nTechRepeats,
                  'EXPLabelType': exp.exprun_LabelType,
                  }
-        expfilematch = str(setup['EXPRecNo'])+'_'+str(setup['EXPRunNo'])+'_'
+        expfilematch = '_'.join([str(setup['EXPRecNo']),
+                                 str(setup['EXPRunNo']),
+                                 str(setup['EXPSearchNo'])])
         usrfilelist = [f for f in validfiles if f.startswith(expfilematch)]
 
         if len(usrfilelist) == 1: # ensure we have just one match
@@ -136,7 +138,7 @@ def file_checker(INPUT_DIR, OUTPUT_DIR, maxqueue):
             usrfile = None
         if usrfile:
             usrfilesize += os.stat(os.path.join(INPUT_DIR, usrfile)).st_size
-        if setup and usrfile and (usrfilesize <= MAX_SIZE) and queue_size<=maxqueue:  # if we have both,
+        if setup and usrfile and (usrfilesize <= MAX_SIZE) and queue_size < maxqueue:  # if we have both,
             setups.append(setup)                     # a cap on max files to group at once
             usrfiles.append(usrfile)
             queue_size += 1
