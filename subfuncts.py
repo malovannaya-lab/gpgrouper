@@ -628,6 +628,7 @@ def AUC_PSM_flagger(df,d):
         PSM_flag = 0
     elif df['psm_Peak_UseFLAG'] == 0 :
         AUC_flag = 0
+        #if 'PSMAmbiguity' in df.columns:  # will not work like this
         if df['PSMAmbiguity'].lower() == 'unambiguous':
             PSM_flag = 1
         else:
@@ -790,25 +791,25 @@ def pept_print(df,usrdata):
     return (set(sorted(matches.Sequence)), pepts_str, protcount, uniques,
          protcount_S, uniques_S)        
     
-def e2g_PSM_helper(gene_df_ID, data,EXPTechRepNo):
-    total = sum(data[
-                data['psm_GeneID']==gene_df_ID]
-                ['psm_PSM_useflag'])/EXPTechRepNo
-    total_u2g = sum(data[(data['psm_GeneID']==gene_df_ID) &
-                         (data['psm_GeneCount' ] == 1)
-                        ]['psm_PSM_useflag'])/EXPTechRepNo
+def e2g_PSM_helper(gene_df_ID, data, EXPTechRepNo):
+    total = data[
+                data['psm_GeneID']==gene_df_ID]\
+                ['psm_PSM_useflag'].sum()/EXPTechRepNo
+    total_u2g = data[(data['psm_GeneID']==gene_df_ID) &
+                         (data['psm_GeneCount' ] == 1) \
+                        ]['psm_PSM_useflag'].sum()/EXPTechRepNo
 
-    total_S = sum(data[(data['psm_GeneID']==gene_df_ID) &
+    total_S = data[(data['psm_GeneID']==gene_df_ID) &
                        (data['psm_PSM_IDG' ] < 4)
-                  ]['psm_PSM_useflag'])/EXPTechRepNo
-    total_S_u2g = sum(data[(data['psm_GeneID']==gene_df_ID) &
+                  ]['psm_PSM_useflag'].sum()/EXPTechRepNo
+
+    total_S_u2g = data[(data['psm_GeneID']==gene_df_ID) &
                            (data['psm_PSM_IDG' ] < 4) &
                            (data['psm_GeneCount' ] == 1)
-                      ]['psm_PSM_useflag'])/EXPTechRepNo
+                      ]['psm_PSM_useflag'].sum()/EXPTechRepNo
     #for match in matches:
     return total, total_u2g, total_S, total_S_u2g
-    
-   
+  
 def area_calculator(gene_df, usrdata, EXPTechRepNo,area_col, normalization):
 
     matches  = usrdata[(usrdata['psm_GeneID'] == gene_df['gene_GeneID']) &
@@ -816,37 +817,39 @@ def area_calculator(gene_df, usrdata, EXPTechRepNo,area_col, normalization):
                                 [area_col, 'psm_GeneCount',
                                  'psm_PSM_IDG', 'MissedCleavages']]
  
-
-    #else : 
-       # return None, None, None, None, None, None
-        #print('{} : Error - EXPQuantSource is not defined correctly.'.format(
-             #datetime.now()))
-        #sys.exit(1)
-        
     uniq_matches = matches[matches['psm_GeneCount']==1]
     uniq_matches_0 = uniq_matches[uniq_matches['MissedCleavages']==0]
     matches_strict = matches[matches['psm_PSM_IDG'] < 4] 
+    values_max = matches[area_col].sum()
+    #values_max = nan_popper([value for value in
+    #                         matches[area_col].values])
+    values_adj = (matches[area_col]/matches['psm_GeneCount']).sum()
+    #values_adj = nan_popper([value/count for value,count in
+    #                         matches[[area_col,'psm_GeneCount']
+    #                         ].values])
+    uniq_values_adj = (uniq_matches[area_col]/matches['psm_GeneCount']).sum()
+    #uniq_values_adj = nan_popper([value/count for value,count in
+    #                              uniq_matches[[area_col,
+    #                                            'psm_GeneCount']].values])
+    uniq_values_adj_0 = (uniq_matches_0[area_col]/matches['psm_GeneCount']).sum()
 
+    #uniq_values_adj_0 = nan_popper([value/count for value,count in
+    #                                uniq_matches_0[[area_col,
+    #                                                'psm_GeneCount']].values])
+    result = (values_max/normalization, values_adj/normalization,
+              uniq_values_adj_0/normalization, uniq_values_adj/normalization)
 
-    values_max = nan_popper([value for value in
-                             matches[area_col].values])
-
-    values_adj = nan_popper([value/count for value,count in
-                             matches[[area_col,'psm_GeneCount']
-                             ].values])
-    uniq_values_adj = nan_popper([value/count for value,count in
-                                  uniq_matches[[area_col,
-                                                'psm_GeneCount']].values])
-    uniq_values_adj_0 = nan_popper([value/count for value,count in
-                                    uniq_matches_0[[area_col,
-                                                    'psm_GeneCount']].values])
-    result = (sum(values_max)/normalization,  sum(values_adj)/normalization,
-              sum(uniq_values_adj_0)/normalization,
-              sum(uniq_values_adj)/normalization)
+    #result = (sum(values_max)/normalization,  sum(values_adj)/normalization,
+    #          sum(uniq_values_adj_0)/normalization,
+    #          sum(uniq_values_adj)/normalization)
     return result
 
-def AUC_distributor(inputdata,genes_df,area_col):
-     
+def AUC_distributor(inputdata, genes_df, area_col):
+    """Row based normalization of PSM area (mapped to a specific gene).
+    Normalization is based on the ratio of the area of unique peptides for the
+    specific gene to the sum of the areas of the unique peptides for all other genes
+    that this particular peptide also maps to.
+    """
     #if EXPQuantSource == 'AUC':
     #    inputvalue = inputdata['Precursor Area'] 
     #elif EXPQuantSource == 'Intensity':
@@ -871,9 +874,9 @@ def AUC_distributor(inputdata,genes_df,area_col):
     if u2gPept != 0 : 
         totArea = 0
         gene_list = inputdata.psm_GeneList.split(',')
-        totArea = sum(genes_df[
+        totArea = genes_df[
              genes_df['gene_GeneID'].isin(gene_list)
-                              ].gene_GeneArea_gpcAdj_u2g_all)
+                              ].gene_GeneArea_gpcAdj_u2g_all.sum()
         distArea = (u2gPept/totArea) * inputvalue
         #ratio of u2g peptides over total area
 
@@ -886,9 +889,9 @@ def AUC_distributor(inputdata,genes_df,area_col):
 def gene_AUC_sum(genes_df,temp_df,normalization):
     gene = genes_df['gene_GeneID']
     if genes_df['gene_IDSet'] in [1,2]:
-        return sum(temp_df[temp_df[
+        return temp_df[temp_df[
              'psm_GeneID'
-        ] == gene].psm_PrecursorArea_dstrAdj)/normalization
+        ] == gene].psm_PrecursorArea_dstrAdj.sum()/normalization
     elif genes_df['gene_IDSet'] == 3:
         return 0
 

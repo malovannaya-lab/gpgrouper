@@ -8,14 +8,19 @@ from configparser import ConfigParser
 import pandas as pd
 #import database_config as db
 import pygrouper
-import bcmproteomics as bcm
+try:
+    from bcmproteomics import ispec
+    bcmprot = True
+except ImportError:
+    import bcmproteomics as ispec
+
 
 def experiment_checker():
     """Looks for experiments that have records in ispec but have not been grouped yet
     """
-    conn = bcm.filedb_connect()
+    conn = ispec.filedb_connect()
     print('Looking for new experiments from iSPEC...')
-    #sql = 'SELECT exprun_EXPRecNo from iSPEC_BCM.iSPEC_ExperimentRuns where exprun_cGeneCount=0'
+    #sql = 'SELECT exprun_EXPRecNo from iSPEC_ISPEC.iSPEC_ExperimentRuns where exprun_cGeneCount=0'
     #cursor = conn.execute(sql)
     #result = cursor.fetchall()
     #if result:
@@ -29,11 +34,11 @@ def experiment_checker():
                    'exprun_MS_Instrument', 'exprun_MS_Experimenter',
                    'exprun_Search_Experimenter', ]
 
-    sql = ("SELECT {} FROM iSPEC_BCM.iSPEC_ExperimentRuns "
+    sql = ("SELECT {} FROM iSPEC_ISPEC.iSPEC_ExperimentRuns "
            "WHERE exprun_Grouper_EndFLAG != 1 AND "
            "exprun_Grouper_StartFLAG != 1 AND "
            "exprun_Grouper_FailedFLAG != 1").format(', '.join(exprun_cols))
-    #sql = 'SELECT {} FROM iSPEC_BCM.iSPEC_ExperimentRuns '\
+    #sql = 'SELECT {} FROM iSPEC_ISPEC.iSPEC_ExperimentRuns '\
     #      'WHERE exprun_EXPRecNo in ({})'.format(', '.join(exprun_cols),
     #                                             ', '.join(result))
     rundata = pd.read_sql(sql, conn, index_col='exprun_EXPRecNo')
@@ -41,7 +46,7 @@ def experiment_checker():
         return rundata
     rundata = rundata[~rundata['exprun_EXPRunNo'].isnull()]  # only keep if has run number
     sql = ("SELECT exp_EXPRecNO, exp_Digest_Type, exp_Digest_Enzyme, exp_CreationTS, "
-           "exp_AddedBy from iSPEC_BCM.iSPEC_Experiments "
+           "exp_AddedBy from iSPEC_ISPEC.iSPEC_Experiments "
            "WHERE exp_EXPRecNo in ({})").format(', '.join([str(rec) for
                                                            rec in rundata.index.tolist()]))
     recdata = pd.read_sql(sql, conn, index_col='exp_EXPRecNo')
@@ -144,7 +149,7 @@ def file_checker(INPUT_DIR, OUTPUT_DIR, maxqueue):
             queue_size += 1
             print('Found experiment {} from datafile'\
                   ' {}.'.format(setup['EXPRecNo'], usrfile))
-            conn = bcm.filedb_connect()
+            conn = ispec.filedb_connect()
             cursor = conn.cursor()
             cursor.execute("""UPDATE iSPEC_ExperimentRuns 
             SET exprun_Grouper_StartFLAG = ?
@@ -156,7 +161,7 @@ def file_checker(INPUT_DIR, OUTPUT_DIR, maxqueue):
             conn.commit()
     if len(usrfiles) > 0:
         pygrouper.main(usrfiles=usrfiles, exp_setups=setups, automated=True,
-                       inputdir=INPUT_DIR, outputdir=OUTPUT_DIR)
+                       inputdir=INPUT_DIR, outputdir=OUTPUT_DIR, usedb=True)
     #session.close()
 
 def schedule(INTERVAL, args):

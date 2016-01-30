@@ -12,13 +12,23 @@ from itertools import repeat
 import pandas as pd
 from subfuncts import *
 try:
-    import bcmproteomics as bcm
+    from bcmproteomics import ispec
     bcmprot = True
 except ImportError:
-    bcmprot = False
+    try:
+        import bcmproteomics as ispec
+        bcmprot = True
+    except ImportError:
+        bcmprot = False
 
-program_title = 'PyGrouper v0.1.013rc1'
-release_date = '31 December 2015'
+__author__ = 'Alexander B. Saltzman'
+__copyright__ = 'Copyright January 2016'
+__credits__ = ['Alexander B. Saltzman', 'Anna Malovannaya']
+__license__ = 'MIT'
+__version__ = '0.1.014rc1'
+__maintainer__ = 'Alexander B. Saltzman'
+__email__ = 'saltzman@bcm.edu'
+program_title = 'Pygrouper v{}'.format(__version__)
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 logfilename = program_title.replace(' ', '_') + '.log'
 logging.basicConfig(filename=logfilename, level=logging.DEBUG)
@@ -126,7 +136,7 @@ def user_cli(FilterValues, usrfiles, exp_setups, usedb=False, inputdir='', outpu
                                                   ['AUC', 'Intensity']}, 
                                       exception_float=False)
                     if usedb:
-                        exp_setup['add_to_db'] = True
+                        exp_setup.get('add_to_db',False) == True
                     exp_setups.append(exp_setup)
                     usrfiles.append(usrfile_input)
             else:
@@ -149,11 +159,91 @@ def peptidome_matcher(usrdata, ref_dict):
                                                         ref_dict), axis=1)
     return usrdata
 
+def redundant_peaks(usrdata):
+    """ Remove redundant, often ambiguous peaks"""
+    peaks = usrdata.sort_values(by='IonScore', ascending=False).\
+            drop_duplicates(subset=['SpectrumFile','sequence_lower','PrecursorArea'])
+    peaks.is_copy = False
+    peaks['psm_Peak_UseFLAG'] = 1
+    usrdata = usrdata.join(peaks['psm_Peak_UseFLAG'])
+    usrdata['psm_Peak_UseFLAG'] = usrdata.psm_Peak_UseFLAG.fillna(0)
+    print('Redundant peak areas removed : ', len(usrdata)-len(peaks))
+    return usrdata
+
+def sum_area(usrdata, area_col):
+    """Sum the area of similar peaks
+    """
+    usrdata['Sequence_set'] = usrdata['Sequence'].apply(lambda x: tuple(set(list(x))))
+    summed_area = pd.DataFrame(usrdata[usrdata.psm_Peak_UseFLAG==1][
+        ['sequence_lower','Charge', 'Sequence_set',
+         area_col]].groupby(['sequence_lower', 'Sequence_set',
+                            'Charge'])[area_col].sum())
+#    usrdata['Sequence_set'] = usrdata['Sequence'].apply(lambda x: set(list(x)))
+    summed_area.reset_index(inplace=True)
+    summed_area.rename(columns={area_col: 'psm_SequenceArea'}, inplace=True)
+    usrdata = usrdata.merge(summed_area, how='left', on=['sequence_lower', 'Sequence_set', 'Charge'])
+    #usrdata = usrdata.join(summed_area['psm_SequenceArea'], how='left')
+    return usrdata
+
+def auc_reflagger(usrdata, area_col):
+    """Remove duplicate sequence areas"""
+    #usrdata['Sequence_set'] = usrdata['Sequence'].apply(lambda x: tuple(set(list(x))))
+    no_dups = usrdata.sort_values(by=['psm_SequenceModi', 'Charge', area_col, 'IonScore'],
+                                  ascending=[1,1,0,0]).drop_duplicates(subset=
+                                                                   ['psm_SequenceArea',
+                                                                    'Charge',
+                                                                    'psm_SequenceModi',])
+    no_dups.is_copy = False
+    no_dups['AUC_reflagger'] = 1
+    usrdata = usrdata.join(no_dups[['AUC_reflagger']])
+    usrdata['AUC_reflagger'] = usrdata['AUC_reflagger'].fillna(0)
+    area_col = 'psm_SequenceArea'  
+    return usrdata, area_col
+
+def split_on_geneid(usrdata):
+    """Duplicate psms based on geneids. Areas of each psm is recalculated based on
+unique peptides unique for its particular geneid later.
+"""
+    glstsplitter = usrdata['psm_GeneList'].str.split(',').apply(pd.Series,
+                                                                1).stack()
+    glstsplitter.index = glstsplitter.index.droplevel(-1)  # get rid of
+                                                           # multi-index
+    glstsplitter.name = 'psm_GeneID'  # give the series a name
+    usrdata = usrdata.join(glstsplitter)  # usrdata gains column 'psm_GeneID'
+                                          #from glstsplitter Series
+    usrdata.reset_index(inplace=True, drop=True)  # drop=True ?
+    return usrdata
+
+def rank_peptides(usrdata, area_col):
+    """Rank peptides here
+    """
+
+    usrdata = usrdata.sort_values(by=['psm_GeneID', area_col,
+                                      'Sequence', 'Modifications',
+                                      'Charge', 'psm_PSM_IDG', 'IonScore', 'PEP',
+                                      'q_value'],
+                                  ascending=[1, 0, 0, 1, 1, 1, 0, 1, 1])
+    usrdata.reset_index(inplace=True)  # drop=True ?
+    usrdata.Modifications.fillna('', inplace=True)  # must do this to compare nans
+    usrdata[area_col].fillna(0, inplace=True)  # must do this to compare
+    #nans
+
+    
+    grouped = usrdata.drop_duplicates(subset=['psm_GeneID',
+                                              area_col]).groupby(
+                                                  ['psm_GeneID', 'psm_LabelFLAG'])  # each group
+    ranks = grouped.cumcount() + 1  # add 1 to start the peptide rank at 1, not 0
+    ranks.name = 'psm_PeptideRank'
+    print(grouped)
+    usrdata = usrdata.join(ranks)
+
+    return usrdata
 
 def grouper(usrfile, usrdata, exp_setup, FilterValues, usedb=False, outdir='', *args):
     #import RefseqInfo
-    global program_title
-    global release_date
+
+    if exp_setup.get('add_to_db',False) == True:
+        print('Updating iSPEC after grouping')
     usrfile = os.path.split(usrfile)[1]
     # file with entry of gene ids to ignore for normalizations
     gid_ignore_file = 'pygrouper_geneignore.txt'
@@ -251,47 +341,27 @@ def grouper(usrfile, usrdata, exp_setup, FilterValues, usedb=False, outdir='', *
                                       'Sequence', 'Modifications',
                                       'Charge', 'psm_PSM_IDG', 'IonScore', 'PEP',
                                       'q_value'], ascending=[0, 0, 1, 1, 1, 1, 0, 1, 1])
-    peaks = usrdata.drop_duplicates(subset=['SpectrumFile','sequence_lower','PrecursorArea'])
-    peaks.is_copy = False
-    peaks['psm_Peak_UseFLAG'] = 1
-    usrdata = usrdata.join(peaks['psm_Peak_UseFLAG'])
-    usrdata['psm_Peak_UseFLAG'] = usrdata.psm_Peak_UseFLAG.fillna(0)
-    print('Redundant peak areas removed : ', len(usrdata)-len(peaks))
-
+    usrdata = redundant_peaks(usrdata)
     # remove ambiguous peaks
-    summed_area = pd.DataFrame(usrdata[usrdata.psm_Peak_UseFLAG==1][
-        ['psm_SequenceModi',
-         'Charge',
-         area_col]].groupby(['psm_SequenceModi',
-                             'Charge'])[area_col].sum())
-    summed_area.reset_index(inplace=True)
-    summed_area.rename(columns={area_col: 'psm_SequenceArea'}, inplace=True)
-    usrdata = usrdata.merge(summed_area, how='left', on=['psm_SequenceModi', 'Charge'])
-
+    usrdata = sum_area(usrdata, area_col)
     # now remove duplicate sequence areas
-    no_dups = usrdata.sort_values(by=['psm_SequenceModi','Charge',area_col],
-                                  ascending=[1,1,0]).drop_duplicates(subset=
-                                                                   ['psm_SequenceArea',
-                                                                    'Charge',
-                                                                    'psm_SequenceModi',])
-    no_dups.is_copy = False
-    no_dups['AUC_reflagger'] = 1
-    usrdata = usrdata.join(no_dups[['AUC_reflagger']])
-    usrdata['AUC_reflagger'] = usrdata['AUC_reflagger'].fillna(0)
-    area_col = 'psm_SequenceArea'  
+    usrdata, area_col = auc_reflagger(usrdata, area_col)
+    # area_col = 'psm_SequenceArea'  # this is equal to what is returned by auc_reflagger
     #usrdata.to_csv(os.path.join(outdir, usrdata_out),index=False, sep='\t')
     #print('exiting...')
     #return
     # ============= Gather all genes that all peptides map to =============== #
-    glstsplitter = usrdata['psm_GeneList'].str.split(',').apply(pd.Series,
-                                                                1).stack()
-    glstsplitter.index = glstsplitter.index.droplevel(-1)  # get rid of
-                                                           # multi-index
-    glstsplitter.name = 'psm_GeneID'  # give the series a name
-    usrdata = usrdata.join(glstsplitter)  # usrdata gains column 'psm_GeneID'
-                                          #from glstsplitter Series
-    usrdata.reset_index(inplace=True)
+    usrdata = split_on_geneid(usrdata)
     # ========================================================================= #
+    logfile.write('{} | Starting peptide ranking.\n'.format(time.ctime()))
+
+    usrdata = rank_peptides(usrdata, area_col)
+    
+    logfile.write('{} | Peptide ranking complete.\n'.format(time.ctime()))
+    print('{}: Peptide ranking complete for {}.'.format(datetime.now(), usrfile))
+    logging.info('{}: Peptide ranking complete for {}.'.format(datetime.now(),
+                                                               usrfile))
+
     # Now calculate AUC and PSM use flags
     usrdata['psm_AUC_useflag'], usrdata['psm_PSM_useflag'] = \
     list(zip(*usrdata.apply(AUC_PSM_flagger, args=(FilterValues,), axis=1)))
@@ -314,7 +384,6 @@ def grouper(usrfile, usrdata, exp_setup, FilterValues, usedb=False, outdir='', *
         print('Multiple taxons found, redistributing areas...')
         logfile.write('{} | Multiple taxons found, '\
                       'redistributing areas.\n'.format(time.ctime()))
-        usrdata.reset_index(inplace=True)
         #usrdata[area_col_new] = 0
         for taxon in taxon_ids:
             #all_others = [x for x in taxon_ids if x != taxon]
@@ -528,30 +597,9 @@ def grouper(usrfile, usrdata, exp_setup, FilterValues, usedb=False, outdir='', *
                               labeltypes[label]))
             # ========================================================================= #
             # Peptide ranking 
-            logfile.write('{} | Starting peptide ranking.\n'.format(time.ctime()))
 
-            temp_df = temp_df.sort_values(by=['psm_GeneID', area_col,
-                                              'Sequence', 'Modifications',
-                                              'Charge', 'psm_PSM_IDG', 'IonScore', 'PEP',
-                                              'q_value'],
-                                          ascending=[1, 0, 0, 1, 1, 1, 0, 1, 1])
-            temp_df.reset_index(inplace=True)
-            temp_df.Modifications.fillna('', inplace=True)  # must do this to compare nans
-            temp_df[area_col].fillna(0, inplace=True)  # must do this to compare
-                                                       #nans
 
-            grouped = temp_df.drop_duplicates(subset=['psm_GeneID',
-                                                      area_col]).groupby(
-                                                          ['psm_GeneID'])  # each group
 
-            ranks = grouped.cumcount() + 1  # add 1 to start the peptide rank at 1, not 0
-            ranks.name = 'psm_PeptideRank'
-            temp_df = temp_df.join(ranks)
-    
-            logfile.write('{} | Peptide ranking complete.\n'.format(time.ctime()))
-            print('{}: Peptide ranking complete for {}.'.format(datetime.now(), usrfile))
-            logging.info('{}: Peptide ranking complete for {}.'.format(datetime.now(),
-                                                               usrfile))
     # ========================================================================= #
 
     # ----------------End of none/silac loop--------------------------------- #
@@ -559,10 +607,13 @@ def grouper(usrfile, usrdata, exp_setup, FilterValues, usedb=False, outdir='', *
 
     usrdata.drop('metadatainfo', axis=1, inplace=True)  # Don't need this
                                       # column anymore.
-    usrdata = pd.merge(usrdata, temp_df, how='outer')
+    print('Length of usrdata before merge : ',len(usrdata))                                      
+    print('Length of temp_df : ',len(temp_df))                                      
+
+    usrdata = pd.merge(usrdata, temp_df, how='left')
     usrdata['psm_PeptideRank'] = usrdata['psm_PeptideRank'].fillna(0)  # anyone who
                               # didn't get a rank gets a rank of 0
-
+    print('Length of usrdata after merge : ',len(usrdata))                                      
     usrdata['psm_EXPRecNo'], usrdata['psm_EXPRunNo'],\
     usrdata['psm_EXPSearchNo'],\
     usrdata['psm_EXPTechRepNo'] = exp_setup['EXPRecNo'],\
@@ -630,7 +681,8 @@ def grouper(usrfile, usrdata, exp_setup, FilterValues, usedb=False, outdir='', *
     msfdata.rename(columns={c: 'msf_'+c for c in msfdata.columns}, inplace=True)
 
     if bcmprot and exp_setup.get('add_to_db',False):  # we have bcmprot installed
-        conn = bcm.filedb_connect()
+        print('{} | Updating experiment runs table in iSPEC.'.format(time.ctime()))
+        conn = ispec.filedb_connect()
         sql = ("UPDATE iSPEC_ExperimentRuns "
                "SET exprun_Grouper_Version='{version}', "
                "exprun_Grouper_RefDatabase='{searchdb}', "
@@ -716,13 +768,16 @@ def make_processes(max_processes, data_args):
 
 def main(usrfiles=[], exp_setups=[], automated=False, setup=False, fullpeptread=False,
          usedb=False, inputdir='', outputdir=''):
+    """
+    usedb : Connect to the iSPEC database and update some record information.
+            This does not currently import the results, but does import some metada.
+    """
     # ===================Configuration Setup / Loading==========================#
-    global program_title
-    global release_date
+
     refs = {}
     if usedb:
         if bcmprot:  # try to connect to iSPEC first
-            conn = bcm.filedb_connect()
+            conn = ispec.filedb_connect()
             if isinstance(conn, str):
                 print(conn)
                 sys.exit(1)
@@ -761,7 +816,7 @@ def main(usrfiles=[], exp_setups=[], automated=False, setup=False, fullpeptread=
     elif not imagetitle:
         print(program_title)  # not as exciting as ascii art
 
-    print('\nrelease date: {}'.format(release_date))
+    print('\nrelease date: {}'.format(__copyright__))
     print('Python version ' + sys.version)
     print('Pandas version: ' + pd.__version__)
 
@@ -810,12 +865,14 @@ def main(usrfiles=[], exp_setups=[], automated=False, setup=False, fullpeptread=
         standard_names = column_identifier(usrdata, column_aliases)
         exp_setup['rawfilepath'] = rawfilepath
         exp_setup['filterstamp'] = Filter_Stamp
+        if usedb:
+            exp_setup['add_to_db'] = True
         for name in standard_names:
             exp_setup[name] = standard_names[name]
         for alias in column_aliases:
             if alias.startswith('psm_') or alias.startswith('gene_'):
                 exp_setup[alias] = column_aliases[alias]
-
+                
         #for key in exp_setup: print(key,'   :   ', exp_setup[key])
         usrdata.rename(columns={v: k
                                 for k,v in standard_names.items()},
@@ -939,7 +996,7 @@ def main(usrfiles=[], exp_setups=[], automated=False, setup=False, fullpeptread=
                 usrfiles.remove(failed[0])  # remove all of the failed
                                             #experiments so they won't go in log
                 if usedb:
-                    conn = bcm.filedb_connect()
+                    conn = ispec.filedb_connect()
                     cursor = conn.cursor()
                     cursor.execute("""UPDATE iSPEC_ExperimentRuns
                     SET exprun_Grouper_FailedFLAG = ?
