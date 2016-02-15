@@ -25,7 +25,7 @@ __author__ = 'Alexander B. Saltzman'
 __copyright__ = 'Copyright January 2016'
 __credits__ = ['Alexander B. Saltzman', 'Anna Malovannaya']
 __license__ = 'MIT'
-__version__ = '0.1.014rc1'
+__version__ = '0.1.014rc2'
 __maintainer__ = 'Alexander B. Saltzman'
 __email__ = 'saltzman@bcm.edu'
 program_title = 'Pygrouper v{}'.format(__version__)
@@ -160,10 +160,11 @@ def peptidome_matcher(usrdata, ref_dict):
     return usrdata
 
 def redundant_peaks(usrdata):
-    """ Remove redundant, often ambiguous peaks"""
+    """ Remove redundant, often ambiguous peaks by keeping the peak
+    with the highest ion score"""
     peaks = usrdata.sort_values(by='IonScore', ascending=False).\
             drop_duplicates(subset=['SpectrumFile','sequence_lower','PrecursorArea'])
-    peaks.is_copy = False
+    peaks.is_copy = False  # duplicate dataframe in memory
     peaks['psm_Peak_UseFLAG'] = 1
     usrdata = usrdata.join(peaks['psm_Peak_UseFLAG'])
     usrdata['psm_Peak_UseFLAG'] = usrdata.psm_Peak_UseFLAG.fillna(0)
@@ -186,10 +187,14 @@ def sum_area(usrdata, area_col):
     return usrdata
 
 def auc_reflagger(usrdata, area_col):
-    """Remove duplicate sequence areas"""
+    """Remove duplicate sequence areas
+    area_col input is original area column,
+    area_col output is renamed to psm_SequenceArea
+    """
     #usrdata['Sequence_set'] = usrdata['Sequence'].apply(lambda x: tuple(set(list(x))))
-    no_dups = usrdata.sort_values(by=['psm_SequenceModi', 'Charge', area_col, 'IonScore'],
-                                  ascending=[1,1,0,0]).drop_duplicates(subset=
+    no_dups = usrdata.sort_values(by=['psm_SequenceModi', 'Charge', 'psm_SequenceArea',
+                                      'psm_PSM_IDG', 'IonScore', 'PEP', 'q_value'],
+                                  ascending=[1,1,0,1,0,1,1]).drop_duplicates(subset=
                                                                    ['psm_SequenceArea',
                                                                     'Charge',
                                                                     'psm_SequenceModi',])
@@ -216,25 +221,29 @@ unique peptides unique for its particular geneid later.
 
 def rank_peptides(usrdata, area_col):
     """Rank peptides here
+    area_col is sequence area_calculator
     """
 
     usrdata = usrdata.sort_values(by=['psm_GeneID', area_col,
-                                      'Sequence', 'Modifications',
+                                      'psm_SequenceModi',
                                       'Charge', 'psm_PSM_IDG', 'IonScore', 'PEP',
                                       'q_value'],
-                                  ascending=[1, 0, 0, 1, 1, 1, 0, 1, 1])
+                                  ascending=[1, 0, 0, 1, 1, 0, 1, 1])
     usrdata.reset_index(inplace=True)  # drop=True ?
     usrdata.Modifications.fillna('', inplace=True)  # must do this to compare nans
     usrdata[area_col].fillna(0, inplace=True)  # must do this to compare
     #nans
 
-    
-    grouped = usrdata.drop_duplicates(subset=['psm_GeneID',
-                                              area_col]).groupby(
-                                                  ['psm_GeneID', 'psm_LabelFLAG'])  # each group
+
+#    grouped = usrdata.drop_duplicates(subset=['psm_GeneID',
+#                                              area_col]).groupby(
+#                                                  ['psm_GeneID', 'psm_LabelFLAG'])  # each group
+    grouped = usrdata[ (usrdata.psm_AUC_useflag == 1) & \
+                       (usrdata.psm_PSM_useflag == 1) & \
+                       (usrdata.psm_Peak_UseFLAG == 1)    ].groupby(['psm_GeneID', 'psm_LabelFLAG'])
     ranks = grouped.cumcount() + 1  # add 1 to start the peptide rank at 1, not 0
     ranks.name = 'psm_PeptideRank'
-    print(grouped)
+
     usrdata = usrdata.join(ranks)
 
     return usrdata
@@ -355,8 +364,8 @@ def grouper(usrfile, usrdata, exp_setup, FilterValues, usedb=False, outdir='', *
     # ========================================================================= #
     logfile.write('{} | Starting peptide ranking.\n'.format(time.ctime()))
 
-    usrdata = rank_peptides(usrdata, area_col)
-    
+    #usrdata = rank_peptides(usrdata, area_col)
+
     logfile.write('{} | Peptide ranking complete.\n'.format(time.ctime()))
     print('{}: Peptide ranking complete for {}.'.format(datetime.now(), usrfile))
     logging.info('{}: Peptide ranking complete for {}.'.format(datetime.now(),
@@ -595,6 +604,7 @@ def grouper(usrfile, usrdata, exp_setup, FilterValues, usedb=False, outdir='', *
                           'completed.\n'.format(
                               time.ctime(), 
                               labeltypes[label]))
+
             # ========================================================================= #
             # Peptide ranking 
 
@@ -609,8 +619,8 @@ def grouper(usrfile, usrdata, exp_setup, FilterValues, usedb=False, outdir='', *
                                       # column anymore.
     print('Length of usrdata before merge : ',len(usrdata))                                      
     print('Length of temp_df : ',len(temp_df))                                      
-
     usrdata = pd.merge(usrdata, temp_df, how='left')
+    usrdata = rank_peptides(usrdata, 'psm_PrecursorArea_dstrAdj')
     usrdata['psm_PeptideRank'] = usrdata['psm_PeptideRank'].fillna(0)  # anyone who
                               # didn't get a rank gets a rank of 0
     print('Length of usrdata after merge : ',len(usrdata))                                      
@@ -645,7 +655,7 @@ def grouper(usrfile, usrdata, exp_setup, FilterValues, usedb=False, outdir='', *
                  'psm_PSM_IDG', 'psm_SequenceModi',
                  'psm_SequenceModiCount', 'psm_LabelFLAG', 
                  'psm_PeptideRank', 'psm_AUC_useflag', 'psm_PSM_useflag',
-                 'psm_Peak_UseFLAG', 'psm_PrecursorArea_dstrAdj']
+                 'psm_Peak_UseFLAG', 'psm_SequenceArea', 'psm_PrecursorArea_dstrAdj']
     #usrdata.to_csv(usrdata_out, columns=usrdata.columns,
                                 #encoding='utf-8', sep='\t')
     #print(usrdata.columns.values)  # for debugging
