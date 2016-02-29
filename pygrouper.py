@@ -151,6 +151,71 @@ def user_cli(FilterValues, usrfiles, exp_setups, usedb=False, inputdir='', outpu
 
     return (usr_name, usrfiles, exp_setups)
 
+def get_gid_ignore_list(inputfile):
+    """Input a file with a list of geneids to ignore when normalizing across taxa
+    Each line should have 1 geneid on it.
+    Use '#' at the start of the line for comments
+    Output a list of geneids to ignore. 
+    """
+    # Don't convert GIDs to ints,
+    # GIDs are not ints for the input data
+    return [x.strip() for x in open(inputfile, 'r') if
+            not x.strip().startswith('#')]
+
+def extract_metadata(metadatainfo):
+    """Extract metadata into a dictionary
+    Input is a 
+    Returned dictionary structure:
+        geneid -> [(taxonid, homologeneid, proteingi, genefraglen)]
+    with 1 or more entries
+
+    """
+    if not hasattr(metadatainfo, '__iter__'):
+        raise TypeError('Input is not iterable')
+    gene_metadata = defaultdict(list)
+    for metadata in metadatainfo:
+        for data in metadata:
+            gene_metadata[data.geneid].append((data.taxonid, data.homologeneid,
+                                               data.proteingi, data.genefraglen))
+    return gene_metadata
+def gene_taxon_mapper(gene_metadata):
+    """Returns a dictionary with mapping:
+    gene -> taxon
+    Input is the metadata extracted previously"""
+    return {gene: info[0][0] for gene, info in gene_metadata.items()}
+
+def extract_genelist(usrdata):
+    """Calls genelist_extractor by row on input DataFrame which returns
+    list of genes (string), 
+    number of genes
+    list of taxonids (string),
+    number of taxonids,
+    list of proteingis (string),
+    number of proteingis
+    """
+
+    usrdata['psm_GeneList'], usrdata['psm_GeneCount'], \
+        usrdata['psm_TaxonIDList'],\
+        usrdata['psm_TaxonCount'], usrdata['psm_ProteinList'], \
+        usrdata['psm_ProteinCount'] = list(zip(
+            *usrdata.apply(lambda x : genelist_extractor(x['metadatainfo'],
+            ),
+                           axis=1)))
+    return usrdata
+
+def assign_IDG(usrdata):
+    """Assign IDG bsaed on combination of
+    IonScore and q_value"""
+    
+    usrdata['psm_PSM_IDG'] = usrdata.apply(lambda x:
+                                           IDG_picker(x['IonScore'],
+                                                      x['q_value']), axis=1) 
+    return usrdata
+
+def make_seqlower(usrdata, col='Sequence'):
+    """Make a new column called sequence_lower from a DataFrame"""
+    usrdata[col] = usrdata.apply(lambda x: x[col].lower(), axis=1)
+    return usrdata
 
 def peptidome_matcher(usrdata, ref_dict):
     usrdata['metadatainfo'] = usrdata.apply(lambda x:
@@ -205,6 +270,45 @@ def auc_reflagger(usrdata, area_col):
     area_col = 'psm_SequenceArea'  
     return usrdata, area_col
 
+def update_database(**kwargs):
+    """Update iSPEC database with some metadata information
+    """ 
+    print('{} | Updating experiment runs table in iSPEC.'.format(time.ctime()))
+    conn = ispec.filedb_connect()
+    sql = ("UPDATE iSPEC_ExperimentRuns "
+           "SET exprun_Grouper_Version='{version}', "
+           "exprun_Grouper_RefDatabase='{searchdb}', "
+           "exprun_Grouper_FilterStamp='{filterstamp}', "
+           "exprun_PSMCount_matched={matched}, "
+           "exprun_PSMCount_unmatched={unmatched}, "
+           "exprun_InputFileName='{inputname}', "
+           "exprun_Fraction_9606={hu}, "
+           "exprun_Fraction_10090={mou} "
+           "WHERE exprun_EXPRecNo={recno} "
+           "AND exprun_EXPRunNo={runno} "
+           "AND exprun_EXPSearchNo={searchno}").format(version=program_title,
+                                                       searchdb=exp_setup['searchdb'],
+                                                       filterstamp=exp_setup['filterstamp'],
+                                                       matched=matched_psms,
+                                                       unmatched=unmatched_psms,
+                                                       inputname=usrfile,
+                                                       hu=taxon_totals.get('9606', 0),
+                                                       mou=taxon_totals.get('10090', 0),
+                                                       recno=exp_setup['EXPRecNo'],
+                                                       runno=exp_setup['EXPRunNo'],
+                                                       searchno=exp_setup['EXPSearchNo'])
+    #sys.exit(0)
+    cursor = conn.execute(sql)
+    cursor.commit()
+    cursor.execute("""UPDATE iSPEC_ExperimentRuns
+    SET exprun_Grouper_EndFLAG = ?
+    WHERE exprun_EXPRecNo= ? AND 
+    exprun_EXPRunNo = ? AND 
+    exprun_EXPSearchNo = ?
+    """, 1, exp_setup['EXPRecNo'],
+                   exp_setup['EXPRunNo'], exp_setup['EXPSearchNo'])
+    cursor.commit()
+
 def split_on_geneid(usrdata):
     """Duplicate psms based on geneids. Areas of each psm is recalculated based on
 unique peptides unique for its particular geneid later.
@@ -248,6 +352,19 @@ def rank_peptides(usrdata, area_col):
 
     return usrdata
 
+def flag_AUC_PSM(usrdata):
+    """Apply AUC and PSM flags per row"""
+    
+    usrdata['psm_AUC_useflag'], usrdata['psm_PSM_useflag'] = \
+    list(zip(*usrdata.apply(AUC_PSM_flagger, args=(FilterValues,), axis=1)))
+    return usrdata
+
+def gene_taxon_map(usrdata, gene_taxon_dict):
+    """make 'gene_taxon_map' column per row which displays taxon for given gene""" 
+    
+    usrdata['gene_taxon_map'] = usrdata.apply(lambda x : gene_to_taxon(
+        x['psm_GeneID'], gene_taxon_dict), axis=1)
+    return usrdata 
 def grouper(usrfile, usrdata, exp_setup, FilterValues, usedb=False, outdir='', *args):
     #import RefseqInfo
 
@@ -266,11 +383,7 @@ def grouper(usrfile, usrdata, exp_setup, FilterValues, usedb=False, outdir='', *
 
     if os.path.isfile(gid_ignore_file):
         print('Using gene filter file for normalization.')
-        gid_ignore_read=[x.strip() for x in open(gid_ignore_file, 'r') if
-                         not x.strip().startswith('#')]
-        #gid_ignore_list = [int(x) for x in gid_ignore_read if x.isdigit()]
-        # don't convert to int, GIDs are not ints
-        gid_ignore_list = gid_ignore_read
+        gid_ignore_list = get_gid_ignore_list(gid_ignore_file)
 
     if exp_setup['EXPQuantSource'].strip() == 'AUC':
         area_col = 'PrecursorArea'  # we always use Precursor Area
@@ -289,22 +402,10 @@ def grouper(usrfile, usrdata, exp_setup, FilterValues, usedb=False, outdir='', *
     logfile.write('{} | Starting {} for file : {}\n'.format(
         time.ctime(),program_title, usrfile))
     # ==================== Populate gene info ================================ #
-    gene_metadata = defaultdict(list)
-    gene_taxon_dict = dict()
-    for metadata in usrdata.metadatainfo:
-        for data in metadata:
-            gene_metadata[data.geneid].append((data.taxonid, data.homologeneid,
-                                               data.proteingi, data.genefraglen))
-    for gene in gene_metadata:
-        gene_taxon_dict[gene] = gene_metadata[gene][0][0]
+    gene_metadata = extract_metadata(usrdata.metadatainfo)
+    gene_taxon_dict = gene_taxon_mapper(gene_metadata)
 
-    usrdata['psm_GeneList'], usrdata['psm_GeneCount'], \
-        usrdata['psm_TaxonIDList'],\
-        usrdata['psm_TaxonCount'], usrdata['psm_ProteinList'], \
-        usrdata['psm_ProteinCount'] = list(zip(
-        *usrdata.apply(lambda x : genelist_extractor(x['metadatainfo'],
-                                                     ),
-                       axis=1)))
+    usrdata = extract_genelist(usrdata)
 
 
     # ==================== Populate gene info ================================ #
@@ -341,11 +442,8 @@ def grouper(usrfile, usrdata, exp_setup, FilterValues, usedb=False, outdir='', *
                                                                 usrfile))
         # Store all of these sequences in the big log file, not per experiment.
     logfile.write('{} | Starting grouper.\n'.format(time.ctime()))
-    usrdata['psm_PSM_IDG'] = usrdata.apply(lambda x:
-                                           IDG_picker(x['IonScore'],
-                                                      x['q_value']), axis=1) 
-
-    usrdata['sequence_lower'] = usrdata.apply(lambda x: x['Sequence'].lower(), axis=1)
+    usrdata = assign_IDG(usrdata)
+    usrdata = make_seqlower(usrdata)
     usrdata = usrdata.sort_values(by=['SpectrumFile', area_col,
                                       'Sequence', 'Modifications',
                                       'Charge', 'psm_PSM_IDG', 'IonScore', 'PEP',
@@ -372,15 +470,11 @@ def grouper(usrfile, usrdata, exp_setup, FilterValues, usedb=False, outdir='', *
                                                                usrfile))
 
     # Now calculate AUC and PSM use flags
-    usrdata['psm_AUC_useflag'], usrdata['psm_PSM_useflag'] = \
-    list(zip(*usrdata.apply(AUC_PSM_flagger, args=(FilterValues,), axis=1)))
+    usrdata = flag_AUC_PSM(usrdata)
 
-
-
+    usrdata = gene_taxon_map(usrdata, gene_taxon_dict)
     # Flag good quality peptides
         # ======================== Plugin for multiple taxons  ===================== #
-    usrdata['gene_taxon_map'] = usrdata.apply(lambda x : gene_to_taxon(
-        x['psm_GeneID'], gene_taxon_dict), axis=1)
     taxon_ids = set(','.join(x for x in usrdata.psm_TaxonIDList.tolist()
                              if x).split(','))    
     #area_col_new = 'psm_Area_taxonAdj'
@@ -691,43 +785,8 @@ def grouper(usrfile, usrdata, exp_setup, FilterValues, usedb=False, outdir='', *
     msfdata.rename(columns={c: 'msf_'+c for c in msfdata.columns}, inplace=True)
 
     if bcmprot and exp_setup.get('add_to_db',False):  # we have bcmprot installed
-        print('{} | Updating experiment runs table in iSPEC.'.format(time.ctime()))
-        conn = ispec.filedb_connect()
-        sql = ("UPDATE iSPEC_ExperimentRuns "
-               "SET exprun_Grouper_Version='{version}', "
-               "exprun_Grouper_RefDatabase='{searchdb}', "
-               "exprun_Grouper_FilterStamp='{filterstamp}', "
-               "exprun_PSMCount_matched={matched}, "
-               "exprun_PSMCount_unmatched={unmatched}, "
-               "exprun_InputFileName='{inputname}', "
-               "exprun_Fraction_9606={hu}, "
-               "exprun_Fraction_10090={mou} "
-               "WHERE exprun_EXPRecNo={recno} "
-               "AND exprun_EXPRunNo={runno} "
-               "AND exprun_EXPSearchNo={searchno}").format(version=program_title,
-                                                           searchdb=exp_setup['searchdb'],
-                                                           filterstamp=exp_setup['filterstamp'],
-                                                           matched=matched_psms,
-                                                           unmatched=unmatched_psms,
-                                                           inputname=usrfile,
-                                                           hu=taxon_totals.get('9606', 0),
-                                                           mou=taxon_totals.get('10090', 0),
-                                                           recno=exp_setup['EXPRecNo'],
-                                                           runno=exp_setup['EXPRunNo'],
-                                                           searchno=exp_setup['EXPSearchNo'])
-        #sys.exit(0)
-        cursor = conn.execute(sql)
-        cursor.commit()
-        cursor.execute("""UPDATE iSPEC_ExperimentRuns
-        SET exprun_Grouper_EndFLAG = ?
-        WHERE exprun_EXPRecNo= ? AND 
-        exprun_EXPRunNo = ? AND 
-        exprun_EXPSearchNo = ?
-        """, 1, exp_setup['EXPRecNo'],
-                       exp_setup['EXPRunNo'], exp_setup['EXPSearchNo'])
-        cursor.commit()
-
-
+        update_database(program_title=program_tile, exp_setup=exp_setup, matched_psms=matched_psms,
+                        unmatched_psms=unmatched_psms, usrfile=usrfile, taxon_totals=taxon_totals)
     msfname = '_'.join(str(x) for x in [exp_setup['EXPRecNo'],
                                         exp_setup['EXPRunNo'],
                                         exp_setup['EXPSearchNo'],
