@@ -12,3 +12,6 @@
 __pycache__/
 *.raw
 venv/
+.DS_Store
+*.egg-info/
+testresults/
