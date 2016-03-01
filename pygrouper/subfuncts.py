@@ -76,7 +76,7 @@ The return order is as follows:
     PEP_max      = data.PEP.max()
     area_min     = data[data.PrecursorArea!=0].PrecursorArea.min()
     area_max     = data.PrecursorArea.max()
-    PSM_count    = len(data[data.psm_PSM_useflag==1])
+    PSM_count    = len(data[data.psm_PSM_UseFLAG==1])
     dmass_median = data.DeltaMassPPM.median()
     return(RT_min, RT_max, IonScore_min, IonScore_max, q_min, q_max,
            PEP_min, PEP_max, area_min, area_max, PSM_count, dmass_median)
@@ -140,9 +140,9 @@ def column_constructor(columndict=None):
         ('psm_SequenceModiCount', 'count of total modifications'),
         ('psm_ModiCount', 'number of modifications for a given peptide'),
         ('psm_LabelFLAG', 'label number for a given peptide'),
-        ('psm_PeptideRank', 'rank for a given peptide within its geneID'),
-        ('psm_AUC_useflag', 'boolean value for use of peptide for calculating area'),
-        ('psm_PSM_useflag', 'boolean value for use of peptide for psm'),
+        ('psm_PeptRank', 'rank for a given peptide within its geneID'),
+        ('psm_AUC_UseFLAG', 'boolean value for use of peptide for calculating area'),
+        ('psm_PSM_UseFLAG', 'boolean value for use of peptide for psm'),
         ('psm_Area_taxonAdj','taxon adjusted area'),
         ('psm_PrecursorArea_dstrAdj','redistributed peptide precursor area'),
         
@@ -763,7 +763,7 @@ def pept_print(df,usrdata):
     Lookup info from userdata. Also sorts based on alphabet. 
     '''
 
-    IDquery = df['gene_GeneID']
+    IDquery = df['e2g_GeneID']
     #print(IDquery)  # for debugging
     try : 
         matches = usrdata[usrdata.psm_GeneID == IDquery]
@@ -794,26 +794,26 @@ def pept_print(df,usrdata):
 def e2g_PSM_helper(gene_df_ID, data, EXPTechRepNo):
     total = data[
                 data['psm_GeneID']==gene_df_ID]\
-                ['psm_PSM_useflag'].sum()/EXPTechRepNo
+                ['psm_PSM_UseFLAG'].sum()/EXPTechRepNo
     total_u2g = data[(data['psm_GeneID']==gene_df_ID) &
                          (data['psm_GeneCount' ] == 1) \
-                        ]['psm_PSM_useflag'].sum()/EXPTechRepNo
+                        ]['psm_PSM_UseFLAG'].sum()/EXPTechRepNo
 
     total_S = data[(data['psm_GeneID']==gene_df_ID) &
                        (data['psm_PSM_IDG' ] < 4)
-                  ]['psm_PSM_useflag'].sum()/EXPTechRepNo
+                  ]['psm_PSM_UseFLAG'].sum()/EXPTechRepNo
 
     total_S_u2g = data[(data['psm_GeneID']==gene_df_ID) &
                            (data['psm_PSM_IDG' ] < 4) &
                            (data['psm_GeneCount' ] == 1)
-                      ]['psm_PSM_useflag'].sum()/EXPTechRepNo
+                      ]['psm_PSM_UseFLAG'].sum()/EXPTechRepNo
     #for match in matches:
     return total, total_u2g, total_S, total_S_u2g
   
 def area_calculator(gene_df, usrdata, EXPTechRepNo,area_col, normalization):
 
-    matches  = usrdata[(usrdata['psm_GeneID'] == gene_df['gene_GeneID']) &
-                           (usrdata['psm_AUC_useflag']==1)] [
+    matches  = usrdata[(usrdata['psm_GeneID'] == gene_df['e2g_GeneID']) &
+                           (usrdata['psm_AUC_UseFLAG']==1)] [
                                 [area_col, 'psm_GeneCount',
                                  'psm_PSM_IDG', 'MissedCleavages']]
  
@@ -859,77 +859,77 @@ def AUC_distributor(inputdata, genes_df, area_col):
     #         datetime.now()))
     #    sys.exit(1)
     inputvalue = inputdata[area_col]
-    u2gPept = genes_df[genes_df['gene_GeneID']==inputdata['psm_GeneID']
-    ]['gene_GeneArea_gpcAdj_u2g_all'].values
-    
+    u2gPept = genes_df[genes_df['e2g_GeneID']==inputdata['psm_GeneID']
+    ]['e2g_nGPArea_Sum_u2g_all'].values
+
     if len(u2gPept) == 1: u2gPept = u2gPept[0] # grab u2g info, should always be
     #of length 1
-    elif len(u2gPept) > 1 : 
+    elif len(u2gPept) > 1 :
         print('{} Error - distArea is not singular at GeneID : {}'.format(
              datetime.now(),inputdata['psm_GeneID']))
         # this should never happen (and never has)
-    else : 
+    else :
         distArea = 0
-        print('No distArea for GeneID : {}'.format(inputdata['psm_GeneID']))  
-    if u2gPept != 0 : 
+        print('No distArea for GeneID : {}'.format(inputdata['psm_GeneID'])) 
+    if u2gPept != 0 :
         totArea = 0
         gene_list = inputdata.psm_GeneList.split(',')
         totArea = genes_df[
-             genes_df['gene_GeneID'].isin(gene_list)
-                              ].gene_GeneArea_gpcAdj_u2g_all.sum()
+             genes_df['e2g_GeneID'].isin(gene_list)
+                              ].e2g_nGPArea_Sum_u2g_all.sum()
         distArea = (u2gPept/totArea) * inputvalue
         #ratio of u2g peptides over total area
 
     elif u2gPept == 0:  # no uniques, normalize by genecount
-        try: distArea = inputvalue/inputdata.psm_GeneCount   
+        try: distArea = inputvalue/inputdata.psm_GeneCount
         except ZeroDivisionError: distArea = inputvalue
 
     return distArea
-    
+
 def gene_AUC_sum(genes_df,temp_df,normalization):
-    gene = genes_df['gene_GeneID']
-    if genes_df['gene_IDSet'] in [1,2]:
+    gene = genes_df['e2g_GeneID']
+    if genes_df['e2g_IDSet'] in [1,2]:
         return temp_df[temp_df[
              'psm_GeneID'
         ] == gene].psm_PrecursorArea_dstrAdj.sum()/normalization
-    elif genes_df['gene_IDSet'] == 3:
+    elif genes_df['e2g_IDSet'] == 3:
         return 0
 
 def gene_setter(genes_df,genes_df_all, temp_df ):
-    IDquery, Pquery = genes_df[['gene_GeneID','gene_PeptideSet']]
-    
+    IDquery, Pquery = genes_df[['e2g_GeneID','e2g_PeptideSet']]
+
        # Pquery = set(Pquery.split('_'))
     if any(temp_df[temp_df.psm_GeneID==IDquery]['psm_GeneCount']==1):
        # genes_df.at[pos,'GeneSet'] = 1
         setValue = 1
-    elif not any(genes_df_all.gene_PeptideSet.values > Pquery):
+    elif not any(genes_df_all.e2g_PeptideSet.values > Pquery):
         #genes_df.at[pos,'GeneSet'] = 2
         setValue = 2
         #genes_df.ix[genes_df.GeneID == IDquery,'GeneSet'] = 2
-    elif any(genes_df_all.gene_PeptideSet.values > Pquery):
+    elif any(genes_df_all.e2g_PeptideSet.values > Pquery):
         setValue = 3
        # genes_df.at[pos,'GeneSet'] = 3
     try: GeneIDGroup = min(temp_df[temp_df.psm_GeneID == IDquery].psm_PSM_IDG)
     except ValueError: GeneIDGroup = 0
     try : GeneIDGroup_u2g  = min(temp_df[(temp_df.psm_GeneID == IDquery) & (temp_df.psm_GeneCount == 1)].psm_PSM_IDG)
-    except ValueError : GeneIDGroup_u2g = 0   
-       
-    return setValue, GeneIDGroup, GeneIDGroup_u2g   
+    except ValueError : GeneIDGroup_u2g = 0
 
-greaterthan = lambda x, last : True if x < last else False        
+    return setValue, GeneIDGroup, GeneIDGroup_u2g
+
+greaterthan = lambda x, last : True if x < last else False
 def GPG_helper(idset,peptideset, df_all,last):
     # do stuff
     #indx = numgen.next()
-    
+
     #print idset
     if idset == 3:
         gpg =  ''
-    else:        
- 
-        if idset == 1:    
+    else:
+
+        if idset == 1:
             gpg =  last + 1
         elif idset == 2:
-            selection = df_all[df_all.gene_PeptideSet.values == peptideset].gene_GPGroup
+            selection = df_all[df_all.e2g_PeptideSet.values == peptideset].e2g_GPGroup
             selection = selection[selection!='']
             if len(selection) == 1:
                 gpg =  selection.values[0]
@@ -938,33 +938,32 @@ def GPG_helper(idset,peptideset, df_all,last):
             elif len(selection) > 1:
                 uniq_sel = []
                 for k in range(len(selection)):
-                    if selection.iloc[k] not in uniq_sel: 
+                    if selection.iloc[k] not in uniq_sel:
                         uniq_sel.append(selection.iloc[k])
-                    if len(uniq_sel) == 1:    
+                    if len(uniq_sel) == 1:
                         gpg =  uniq_sel[0]
                     elif len(uniq_sel) > 1:
                         print('Warning, more than one IDSet type 2 genes '\
                               'already has assignment')
-                        gpg =  genes_df['gene_GPGroup'] 
-                     
-    return gpg, greaterthan(gpg, last)    
+                        gpg =  genes_df['e2g_GPGroup']
 
-    
+    return gpg, greaterthan(gpg, last)
+
 
 def GPG_all_helper(genes_df,df_all):
 
     GPGall = set()
-    for pept in genes_df.gene_PeptideSet:
+    for pept in genes_df.e2g_PeptideSet:
         shared_values = [value for value in
-                         df_all[df_all['gene_PeptidePrint'].str.contains(
-                              pept,regex=False)].gene_GPGroup.values]
+                         df_all[df_all['e2g_PeptidePrint'].str.contains(
+                              pept,regex=False)].e2g_GPGroup.values]
         # regex=False since we don't need regex, and is faster.
-        for s in shared_values: 
+        for s in shared_values:
             if s !='' : GPGall.add(s)
-        
-    return str([k for k in GPGall]).strip('[').strip(']')    
+
+    return str([k for k in GPGall]).strip('[').strip(']')
         #df_all[df_all['_e2g_PeptideSet'].str.contains(pept)
-        
+
 def capacity_grabber(geneid, gene_metadata):
     genefraglengths=[]
 
@@ -979,10 +978,9 @@ def capacity_grabber(geneid, gene_metadata):
     #    capacity = sel.loc[0]['psm_ProteinCapacity'].split(',')[lst_indx]
     if not genefraglengths:
          genefraglengths.append(0)
-         
+
     return mean(genefraglengths)
-        
-  
+
 def regex_pattern_all(items):
      patterns=[]
      for item in items:
