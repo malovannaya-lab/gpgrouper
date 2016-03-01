@@ -360,11 +360,43 @@ def flag_AUC_PSM(usrdata, FilterValues):
     return usrdata
 
 def gene_taxon_map(usrdata, gene_taxon_dict):
-    """make 'gene_taxon_map' column per row which displays taxon for given gene""" 
+    """make 'gene_taxon_map' column per row which displays taxon for given gene"""
 
     usrdata['gene_taxon_map'] = usrdata.apply(lambda x : gene_to_taxon(
         x['psm_GeneID'], gene_taxon_dict), axis=1)
-    return usrdata 
+    return usrdata
+
+def get_all_taxons(taxonidlist):
+    """Return a set of all taxonids from
+    usrdata.psm_TaxonIDList"""
+
+    taxon_ids = set(','.join(x for x in taxonidlist
+                             if x).split(','))
+    return taxon_ids
+
+def multi_taxon_splitter(taxon_ids, usrdata, gid_ignore_list, area_col):
+    """Plugin for multiple taxons
+    Returns a dictionary with the totals for each detected taxon"""
+    taxon_totals = dict()
+    for taxon in taxon_ids:
+        #all_others = [x for x in taxon_ids if x != taxon]
+        uniq_taxon = usrdata[
+            #(usrdata._data_tTaxonIDList.str.contains(taxon)) &
+            #(~usrdata._data_tTaxonIDList.str.contains('|'.join(all_others)))&
+            (usrdata['psm_TaxonIDList'] == taxon) &
+            #(usrdata['psm_PSM_IDG']<9) &  # this is redunant with AUC_UseFLAG
+            (~usrdata['psm_GeneID'].isin(gid_ignore_list)) &
+            (usrdata['psm_AUC_useflag'] == 1)
+        ]
+        taxon_totals[taxon] = (uniq_taxon[area_col] / uniq_taxon['psm_GeneCount']).sum()
+        tot_unique = sum(taxon_totals.values())  #sum of unique
+        # now compute ratio:
+    for taxon in taxon_ids:
+        taxon_totals[taxon] = taxon_totals[taxon] / tot_unique
+        print(taxon, ' ratio : ', taxon_totals[taxon])
+        #logfile.write('{} ratio : {}\n'.format(taxon, taxon_totals[taxon]))
+    return taxon_totals
+
 def grouper(usrfile, usrdata, exp_setup, FilterValues, usedb=False, outdir='', *args):
     #import RefseqInfo
 
@@ -475,38 +507,35 @@ def grouper(usrfile, usrdata, exp_setup, FilterValues, usedb=False, outdir='', *
     usrdata = gene_taxon_map(usrdata, gene_taxon_dict)
     # Flag good quality peptides
         # ======================== Plugin for multiple taxons  ===================== #
-    taxon_ids = set(','.join(x for x in usrdata.psm_TaxonIDList.tolist()
-                             if x).split(','))    
+    taxon_ids = get_all_taxons(usrdata['psm_TaxonIDList'].tolist())
     #area_col_new = 'psm_Area_taxonAdj'
-    #quick_save(gene_taxon_dict, name='gene_taxon_dict.p', q=True)
     taxon_totals = dict()
     if len(taxon_ids) == 1:  # just 1 taxon id present
         taxon_totals[list(taxon_ids)[0]] = 1  # taxon_ids is a set
     #    usrdata[area_col_new] = usrdata[area_col]
     elif len(taxon_ids) > 1:  # more than 1 taxon id
+        taxon_totals = multi_taxon_splitter(taxon_ids, usrdata, gid_ignore_list, area_col)
         print('Multiple taxons found, redistributing areas...')
         logfile.write('{} | Multiple taxons found, '\
                       'redistributing areas.\n'.format(time.ctime()))
         #usrdata[area_col_new] = 0
-        for taxon in taxon_ids:
+        #for taxon in taxon_ids:
             #all_others = [x for x in taxon_ids if x != taxon]
-            uniq_taxon = usrdata[
+            #uniq_taxon = usrdata[
                 #(usrdata._data_tTaxonIDList.str.contains(taxon)) &
                 #(~usrdata._data_tTaxonIDList.str.contains('|'.join(all_others)))&
-                (usrdata['psm_TaxonIDList'] == taxon) &
+                #(usrdata['psm_TaxonIDList'] == taxon) &
                 #(usrdata['psm_PSM_IDG']<9) &  # this is redunant with AUC_UseFLAG
-                (~usrdata['psm_GeneID'].isin(gid_ignore_list)) &
-                (usrdata['psm_AUC_useflag'] == 1)
-                ]
-            taxon_totals[taxon] = (uniq_taxon[area_col] / uniq_taxon['psm_GeneCount']).sum()
-
-
-        tot_unique = sum(taxon_totals.values())  #sum of unique
+                #(~usrdata['psm_GeneID'].isin(gid_ignore_list)) &
+                #(usrdata['psm_AUC_useflag'] == 1)
+                #]
+            #taxon_totals[taxon] = (uniq_taxon[area_col] / uniq_taxon['psm_GeneCount']).sum()
+        #tot_unique = sum(taxon_totals.values())  #sum of unique
         # now compute ratio:
-        for taxon in taxon_ids:
-            taxon_totals[taxon] = taxon_totals[taxon] / tot_unique
-            print(taxon, ' ratio : ', taxon_totals[taxon])
-            logfile.write('{} ratio : {}\n'.format(taxon, taxon_totals[taxon]))
+        #for taxon in taxon_ids:
+            #taxon_totals[taxon] = taxon_totals[taxon] / tot_unique
+            #print(taxon, ' ratio : ', taxon_totals[taxon])
+            #logfile.write('{} ratio : {}\n'.format(taxon, taxon_totals[taxon]))
 
         ### We don't want to do this... ###
         #all_combos = [x for i in range(2, len(taxon_ids)+1) for x in
@@ -521,7 +550,6 @@ def grouper(usrfile, usrdata, exp_setup, FilterValues, usedb=False, outdir='', *
         #
         #usrdata.ix[usrdata.psm_TaxonCount==1, area_col_new] = usrdata[area_col]
         #area_col = area_col_new  # use new area col as the area column now
-        print()
         #sys.exit(0)
     # ========================================================================= #
     pd.options.mode.chained_assignment = None  # default='warn'
