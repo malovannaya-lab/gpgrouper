@@ -53,6 +53,7 @@ def cli(ctx, profile):
 
 pass_config = click.make_pass_decorator(Config)
 
+@cli.command(context_settings=CONTEXT_SETTINGS)
 @click.argument('profile', type=str)
 @pass_config
 def makeuser(config, profile):
@@ -60,6 +61,7 @@ def makeuser(config, profile):
     Note this happens automatically when chaining the
     --profile option with any subcommand."""
     config.user = profile
+    #click.echo('making user')
     parse_configfile()
 
 
@@ -77,7 +79,9 @@ def make_configfile(config):
                                'base_config.ini')
     parser.read(BASE_CONFIG)
     parser.set('profile', 'user', config.user)
-    write_configfile(parser)
+    CONFIG_FILE = os.path.join(CONFIG_DIR, 'config.ini')
+    #click.echo(CONFIG_FILE)
+    write_configfile(CONFIG_FILE, parser)
     click.echo('Creating new profile : {}'.format(config.user))
 
 def write_configfile(CONFIG_FILE, parser):
