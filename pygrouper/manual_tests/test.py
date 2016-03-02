@@ -9,11 +9,11 @@ from pygrouper import pygrouper
 #import pygrouper
 
 
-print('Initializing pygrouper testing...')
-if not os.path.isdir('./testresults'):
+#print('Initializing pygrouper testing...')
+#if not os.path.isdir('./testresults'):
 #    print('Removing previous test results.')
 #    shutil.rmtree('./testresults')
-    os.mkdir('./testresults')
+#    os.mkdir('./testresults')
 
 BASE_DIR = os.path.dirname(os.path.realpath(__file__))
 
@@ -90,20 +90,22 @@ def make_processes(max_processes, data_args):
     return (processes, more)
 
 
-def runtest(quick=False, prof=False, testone=False):
+def runtest(quick=False, prof=False, testone=False, **kwargs):
     inputdir = BASE_DIR
     files, setups, inputdir = grab_data(quick, prof)
     if testone: # overwrite previous
         files, setups =  grab_one()
     if inputdir is None:
         inputdir = os.getcwd()
+    kwargs['outputdir'] = './testresults'
     print('Files for testing :')
     files = [os.path.join(BASE_DIR, f) for f in files]
     for f in files:
         print(f)
+    print('running test')
     pygrouper.main(usrfiles=files, exp_setups=setups,
-                   automated=True, inputdir=inputdir,
-                   outputdir='./testresults', usedb=False)
+                   automated=True, 
+                   usedb=False, **kwargs)
 
 if __name__ == '__main__':
 

@@ -12,7 +12,8 @@ try:
     from bcmproteomics import ispec
     bcmprot = True
 except ImportError:
-    import bcmproteomics as ispec
+    #import bcmproteomics as ispec
+    pass
 
 
 def experiment_checker():
@@ -94,7 +95,7 @@ def experiment_checker():
     #    db.add_experiments(newexps)
     #conn.close()
 
-def file_checker(INPUT_DIR, OUTPUT_DIR, maxqueue):
+def file_checker(INPUT_DIR, OUTPUT_DIR, maxqueue, **kwargs):
     """Docstring
     """
     validfiles = [f for f in os.listdir(INPUT_DIR) if '.txt' in f]
@@ -161,20 +162,35 @@ def file_checker(INPUT_DIR, OUTPUT_DIR, maxqueue):
             conn.commit()
     if len(usrfiles) > 0:
         pygrouper.main(usrfiles=usrfiles, exp_setups=setups, automated=True,
-                       inputdir=INPUT_DIR, outputdir=OUTPUT_DIR, usedb=True)
+                       inputdir=INPUT_DIR, outputdir=OUTPUT_DIR, usedb=True, **kwargs)
     #session.close()
 
-def schedule(INTERVAL, args):
+def schedule(INTERVAL, args, **kwargs):
     print('{} : Checking for new experiments.'.format(time.ctime()))
     INPUT_DIR = args[0]
     experiment_checker()
     #db.get_ispec_experiment_info(os.path.join(INPUT_DIR,ispecf), todb=True, norepeats=True)
-    file_checker(*args)
+    file_checker(*args, **kwargs)
+    #print(INTERVAL, args) 
+    #for kwarg in kwargs:
+    #    print(kwarg)
     global thread
-    thread = threading.Timer(INTERVAL, schedule, [INTERVAL, args])
+    thread = threading.Timer(INTERVAL, schedule, [INTERVAL, args, kwargs])
     print('{} : Sleeping... Press Enter to wake or [exit] to'\
           ' end.'.format(time.ctime()), end='\n\n')
     thread.start()
+
+def interval_check(INTERVAL, INPUT_DIR, OUTPUT_DIR, maxfiles, **kwargs):
+    """Interval check function similar to the one found in __name__=='__main__'"""
+    while True:
+        schedule(INTERVAL, [INPUT_DIR, OUTPUT_DIR, maxfiles, kwargs])
+        usr = input()
+        if usr.lower() == 'exit':
+            print('Goodbye\n')
+            thread.cancel()
+            break
+        else:
+            thread.cancel()
 
 if __name__ == '__main__':
     print('parser time first')

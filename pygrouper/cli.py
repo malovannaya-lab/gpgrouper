@@ -3,6 +3,7 @@ from configparser import ConfigParser
 import click
 from pygrouper.manual_tests import test as manual_test
 from pygrouper import subfuncts
+from pygrouper import auto_grouper
 __author__ = 'Alexander B. Saltzman'
 __copyright__ = 'Copyright January 2016'
 __credits__ = ['Alexander B. Saltzman', 'Anna Malovannaya']
@@ -12,7 +13,11 @@ __maintainer__ = 'Alexander B. Saltzman'
 __email__ = 'saltzman@bcm.edu'
 
 
+#HOMEDIR = os.path.expanduser('~')
+PROFILE_DIR = click.get_app_dir('pygrouper', roaming=False, force_posix=True)
+#PROFILE_DIR = os.path.join(HOMEDIR, '.pygrouper')
 CONTEXT_SETTINGS = dict(help_option_names=['-h', '--help'])
+
 class Config(object):
 
     def __init__(self, user='profile_default'):
@@ -20,18 +25,19 @@ class Config(object):
         self.ispec_url = None
         self.database = None
         self.outfile = '-'
+        self.inputdir = PROFILE_DIR
         self.filtervalues = dict()
         self.column_aliases = dict()
-        self.CONFIG_DIR = '.'
-
+        self.CONFIG_DIR = PROFILE_DIR
+        self.inputdir = PROFILE_DIR
+        self.outputdir = PROFILE_DIR
+        self.rawfiledir = PROFILE_DIR
+        self.refseqs = dict()
 class CaseConfigParser(ConfigParser):
     def optionxform(self, optionstr):
         return optionstr
 parser = ConfigParser(comment_prefixes=(';')) # allow number sign to be read in configfile
 parser.optionxform = str
-#HOMEDIR = os.path.expanduser('~')
-PROFILE_DIR = click.get_app_dir('pygrouper', roaming=False, force_posix=True)
-#PROFILE_DIR = os.path.join(HOMEDIR, '.pygrouper')
 
 
 @click.group()
@@ -94,6 +100,7 @@ def get_configfile(config):
 
 @pass_config
 def parse_configfile(config):
+    """Parse the configfile and update the variables in a Config object"""
     parser = get_configfile()
     config.inputdir = parser.get('directories', 'inputdir')
     config.outputdir = parser.get('directories', 'outputdir')
@@ -112,25 +119,31 @@ def parse_configfile(config):
     for column in parser['column names']:
         column_aliases[column] = [x.strip() for x in
                                parser.get('column names', column).splitlines() if x]
-    config.ccolum_aliases = column_aliases
+    config.column_aliases = column_aliases
+    refseqs = dict()
+    for taxon, location in parser.items('refseq locations'):
+        refseqs[taxon] = {'loc': location,
+                          'size': parser.getfloat('refseq file sizes', taxon)} 
+    config.refseqs = refseqs
 
 
 @cli.command(context_settings=CONTEXT_SETTINGS)
 @click.option('-q', '--quick', is_flag=True, help='Run a single small file')
 @click.option('-p', '--profile', is_flag=True, help='Run a large profiling file with multiple taxons')
-def test(quick, profile ):
+@pass_config
+def test(config, quick, profile ):
     """Test pygrouper with some pre-existing data."""
-    manual_test.runtest(quick, profile)
-
-@cli.command(context_settings=CONTEXT_SETTINGS)
-@click.option('-m', '--max-files', type=int, default=999,
-              help=('Set a maximum number of experiments to queue'))
-@click.option('-d', '--dry-run', is_flag=True, help='Test autorun without actually running')
-def autorun(max_files, dry_run):
-   click.echo(max_files)
-   if dry_run:
-       click.echo('Dry run, not executing autorun')
-       return
+    parse_configfile()
+    INPUT_DIR = config.inputdir
+    OUTPUT_DIR = config.outputdir
+    RAWFILE_DIR = config.rawfiledir
+    refseqs = config.refseqs
+    filtervalues = config.filtervalues
+    column_aliases = config.column_aliases
+    print(column_aliases)
+    manual_test.runtest(quick, profile, inputdir=INPUT_DIR, outputdir=OUTPUT_DIR,
+                        rawfilepath=RAWFILE_DIR, refs=refseqs, FilterValues=filtervalues,
+                        column_aliases=column_aliases, configpassed=True)
 
 @cli.command(context_settings=CONTEXT_SETTINGS)
 @click.argument('taxonid', type=int)
@@ -159,5 +172,27 @@ def setpath(config, path_type, path):
     parser.set('directories', category, path)
     write_configfile(config.CONFIG_FILE, parser)
     click.echo('Updating {} to {}'.format(category, path))
-#@cli.command(context_settings=CONTEXT_SETTINGS)
-#@click.
+
+@cli.command(context_settings=CONTEXT_SETTINGS)
+@click.option('-a', '--autorun', is_flag=True,
+              help='Run automatically by scanning directory and connecting to iSPEC')
+@click.option('-m', '--max-files', type=int, default=99,
+              help='Maximum number of experiments to quene for autorun')
+@pass_config
+def run(config, autorun, max_files):
+    """Run PyGrouper"""
+    parse_configfile()
+    INPUT_DIR = config.inputdir
+    OUTPUT_DIR = config.outputdir
+    RAWFILE_DIR = config.rawfiledir
+    refseqs = config.refseqs
+    filtervalues = config.filtervalues
+    column_aliases = config.column_aliases
+    if autorun:
+        auto_grouper.interval_check(3600, INPUT_DIR, OUTPUT_DIR,
+                                    max_files, rawfilepath=RAWFILE_DIR,
+                                    refs=refseqs, FilterValues=filtervalues,
+                                    column_aliases=column_aliases, configpassed=True)
+    else:
+        click.echo('Not implemented yet')
+        usrfile = click.prompt('Enter a file to group', type=click.Path(exists=True))

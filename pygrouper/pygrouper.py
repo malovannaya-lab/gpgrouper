@@ -923,14 +923,13 @@ def make_processes(max_processes, data_args):
     return (processes, more)
 
 def main(usrfiles=[], exp_setups=[], automated=False, setup=False, fullpeptread=False,
-         usedb=False, inputdir='', outputdir=''):
+         usedb=False, inputdir='', outputdir='', refs=dict(), rawfilepath=None,
+         FilterValues=dict(), column_aliases=dict(), configpassed=False):
     """
     usedb : Connect to the iSPEC database and update some record information.
             This does not currently import the results, but does import some metada.
     """
     # ===================Configuration Setup / Loading==========================#
-
-    refs = {}
     if usedb:
         if bcmprot:  # try to connect to iSPEC first
             conn = ispec.filedb_connect()
@@ -938,29 +937,32 @@ def main(usrfiles=[], exp_setups=[], automated=False, setup=False, fullpeptread=
                 print(conn)
                 sys.exit(1)
 
-    if not os.path.isfile(os.path.join(BASE_DIR,'py_config.ini')):
-        input("No config file detected. Don't worry, we'll make one now\n"\
-              "Press [Enter] to continue")
-        pysetup()
-    elif setup:
-        pysetup()
-    parser = ConfigParser(comment_prefixes=(';')) # allow number sign to be read in configfile
-    parser.optionxform = str  # preserve case
-    parser.read(os.path.join(BASE_DIR,'py_config.ini'))
-    try:
-        rawfilepath = parser.items('rawfilepath')[0][1]
-    except NoSectionError:
-        rawfilepath = ''
+    #if not os.path.isfile(os.path.join(BASE_DIR,'py_config.ini')):
+        #input("No config file detected. Don't worry, we'll make one now\n"\
+              #"Press [Enter] to continue")
+        #pysetup()
+    #elif setup:
+        #pysetup()
+    if not configpassed:
+        parser = ConfigParser(comment_prefixes=(';')) # allow number sign to be read in configfile
+        parser.optionxform = str  # preserve case
+        parser.read(os.path.join(BASE_DIR,'py_config.ini'))
+        try:
+            rawfilepath = parser.items('rawfilepath')[0][1]
+        except NoSectionError:
+            rawfilepath = ''
 
     pept_breakups = {}
     breakup_size = 4
-    for taxon, location in parser.items('refseq locations'):
-        refs[taxon] = {'loc': location,
-                       'size': parser.getfloat('refseq file sizes',
-                        taxon)}  # access and store preconfigured reference info
-        if fullpeptread:
-            pept_breakups[taxon] = [(0, int(refs[taxon]['size']))]
-        else:
+    if refs:
+        for taxon in refs:
+            pept_breakups[taxon] = [(0, int(ceil(refs[taxon]['size'] / \
+                                                 breakup_size)))] * breakup_size
+    elif not refs:
+        for taxon, location in parser.items('refseq locations'):
+            refs[taxon] = {'loc': location,
+                           'size': parser.getfloat('refseq file sizes',
+                                                   taxon)}  # access and store preconfigured reference info
             pept_breakups[taxon] = [(0, int(ceil(refs[taxon]['size'] / \
                                                  breakup_size)))] * breakup_size
 
@@ -975,25 +977,27 @@ def main(usrfiles=[], exp_setups=[], automated=False, setup=False, fullpeptread=
     print('\nrelease date: {}'.format(__copyright__))
     print('Python version ' + sys.version)
     print('Pandas version: ' + pd.__version__)
-
-    FilterValues = {'Filter_IS': 7, 'Filter_qV': 0.05, 'Filter_PEP': 'all',
-                    'Filter_IDG': 'all', 'Filter_Z_min': 2,'Filter_Z_max': 4,
-                    'Filter_Modi': 3}  # defaults
+    if not FilterValues:
+        FilterValues = {'Filter_IS': 7, 'Filter_qV': 0.05, 'Filter_PEP': 'all',
+                        'Filter_IDG': 'all', 'Filter_Z_min': 2,'Filter_Z_max': 4,
+                        'Filter_Modi': 3}  # defaults
     Filter_Stamp ='is{}_qv{}_pep{}_idg{}_z{}to{}mo{}'.format(
         FilterValues['Filter_IS'],
         FilterValues['Filter_qV'] * 100,
         FilterValues['Filter_PEP'],
-        FilterValues['Filter_IDG'], 
+        FilterValues['Filter_IDG'],
         FilterValues['Filter_Z_min'],
-        FilterValues['Filter_Z_max'], 
+        FilterValues['Filter_Z_max'],
         FilterValues['Filter_Modi'])
 
     print('\nFilter values set to : {}'.format(Filter_Stamp))
 
     if not automated:
-        usr_name, usrfiles, exp_setups = user_cli(FilterValues, usrfiles=[],
-                                                  exp_setups=[], usedb=usedb,
-                                                  inputdir='', outputdir='')
+        print('Not implemented')
+        sys.exit(1)
+        #usr_name, usrfiles, exp_setups = user_cli(FilterValues, usrfiles=[],
+        #                                          exp_setups=[], usedb=usedb,
+        #                                          inputdir='', outputdir='')
         # user manually enters files to group
 
     startTime = datetime.now()
@@ -1004,17 +1008,18 @@ def main(usrfiles=[], exp_setups=[], automated=False, setup=False, fullpeptread=
     logging.info('Start at {}'.format(startTime))
     if fullpeptread: print('Running with fullpeptread option')
     usrdatas = []
-    column_aliases = dict(parser.items('column names'))
-    for key in column_aliases:  # find the right column name
-        if key.startswith('psm_') or key.startswith('e2g_'):
-            column_aliases[key] = list(filter(None,
-                                              (x.strip() for
-                                               x in column_aliases[key].splitlines())))[-1]
-            
-        else:
-            column_aliases[key] = list(filter(None,
-                                          (x.strip() for
-                                           x in column_aliases[key].splitlines())))
+    if not column_aliases:
+        column_aliases = dict(parser.items('column names'))
+        for key in column_aliases:  # find the right column name
+            if key.startswith('psm_') or key.startswith('e2g_'):
+                column_aliases[key] = list(filter(None,
+                                                  (x.strip() for
+                                                   x in column_aliases[key].splitlines())))[-1]
+
+            else:
+                column_aliases[key] = list(filter(None,
+                                                  (x.strip() for
+                                                   x in column_aliases[key].splitlines())))
     for usrfile in usrfiles:  # load all data
         usrdatas.append(pd.read_csv(os.path.join(inputdir,usrfile), sep='\t'))
     for usrdata, exp_setup in zip(usrdatas, exp_setups):
