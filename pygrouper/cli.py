@@ -146,9 +146,11 @@ def test(config, quick, profile ):
     refseqs = config.refseqs
     filtervalues = config.filtervalues
     column_aliases = config.column_aliases
+    gid_ignore_file = os.path.join(config.CONFIG_DIR, 'geneignore.txt')
     manual_test.runtest(quick, profile, inputdir=INPUT_DIR, outputdir=OUTPUT_DIR,
                         rawfilepath=RAWFILE_DIR, refs=refseqs, FilterValues=filtervalues,
-                        column_aliases=column_aliases, configpassed=True)
+                        column_aliases=column_aliases, gid_ignore_file=gid_ignore_file,
+                        configpassed=True)
 
 @cli.command(context_settings=CONTEXT_SETTINGS)
 @click.argument('taxonid', type=int)
@@ -193,11 +195,14 @@ def run(config, autorun, max_files):
     refseqs = config.refseqs
     filtervalues = config.filtervalues
     column_aliases = config.column_aliases
+    gid_ignore_file = os.path.join(config.CONFIG_DIR, 'geneignore.txt')
     if autorun:
         auto_grouper.interval_check(3600, INPUT_DIR, OUTPUT_DIR,
                                     max_files, rawfilepath=RAWFILE_DIR,
                                     refs=refseqs, FilterValues=filtervalues,
-                                    column_aliases=column_aliases, configpassed=True)
+                                    column_aliases=column_aliases,
+                                    gid_ignore_file=gid_ignore_file,
+                                    configpassed=True)
     else:
         click.echo('Not implemented yet')
         usrfile = click.prompt('Enter a file to group', type=click.Path(exists=True))

@@ -506,7 +506,8 @@ def set_gene_gpgroups(genes_df):
     #strings, convert all strings to NaN
     return genes_df
 
-def grouper(usrfile, usrdata, exp_setup, FilterValues, usedb=False, outdir='', *args):
+def grouper(usrfile, usrdata, exp_setup, FilterValues, usedb=False, outdir='',
+            gid_ignore_file='', *args):
     """Function to group a psm file from PD after Mascot Search"""
     #import RefseqInfo
 
@@ -514,7 +515,7 @@ def grouper(usrfile, usrdata, exp_setup, FilterValues, usedb=False, outdir='', *
         print('Updating iSPEC after grouping')
     usrfile = os.path.split(usrfile)[1]
     # file with entry of gene ids to ignore for normalizations
-    gid_ignore_file = 'pygrouper_geneignore.txt'
+    #gid_ignore_file = 'pygrouper_geneignore.txt'
     gid_ignore_list = []
 
     usrdata_out = '_'.join(str(x) for x in [exp_setup['EXPRecNo'],
@@ -522,7 +523,6 @@ def grouper(usrfile, usrdata, exp_setup, FilterValues, usedb=False, outdir='', *
                                             exp_setup['EXPSearchNo'],
                                             exp_setup['EXPLabelType'],
                                             'psms.tab'])
-
     if os.path.isfile(gid_ignore_file):
         print('Using gene filter file for normalization.')
         gid_ignore_list = get_gid_ignore_list(gid_ignore_file)
@@ -822,7 +822,7 @@ def grouper(usrfile, usrdata, exp_setup, FilterValues, usedb=False, outdir='', *
 
 def main(usrfiles=[], exp_setups=[], automated=False, setup=False, fullpeptread=False,
          usedb=False, inputdir='', outputdir='', refs=dict(), rawfilepath=None,
-         FilterValues=dict(), column_aliases=dict(), configpassed=False):
+         FilterValues=dict(), column_aliases=dict(), gid_ignore_file='', configpassed=False):
     """
     usedb : Connect to the iSPEC database and update some record information.
             This does not currently import the results, but does import some metada.
@@ -1031,7 +1031,8 @@ def main(usrfiles=[], exp_setups=[], automated=False, setup=False, fullpeptread=
     #pool.join()
     for usrfile, usrdata, esetup in zip(usrfiles, usrdatas, exp_setups):
         try:
-            grouper(usrfile, usrdata, esetup, FilterValues, usedb=usedb, outdir=outputdir)
+            grouper(usrfile, usrdata, esetup, FilterValues, usedb=usedb, outdir=outputdir,
+                    gid_ignore_file=gid_ignore_file)
         except Exception as e:  # catch and store all exceptions, won't crash
                                 # the whole program at least
             failed_exps.append((usrfile, e))
