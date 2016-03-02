@@ -844,7 +844,7 @@ def area_calculator(gene_df, usrdata, area_col, normalization, EXPTechRepNo=1):
     #          sum(uniq_values_adj)/normalization)
     return result
 
-def AUC_distributor(inputdata, genes_df, area_col):
+def AUC_distributor(inputdata, genes_df, area_col, taxon_totals):
     """Row based normalization of PSM area (mapped to a specific gene).
     Normalization is based on the ratio of the area of unique peptides for the
     specific gene to the sum of the areas of the unique peptides for all other genes
@@ -881,7 +881,8 @@ def AUC_distributor(inputdata, genes_df, area_col):
         #ratio of u2g peptides over total area
 
     elif u2gPept == 0:  # no uniques, normalize by genecount
-        try: distArea = inputvalue/inputdata.psm_GeneCount
+        try:
+            distArea = inputvalue/inputdata.psm_GeneCount * taxon_totals.get(inputdata.gene_taxon_map, 1)
         except ZeroDivisionError: distArea = inputvalue
 
     return distArea

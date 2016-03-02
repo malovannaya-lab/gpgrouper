@@ -450,15 +450,16 @@ def calculate_protein_area(genes_df, temp_df, area_col, normalize):
                 list(zip(*genes_df.apply(area_calculator,
                                     args=(temp_df,
                                            area_col, normalize),
-                                     axis=1))) 
+                                     axis=1)))
     return genes_df
 
-def distribute_psm_area(temp_df, genes_df, area_col):
+def distribute_psm_area(temp_df, genes_df, area_col, taxon_totals):
    """Distribute psm area based on unique gene product area"""
 
    temp_df['psm_PrecursorArea_dstrAdj'] = temp_df.apply(
        AUC_distributor,args=(genes_df,
-                             area_col,),
+                             area_col,
+                             taxon_totals),
        axis=1)
    return temp_df
 
@@ -717,7 +718,7 @@ def grouper(usrfile, usrdata, exp_setup, FilterValues, usedb=False, outdir='', *
                 time.ctime()))
             #quick_save(genes_df,name='genesdf_snapshot.p', path=None, q=False)
             #quick_save(temp_df,name='tempdf_snapshot.p', path=None, q=True)
-            temp_df = distribute_psm_area(temp_df, genes_df, area_col)
+            temp_df = distribute_psm_area(temp_df, genes_df, area_col, taxon_totals)
 
             print('{}: Assigning gene sets and groups for {}.'.format(
                 datetime.now(), usrfile))
@@ -833,7 +834,7 @@ def grouper(usrfile, usrdata, exp_setup, FilterValues, usedb=False, outdir='', *
                  'psm_HID', 'psm_HIDList', 'psm_HIDCount',
                  'psm_TaxonID', 'psm_TaxonIDList', 'psm_TaxonCount',
                  'psm_PSM_IDG', 'psm_SequenceModi',
-                 'psm_SequenceModiCount', 'psm_LabelFLAG', 
+                 'psm_SequenceModiCount', 'psm_LabelFLAG',
                  'psm_PeptRank', 'psm_AUC_UseFLAG', 'psm_PSM_UseFLAG',
                  'psm_Peak_UseFLAG', 'psm_SequenceArea', 'psm_PrecursorArea_dstrAdj']
     #usrdata.to_csv(usrdata_out, columns=usrdata.columns,
