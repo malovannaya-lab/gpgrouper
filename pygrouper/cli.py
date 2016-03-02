@@ -140,7 +140,6 @@ def test(config, quick, profile ):
     refseqs = config.refseqs
     filtervalues = config.filtervalues
     column_aliases = config.column_aliases
-    print(column_aliases)
     manual_test.runtest(quick, profile, inputdir=INPUT_DIR, outputdir=OUTPUT_DIR,
                         rawfilepath=RAWFILE_DIR, refs=refseqs, FilterValues=filtervalues,
                         column_aliases=column_aliases, configpassed=True)

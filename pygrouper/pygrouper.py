@@ -155,7 +155,7 @@ def get_gid_ignore_list(inputfile):
     """Input a file with a list of geneids to ignore when normalizing across taxa
     Each line should have 1 geneid on it.
     Use '#' at the start of the line for comments
-    Output a list of geneids to ignore. 
+    Output a list of geneids to ignore.
     """
     # Don't convert GIDs to ints,
     # GIDs are not ints for the input data
@@ -164,7 +164,7 @@ def get_gid_ignore_list(inputfile):
 
 def extract_metadata(metadatainfo):
     """Extract metadata into a dictionary
-    Input is a 
+    Input is a
     Returned dictionary structure:
         geneid -> [(taxonid, homologeneid, proteingi, genefraglen)]
     with 1 or more entries
@@ -186,7 +186,7 @@ def gene_taxon_mapper(gene_metadata):
 
 def extract_genelist(usrdata):
     """Calls genelist_extractor by row on input DataFrame which returns
-    list of genes (string), 
+    list of genes (string),
     number of genes
     list of taxonids (string),
     number of taxonids,
@@ -206,7 +206,7 @@ def extract_genelist(usrdata):
 def assign_IDG(usrdata):
     """Assign IDG bsaed on combination of
     IonScore and q_value"""
-    
+
     usrdata['psm_PSM_IDG'] = usrdata.apply(lambda x:
                                            IDG_picker(x['IonScore'],
                                                       x['q_value']), axis=1) 
@@ -267,12 +267,12 @@ def auc_reflagger(usrdata, area_col):
     no_dups['AUC_reflagger'] = 1
     usrdata = usrdata.join(no_dups[['AUC_reflagger']])
     usrdata['AUC_reflagger'] = usrdata['AUC_reflagger'].fillna(0)
-    area_col = 'psm_SequenceArea'  
+    area_col = 'psm_SequenceArea'
     return usrdata, area_col
 
 def update_database(**kwargs):
     """Update iSPEC database with some metadata information
-    """ 
+    """
     print('{} | Updating experiment runs table in iSPEC.'.format(time.ctime()))
     conn = ispec.filedb_connect()
     sql = ("UPDATE iSPEC_ExperimentRuns "
@@ -820,31 +820,6 @@ def grouper(usrfile, usrdata, exp_setup, FilterValues, usedb=False, outdir='', *
               [str(exp_setup['EXPRecNo'])+'_'+str(exp_setup['EXPRunNo']
               )])))
 
-def determine_processes():
-    """Determine how many processes to set based on cpu cores"""
-    cores = mp.cpu_count()
-    if cores < 3:
-        return 1
-    elif cores < 5:
-        return 3
-    elif cores < 9:
-        return 6
-    else:
-        return 9
-
-def make_processes(max_processes, data_args):
-
-    processes = []
-    more = True
-    while len(processes) <= max_processes:
-        try:
-            inputs = next(data_args)
-            processes.append(mp.Process(target=grouper, args=inputs))
-        except StopIteration:
-            more = False
-
-    return (processes, more)
-
 def main(usrfiles=[], exp_setups=[], automated=False, setup=False, fullpeptread=False,
          usedb=False, inputdir='', outputdir='', refs=dict(), rawfilepath=None,
          FilterValues=dict(), column_aliases=dict(), configpassed=False):
@@ -1036,8 +1011,6 @@ def main(usrfiles=[], exp_setups=[], automated=False, setup=False, fullpeptread=
     logging.info('{}: Finished matching peptides to'\
                  'genes.'.format(datetime.now()))
     failed_exps = []
-    max_processes = determine_processes()
-    max_processes = 2
     #pool = mp.Pool(processes=2)
     grouperdata = zip(usrfiles, usrdatas, exp_setups, repeat(FilterValues),
                       repeat(usedb), repeat(outputdir))
