@@ -791,7 +791,7 @@ def pept_print(df,usrdata):
     return (set(sorted(matches.Sequence)), pepts_str, protcount, uniques,
          protcount_S, uniques_S)        
     
-def e2g_PSM_helper(gene_df_ID, data, EXPTechRepNo):
+def e2g_PSM_helper(gene_df_ID, data, EXPTechRepNo=1):
     total = data[
                 data['psm_GeneID']==gene_df_ID]\
                 ['psm_PSM_UseFLAG'].sum()/EXPTechRepNo
@@ -810,7 +810,7 @@ def e2g_PSM_helper(gene_df_ID, data, EXPTechRepNo):
     #for match in matches:
     return total, total_u2g, total_S, total_S_u2g
   
-def area_calculator(gene_df, usrdata, EXPTechRepNo,area_col, normalization):
+def area_calculator(gene_df, usrdata, area_col, normalization, EXPTechRepNo=1):
 
     matches  = usrdata[(usrdata['psm_GeneID'] == gene_df['e2g_GeneID']) &
                            (usrdata['psm_AUC_UseFLAG']==1)] [
