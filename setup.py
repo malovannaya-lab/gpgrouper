@@ -16,7 +16,7 @@ setup(
     #py_modules=['pygrouper'],
     packages=find_packages(),
     install_requires=[
-        'Click', 'pandas',
+        'Click',
     ],
     entry_points="""
     [console_scripts]
