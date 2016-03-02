@@ -881,8 +881,12 @@ def AUC_distributor(inputdata, genes_df, area_col, taxon_totals):
         #ratio of u2g peptides over total area
 
     elif u2gPept == 0:  # no uniques, normalize by genecount
-        try:
-            distArea = inputvalue/inputdata.psm_GeneCount * taxon_totals.get(inputdata.gene_taxon_map, 1)
+        taxon_ratio = taxon_totals.get(inputdata.gene_taxon_map, 1)
+        try: # still needs work
+            if taxon_ratio < 1:
+                distArea = inputvalue * taxon_ratio
+            else:
+                distArea = inputvalue/inputdata.psm_GeneCount
         except ZeroDivisionError: distArea = inputvalue
 
     return distArea

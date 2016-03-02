@@ -475,7 +475,7 @@ def calculate_gene_dstrarea(genes_df, temp_df, normalize):
     """Calculate distributed area for each gene product"""
     genes_df['e2g_GPArea_dstrAdj'] = genes_df.apply(gene_AUC_sum,
                                                       args=(temp_df,
-                                                            normalize,), 
+                                                            normalize,),
                                                       axis=1)
     return genes_df
 
@@ -507,6 +507,7 @@ def set_gene_gpgroups(genes_df):
     return genes_df
 
 def grouper(usrfile, usrdata, exp_setup, FilterValues, usedb=False, outdir='', *args):
+    """Function to group a psm file from PD after Mascot Search"""
     #import RefseqInfo
 
     if exp_setup.get('add_to_db',False) == True:
@@ -550,16 +551,6 @@ def grouper(usrfile, usrdata, exp_setup, FilterValues, usedb=False, outdir='', *
 
 
     # ==================== Populate gene info ================================ #
-    
-    # -------------------- Populate gene, protein, homologene lists----------- #
-    #usrdata['_data_tGeneList'], usrdata['_data_tProteinList'],\
-    #usrdata['_data_GeneCount'], usrdata['_data_ProteinCount'],\
-    #usrdata['_data_tHIDList'], usrdata['_data_HIDCount'],\
-    #usrdata['_data_ProteinCapacity'], usrdata['_data_tTaxonIDList'],\
-    #usrdata['_data_TaxonCount'] = list(zip(
-    #    *usrdata.apply(lambda x:
-    #                   meta_extractor(x['metadatainfo']),axis=1)))
-    #------------------------------------------------------------------------- #
 
     usrdata['psm_HID'], usrdata['psm_ProteinGI'] = '', ''
     # potentially filled in later,
@@ -603,8 +594,6 @@ def grouper(usrfile, usrdata, exp_setup, FilterValues, usedb=False, outdir='', *
     # ========================================================================= #
     logfile.write('{} | Starting peptide ranking.\n'.format(time.ctime()))
 
-    #usrdata = rank_peptides(usrdata, area_col)
-
     logfile.write('{} | Peptide ranking complete.\n'.format(time.ctime()))
     print('{}: Peptide ranking complete for {}.'.format(datetime.now(), usrfile))
     logging.info('{}: Peptide ranking complete for {}.'.format(datetime.now(),
@@ -627,40 +616,6 @@ def grouper(usrfile, usrdata, exp_setup, FilterValues, usedb=False, outdir='', *
         print('Multiple taxons found, redistributing areas...')
         logfile.write('{} | Multiple taxons found, '\
                       'redistributing areas.\n'.format(time.ctime()))
-        #usrdata[area_col_new] = 0
-        #for taxon in taxon_ids:
-            #all_others = [x for x in taxon_ids if x != taxon]
-            #uniq_taxon = usrdata[
-                #(usrdata._data_tTaxonIDList.str.contains(taxon)) &
-                #(~usrdata._data_tTaxonIDList.str.contains('|'.join(all_others)))&
-                #(usrdata['psm_TaxonIDList'] == taxon) &
-                #(usrdata['psm_PSM_IDG']<9) &  # this is redunant with AUC_UseFLAG
-                #(~usrdata['psm_GeneID'].isin(gid_ignore_list)) &
-                #(usrdata['psm_AUC_UseFLAG'] == 1)
-                #]
-            #taxon_totals[taxon] = (uniq_taxon[area_col] / uniq_taxon['psm_GeneCount']).sum()
-        #tot_unique = sum(taxon_totals.values())  #sum of unique
-        # now compute ratio:
-        #for taxon in taxon_ids:
-            #taxon_totals[taxon] = taxon_totals[taxon] / tot_unique
-            #print(taxon, ' ratio : ', taxon_totals[taxon])
-            #logfile.write('{} ratio : {}\n'.format(taxon, taxon_totals[taxon]))
-
-        ### We don't want to do this... ###
-        #all_combos = [x for i in range(2, len(taxon_ids)+1) for x in
-        #              itertools.combinations(taxon_ids, i)] # list of tuples
-        #patterns = regex_pattern_all(all_combos)
-        #for taxons, pattern in zip(all_combos, patterns):
-        #    for taxon in taxons:
-        #        ratio = taxon_totals[taxon]
-        #        usrdata.ix[(usrdata.psm_tTaxonIDList.str.contains(pattern)) &
-        #                   (usrdata.gene_taxon_map == taxon),
-        #                   area_col_new] = usrdata[area_col] * ratio
-        #
-        #usrdata.ix[usrdata.psm_TaxonCount==1, area_col_new] = usrdata[area_col]
-        #area_col = area_col_new  # use new area col as the area column now
-        #sys.exit(0)
-    # ========================================================================= #
     pd.options.mode.chained_assignment = None  # default='warn'
 
     # none/SILAC loop
@@ -685,7 +640,6 @@ def grouper(usrfile, usrdata, exp_setup, FilterValues, usedb=False, outdir='', *
         # ==========Select only peptides flagged  with good quality=========== #
         temp_df = select_good_peptides(usrdata, label)
         # ==================================================================== #
-        #print(len(temp_df))  # for debugging
         if len(temp_df) > 0:  # only do if we actually have peptides selected
             genedata_out = '_'.join(str(x) for x in [exp_setup['EXPRecNo'],
                                                      exp_setup['EXPRunNo'],
@@ -716,8 +670,6 @@ def grouper(usrfile, usrdata, exp_setup, FilterValues, usedb=False, outdir='', *
                 datetime.now(), usrfile))
             logfile.write('{} | Calculating distributed area ratio.\n'.format(
                 time.ctime()))
-            #quick_save(genes_df,name='genesdf_snapshot.p', path=None, q=False)
-            #quick_save(temp_df,name='tempdf_snapshot.p', path=None, q=True)
             temp_df = distribute_psm_area(temp_df, genes_df, area_col, taxon_totals)
 
             print('{}: Assigning gene sets and groups for {}.'.format(
@@ -735,29 +687,7 @@ def grouper(usrfile, usrdata, exp_setup, FilterValues, usedb=False, outdir='', *
             genes_df['e2g_iBAQ'] = \
                 genes_df.e2g_GPArea_dstrAdj / genes_df.e2g_GeneCapacity
             genes_df = set_gene_gpgroups(genes_df)
-            # genes_df['e2g_GPGroup'] = ''
-            # genes_df.sort_values(by=['e2g_PSMs'], ascending=False, inplace=True)
-            # genes_df.index = list(range(0, len(genes_df)))
-            # last = 0
-            # for i in range(len(genes_df)):  # The logic behind it makes
-            #     #sense,
-            #     #but the implementation is weird.
-            # # print(last)  # for debugging
-            #     if genes_df.loc[i]['e2g_IDSet'] != 3:
-            #         genes_df.loc[i,'e2g_GPGroup'], lessthan = \
-            #         GPG_helper(genes_df.at[i,'e2g_IDSet'],
-            #                    genes_df.at[i,'e2g_PeptideSet'], \
-            #                    genes_df, last)
 
-            #     if isinstance(genes_df.loc[i]['e2g_GPGroup'],int) and not lessthan:
-            #         last = genes_df.loc[i, 'e2g_GPGroup']
-
-            # genes_df['e2g_GPGroups_All'] = genes_df.apply(GPG_all_helper,
-            #                                                args=(genes_df,),
-            #                                                axis=1)
-            # genes_df['e2g_GPGroup'].replace(to_replace='', value=float('NaN'),
-            #                                  inplace=True)  # can't sort int and
-            #strings, convert all strings to NaN
             genes_df.sort_values(by=['e2g_GPGroup'], ascending=True, inplace=True)
             genes_df.index = list(range(0, len(genes_df)))  # reset the index
             gpgcount += genes_df.e2g_GPGroup.max()  # do this before filling na
@@ -783,28 +713,21 @@ def grouper(usrfile, usrdata, exp_setup, FilterValues, usedb=False, outdir='', *
                             index=False, encoding='utf-8', sep='\t')
             logfile.write('{} | Export of genetable for labeltype {}'\
                           'completed.\n'.format(
-                              time.ctime(), 
+                              time.ctime(),
                               labeltypes[label]))
 
             # ========================================================================= #
-            # Peptide ranking 
-
-
-
-    # ========================================================================= #
 
     # ----------------End of none/silac loop--------------------------------- #
-
-
     usrdata.drop('metadatainfo', axis=1, inplace=True)  # Don't need this
                                       # column anymore.
-    print('Length of usrdata before merge : ',len(usrdata))
-    print('Length of temp_df : ',len(temp_df))
+    #print('Length of usrdata before merge : ',len(usrdata))
+    #print('Length of temp_df : ',len(temp_df))
     usrdata = pd.merge(usrdata, temp_df, how='left')
     usrdata = rank_peptides(usrdata, 'psm_PrecursorArea_dstrAdj')
     usrdata['psm_PeptRank'] = usrdata['psm_PeptRank'].fillna(0)  # anyone who
                               # didn't get a rank gets a rank of 0
-    print('Length of usrdata after merge : ',len(usrdata))
+    #print('Length of usrdata after merge : ',len(usrdata))
     usrdata['psm_EXPRecNo'], usrdata['psm_EXPRunNo'],\
     usrdata['psm_EXPSearchNo'],\
     usrdata['psm_EXPTechRepNo'] = exp_setup['EXPRecNo'],\
