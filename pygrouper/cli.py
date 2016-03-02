@@ -77,6 +77,8 @@ def make_configfile(config):
         os.mkdir(CONFIG_DIR)
     BASE_CONFIG = os.path.join(os.path.dirname(os.path.realpath(__file__)),
                                'base_config.ini')
+    #BASE_CONFIG = os.path.join()
+    click.echo(BASE_CONFIG)
     parser.read(BASE_CONFIG)
     parser.set('profile', 'user', config.user)
     CONFIG_FILE = os.path.join(CONFIG_DIR, 'config.ini')

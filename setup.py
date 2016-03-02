@@ -21,5 +21,8 @@ setup(
     entry_points="""
     [console_scripts]
     pygrouper=pygrouper.cli:cli
-    """
+    """,
+    package_data={
+        'pygrouper': ['base_config.ini']
+    }
 )
