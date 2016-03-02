@@ -1,5 +1,5 @@
 
-from setuptools import setup
+from setuptools import setup, find_packages
 def calculate_version(inputfile):
     version_list =  [x.split('\'')[1] for x in open(inputfile, 'r')
                      if x.startswith('__version__')]
@@ -13,7 +13,8 @@ package_version = calculate_version('./pygrouper/cli.py')
 setup(
     name='PyGrouper',
     version=package_version,
-    py_modules=['pygrouper'],
+    #py_modules=['pygrouper'],
+    packages=find_packages(),
     install_requires=[
         'Click', 'pandas',
     ],
