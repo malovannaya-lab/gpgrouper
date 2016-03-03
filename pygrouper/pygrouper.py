@@ -270,10 +270,12 @@ def auc_reflagger(usrdata, area_col):
     area_col = 'psm_SequenceArea'
     return usrdata, area_col
 
-def update_database(**kwargs):
+def update_database(program_title='version',exp_setup=dict(), matched_psms=0, unmatched_psms=0,
+                    usrfile='file', taxon_totals=dict(), **kwargs):
     """Update iSPEC database with some metadata information
     """
     print('{} | Updating experiment runs table in iSPEC.'.format(time.ctime()))
+    #print('Number of matched psms : ', matched_psms)
     conn = ispec.filedb_connect()
     sql = ("UPDATE iSPEC_ExperimentRuns "
            "SET exprun_Grouper_Version='{version}', "
@@ -284,6 +286,7 @@ def update_database(**kwargs):
            "exprun_InputFileName='{inputname}', "
            "exprun_Fraction_9606={hu}, "
            "exprun_Fraction_10090={mou} "
+           "exprun_Fraction_9031={gg} "
            "WHERE exprun_EXPRecNo={recno} "
            "AND exprun_EXPRunNo={runno} "
            "AND exprun_EXPSearchNo={searchno}").format(version=program_title,
@@ -294,6 +297,7 @@ def update_database(**kwargs):
                                                        inputname=usrfile,
                                                        hu=taxon_totals.get('9606', 0),
                                                        mou=taxon_totals.get('10090', 0),
+                                                       gg=taxon_totals.get('9031', 0),
                                                        recno=exp_setup['EXPRecNo'],
                                                        runno=exp_setup['EXPRunNo'],
                                                        searchno=exp_setup['EXPSearchNo'])
@@ -473,7 +477,7 @@ def set_gene_sets(genes_df, temp_df):
 
 def calculate_gene_dstrarea(genes_df, temp_df, normalize):
     """Calculate distributed area for each gene product"""
-    genes_df['e2g_GPArea_dstrAdj'] = genes_df.apply(gene_AUC_sum,
+    genes_df['e2g_nGPArea_Sum_dstrAdj'] = genes_df.apply(gene_AUC_sum,
                                                       args=(temp_df,
                                                             normalize,),
                                                       axis=1)
@@ -629,10 +633,10 @@ def grouper(usrfile, usrdata, exp_setup, FilterValues, usedb=False, outdir='',
                  'e2g_GPGroup', 'e2g_GPGroups_All', 'e2g_PSMs',
                  'e2g_PSMs_u2g', 'e2g_PeptidePrint', 'e2g_PeptideCount',
                  'e2g_PeptideCount_u2g', 'e2g_PeptideCount_S',
-                 'e2g_PeptideCount_S_u2g', 'e2g_nGPA_Sum_cgpAdj',
-                 'e2g_nGPA_Sum_u2g', 'e2g_nGPA_Sum_u2g_all',
-                 'e2g_nGPA_Sum_max', 'e2g_nGPA_dstrAdj',
-                 'e2g_GeneCapacity', 'e2g_iBAQ']  # cols of interest
+                 'e2g_PeptideCount_S_u2g', 'e2g_nGPArea_Sum_cgpAdj',
+                 'e2g_nGPArea_Sum_u2g', 'e2g_nGPArea_Sum_u2g_all',
+                 'e2g_nGPArea_Sum_max', 'e2g_nGPArea_Sum_dstrAdj',
+                 'e2g_GeneCapacity', 'e2g_n_iBAQ_dstrAdj']  # cols of interest
 
     for label in range(1):  # increase the range to go through more label types
         logfile.write('{} | Starting gene assignment for label {}.\n'.format(
@@ -684,8 +688,8 @@ def grouper(usrfile, usrdata, exp_setup, FilterValues, usedb=False, outdir='',
             #genes_df['e2g_GeneCapacity'] = genes_df.e2g_GeneCapacity.astype('float')
             #genes_df._e2g_GeneCapacity.dtype)  # for debugging
             genes_df = calculate_gene_dstrarea(genes_df, temp_df, normalize)
-            genes_df['e2g_iBAQ'] = \
-                genes_df.e2g_GPArea_dstrAdj / genes_df.e2g_GeneCapacity
+            genes_df['e2g_n_iBAQ_dstrAdj'] = \
+                genes_df.e2g_nGPArea_Sum_dstrAdj / genes_df.e2g_GeneCapacity
             genes_df = set_gene_gpgroups(genes_df)
 
             genes_df.sort_values(by=['e2g_GPGroup'], ascending=True, inplace=True)
@@ -706,7 +710,7 @@ def grouper(usrfile, usrdata, exp_setup, FilterValues, usedb=False, outdir='',
             # get a log of gene info
             genecount += len(genes_df)
             ibaqtot += genes_df[~genes_df.e2g_GeneID.isin(
-                gid_ignore_list)].e2g_iBAQ.sum()
+                gid_ignore_list)].e2g_n_iBAQ_dstrAdj.sum()
 
             #genes_df.rename(columns=torename, inplace=True)
             genes_df.to_csv(os.path.join(outdir, genedata_out), columns=e2g_cols,
@@ -795,7 +799,7 @@ def grouper(usrfile, usrdata, exp_setup, FilterValues, usedb=False, outdir='',
     msfdata.rename(columns={c: 'msf_'+c for c in msfdata.columns}, inplace=True)
 
     if bcmprot and exp_setup.get('add_to_db',False):  # we have bcmprot installed
-        update_database(program_title=program_tile, exp_setup=exp_setup, matched_psms=matched_psms,
+        update_database(program_title=program_title, exp_setup=exp_setup, matched_psms=matched_psms,
                         unmatched_psms=unmatched_psms, usrfile=usrfile, taxon_totals=taxon_totals)
     msfname = '_'.join(str(x) for x in [exp_setup['EXPRecNo'],
                                         exp_setup['EXPRunNo'],
