@@ -7,7 +7,7 @@ from configparser import ConfigParser
 #from datetime import datetime
 import pandas as pd
 #import database_config as db
-import pygrouper
+from pygrouper import pygrouper
 try:
     from bcmproteomics import ispec
     bcmprot = True
@@ -165,12 +165,15 @@ def file_checker(INPUT_DIR, OUTPUT_DIR, maxqueue, **kwargs):
                        inputdir=INPUT_DIR, outputdir=OUTPUT_DIR, usedb=True, **kwargs)
     #session.close()
 
-def schedule(INTERVAL, args, **kwargs):
+def schedule(INTERVAL, args):
     print('{} : Checking for new experiments.'.format(time.ctime()))
     INPUT_DIR = args[0]
+    OUTPUT_DIR = args[1]
+    maxfiles = args[2]
+    kwargs = args[-1]
     experiment_checker()
     #db.get_ispec_experiment_info(os.path.join(INPUT_DIR,ispecf), todb=True, norepeats=True)
-    file_checker(*args, **kwargs)
+    file_checker(INPUT_DIR, OUTPUT_DIR, maxfiles, **kwargs)
     #print(INTERVAL, args) 
     #for kwarg in kwargs:
     #    print(kwarg)
