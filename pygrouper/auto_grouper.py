@@ -165,20 +165,16 @@ def file_checker(INPUT_DIR, OUTPUT_DIR, maxqueue, **kwargs):
                        inputdir=INPUT_DIR, outputdir=OUTPUT_DIR, usedb=True, **kwargs)
     #session.close()
 
-def schedule(INTERVAL, args):
+def schedule(INTERVAL, INPUT_DIR, OUTPUT_DIR, maxfiles, kwargs):
     print('{} : Checking for new experiments.'.format(time.ctime()))
-    INPUT_DIR = args[0]
-    OUTPUT_DIR = args[1]
-    maxfiles = args[2]
-    kwargs = args[-1]
-    experiment_checker()
+    #experiment_checker()  # not supposed to call this here
     #db.get_ispec_experiment_info(os.path.join(INPUT_DIR,ispecf), todb=True, norepeats=True)
     file_checker(INPUT_DIR, OUTPUT_DIR, maxfiles, **kwargs)
     #print(INTERVAL, args) 
     #for kwarg in kwargs:
     #    print(kwarg)
     global thread
-    thread = threading.Timer(INTERVAL, schedule, [INTERVAL, args, kwargs])
+    thread = threading.Timer(INTERVAL, schedule, [INTERVAL, INPUT_DIR, OUTPUT_DIR, maxfiles, kwargs])
     print('{} : Sleeping... Press Enter to wake or [exit] to'\
           ' end.'.format(time.ctime()), end='\n\n')
     thread.start()
@@ -186,7 +182,7 @@ def schedule(INTERVAL, args):
 def interval_check(INTERVAL, INPUT_DIR, OUTPUT_DIR, maxfiles, **kwargs):
     """Interval check function similar to the one found in __name__=='__main__'"""
     while True:
-        schedule(INTERVAL, [INPUT_DIR, OUTPUT_DIR, maxfiles, kwargs])
+        schedule(INTERVAL, INPUT_DIR, OUTPUT_DIR, maxfiles, kwargs)
         usr = input()
         if usr.lower() == 'exit':
             print('Goodbye\n')

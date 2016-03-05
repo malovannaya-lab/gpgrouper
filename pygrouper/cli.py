@@ -183,10 +183,12 @@ def setpath(config, path_type, path):
 @cli.command(context_settings=CONTEXT_SETTINGS)
 @click.option('-a', '--autorun', is_flag=True,
               help='Run automatically by scanning directory and connecting to iSPEC')
+@click.option('-i', '--interval', type=int, default=3600,
+              help='Interval in seconds to wait between automatic checks for new files to group. Default is 1 hour.')
 @click.option('-m', '--max-files', type=int, default=99,
               help='Maximum number of experiments to quene for autorun')
 @pass_config
-def run(config, autorun, max_files):
+def run(config, autorun, interval, max_files):
     """Run PyGrouper"""
     parse_configfile()
     INPUT_DIR = config.inputdir
@@ -197,7 +199,7 @@ def run(config, autorun, max_files):
     column_aliases = config.column_aliases
     gid_ignore_file = os.path.join(config.CONFIG_DIR, 'geneignore.txt')
     if autorun:
-        auto_grouper.interval_check(3600, INPUT_DIR, OUTPUT_DIR,
+        auto_grouper.interval_check(interval, INPUT_DIR, OUTPUT_DIR,
                                     max_files, rawfilepath=RAWFILE_DIR,
                                     refs=refseqs, FilterValues=filtervalues,
                                     column_aliases=column_aliases,
