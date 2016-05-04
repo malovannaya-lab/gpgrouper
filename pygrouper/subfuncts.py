@@ -4,13 +4,13 @@ import os
 import csv
 import numpy as np
 from datetime import datetime
-from collections import namedtuple, defaultdict, OrderedDict
+from collections import namedtuple, defaultdict, OrderedDict, deque
 from configparser import ConfigParser
 from statistics import mean
 import logging
 import json
 from collections import defaultdict
-try : 
+try :
     from PIL import Image, ImageFont, ImageDraw
     #imagetitle = True
 except ImportError: pass
@@ -60,7 +60,7 @@ The return order is as follows:
     -min PEP
     -max PEP
     -min Area (precursor, exculding zeros)
-    -max Area 
+    -max Area
     -PSM Count
     -median DeltaMassPPM
     """
@@ -114,7 +114,7 @@ def column_constructor(columndict=None):
         ('RTmin', ''),
         ('MSOrder', ''),
         ('SpectrumFile', ''),
-        
+
         ('psm_EXPRecNo', 'Experiment record number'),
         ('psm_EXPRunNo', 'Experiment run number'),
         ('psm_EXPSearchNo', 'Experiment search number'),
@@ -145,7 +145,7 @@ def column_constructor(columndict=None):
         ('psm_PSM_UseFLAG', 'boolean value for use of peptide for psm'),
         ('psm_Area_taxonAdj','taxon adjusted area'),
         ('psm_PrecursorArea_dstrAdj','redistributed peptide precursor area'),
-        
+
         ('gene_EXPRecNo', 'Experiment Record Number'),
         ('gene_EXPRunNo', 'Experiment Run Number'),
         ('gene_EXPSearchNo', 'Experiment Search Number'),
@@ -178,7 +178,7 @@ def column_constructor(columndict=None):
 
     ])
 
-                
+
     existing_values = [item for sublist in
                        columndict.values() for
                        item in sublist]
@@ -238,7 +238,7 @@ def column_to_ini(BASE=''):
         parser.read('py_config.ini')
     if 'column names' not in parser.sections():
         parser.add_section('column names')
-    column_aliases = defaultdict(list)  # load previous 
+    column_aliases = defaultdict(list)  # load previous
     for key in parser['column names'].keys():
         value = parser.get('column names',key)
         aliases = list(filter(None,(x.strip() for
@@ -250,7 +250,7 @@ def column_to_ini(BASE=''):
     for key in column_aliases:
         value = '\n'+'\n'.join(column_aliases[key])
         parser.set('column names', key, value)
-    parser.write(open('py_config.ini','w'))    
+    parser.write(open('py_config.ini','w'))
     return parser
     #return column_aliases
 
@@ -263,8 +263,8 @@ def column_identifier(df, aliases):
                 column_names[col] = name[0]
                 break
     return column_names
-       
-        
+
+
 
 def json_column_constructor(BASE='',append=False ):
     '''Function for reading (and creating if necessary) a json
@@ -284,10 +284,10 @@ def json_column_constructor(BASE='',append=False ):
                    indent=4, sort_keys=True)
     columndict = json.load(jsonFile)
     return
-    
+
 def bufcount(filename):
     '''fast way to count lines in a file'''
-    f = open(filename, mode = 'rt', encoding = 'latin1')                  
+    f = open(filename, mode = 'rt', encoding = 'latin1')
     lines = 0
     buf_size = 2048
     read_f = f.read # loop optimization
@@ -299,11 +299,11 @@ def bufcount(filename):
 
     return lines+1  # plus 1 since I use csv_reader, which ignores the header
 
-    
+
 def pysetup():
-    
+
     parser = ConfigParser()
-    
+
     cancel = False
     sections = []
     if os.path.isfile('py_config.ini'):
@@ -316,7 +316,7 @@ def pysetup():
                 #    os.remove('py_config.ini')
                 #    break
             #elif 'n' in del_confirm.lower() : cancel = True
-    if not cancel:    
+    if not cancel:
         for section in ['refseq locations', 'refseq file sizes']:
             if section not in sections:
                 parser.add_section(section)
@@ -356,7 +356,7 @@ def pysetup():
                                str(bufcount(taxon_loc)))
                     print('Done!\n')
                     break
-                else : 
+                else :
                     print('\nFile not found!')
                     if input("Type 'pass' to skip taxon {} from list "\
                              "or [Enter] to try again : ".format(
@@ -366,7 +366,7 @@ def pysetup():
         print('Configuration of PyGrouper is complete.\n')
     elif cancel:
          print('Canceling..\n')
-   
+
 
 def csv_reader(inputfile,sep='\t'):
     FastaRecord = namedtuple(
@@ -382,7 +382,17 @@ def csv_reader(inputfile,sep='\t'):
             yield record
 
 
-def protease(seq,minlen = 0,cutsites = [], exceptions = []):
+def rolling_window(seq,length_of_window):
+    it = iter(seq)
+    window = deque(maxlen=length_of_window)
+    for _ in range(length_of_window):
+        window.append(next(it))
+    yield tuple(window)
+    while it:
+        window.append(next(it))
+        yield tuple(window)
+
+def protease(seq,minlen = 0, cutsites=[], exceptions=[], miscuts=2):
     frags = []
     chop = ''
     while seq:
@@ -392,33 +402,36 @@ def protease(seq,minlen = 0,cutsites = [], exceptions = []):
             else : cut = max(cuts) + 1
         else : cut = 0
         chop += seq[:cut]
-        seq = seq[cut:] 
-        #print(chop, cut, seq)
-        if cut == 0 or len(seq) == 0: 
+        seq = seq[cut:]
+        # print(chop, cut, seq)
+        if cut == 0 or len(seq) == 0:
+            if cut == 0 and len(frags) == 0:
+                frags.append(chop+seq)
             #print(chop)
-            if len(seq) != 0 :frags.append(seq)
+            elif len(seq) != 0 : frags.append(seq)
             elif len(seq) == 0 and chop : frags.append(chop) #special case for
                                    #if last amino acid is one of the cut sites
-            break #no more cuts, wrap up and go home
+            break #no more cuts
         if seq[0] not in exceptions:
             frags.append(chop)
-            #print(chop, seq)  # for debugging
             chop = ''
-        
-    frags_1, frags_2  = [], [] 
-    for i in range(len(frags)-1):
-        frags_1.append(frags[i]+frags[i+1])
-    for i in range(len(frags)-2):
-        frags_2.append(frags[i]+frags[i+1]+frags[i+2])
-    #for i in range(len(frags)-3):
-        #frags_2.append(frags[i]+frags[i+1]+frags[i+2]+frags[i+3])    
-    #print frags, frags_1, frags_2
-    [a.append(a[0][1:]) for a in [frags, frags_1, frags_2,] if len(a) > 0]
-    # chop off each N-term
-    frags = [x for x in frags if len(x) >= minlen]
-    fragments = [x for x in frags + frags_1 + frags_2 if len(x) >= minlen]  
-    return fragments, len(frags) #len(frags) is no miscuts
-    
+    merged_list = list()
+    for k in range(0, miscuts):
+        for ix, chunk in enumerate(rolling_window(frags, k+2)):  # +2 to join adjacent
+            merged_list.append(''.join(chunk))
+            if ix == 0:
+                no_met = list()
+                for ix, c in enumerate(chunk):
+                    if ix == 0:
+                        no_met.append(c[1:])
+                    else:
+                        no_met.append(c)
+            merged_list.append(''.join(no_met))
+    frags.append(frags[0][1:]) # chop off methionine
+    nomiscuts_len = len([  x for x in frags if len(x) >= minlen  ])
+    return [ x for x in frags+merged_list if len(x) >= minlen ], nomiscuts_len
+
+
 def genematcher(seq, metadata, prot):
     seq = seq.upper()
     #print(type(metadata))  # for debugging
@@ -456,7 +469,7 @@ def genelist_extractor(metadata):
 
 def meta_extractor(geneid, genedict):  # need to take in whole tempdf.
                                        # not at peptide level anymore
-     ''' at the gene level 
+     ''' at the gene level
      taxonid, homologeneid, proteingi, genefraglen'''
 
      homologeneids = set()
@@ -474,8 +487,8 @@ def meta_extractor(geneid, genedict):  # need to take in whole tempdf.
      return (','.join(homologeneids),
              len(homologeneids), ','.join(proteingis), len(proteingis),
              mean(genefraglens))
-             
-     
+
+
 
 def meta_extractor_old(metadata):
     taxonids = []
@@ -484,7 +497,7 @@ def meta_extractor_old(metadata):
     homologenes = []
     proteingis = []
     genefraglen = []
-    frags = ['0'] # will be overwritten if there are genes    
+    frags = ['0'] # will be overwritten if there are genes
     if metadata:
         for data in metadata:
             genes[data.geneid].append((data.taxonid, data.homologeneid,
@@ -511,8 +524,8 @@ def meta_extractor_old(metadata):
                 #if data[2] not in proteingis:
                     proteingis.append(data[2])
 
-                #if len(data[3]) > 0: 
-                     
+                #if len(data[3]) > 0:
+
                 #else:
                 #     frags.append('0')
 
@@ -521,30 +534,30 @@ def meta_extractor_old(metadata):
     #print(genefraglen)
     return ','.join(genelst), ','.join(proteingis), len(genelst),\
          len(proteingis), ','.join(homologenes), len(homologenes),\
-         ','.join(frags), ','.join(taxonids), len(taxonids)             
+         ','.join(frags), ','.join(taxonids), len(taxonids)
 
 def dict_modifier(d,exceptions = {},exception_float = True):
-    """Dictionary modifier function for the user. Takes in dictionary (d), as 
+    """Dictionary modifier function for the user. Takes in dictionary (d), as
     well as all dictionary keys that do not have to be floats (exceptions),
-    the valid strings that the exception key values can hold (valid_exceptions), 
+    the valid strings that the exception key values can hold (valid_exceptions),
     as well as a boolean value for if the exception key values can be numbers
     """
     while True:
         print('\nThe current settings are : ')
         for key,value in list(d.items()): print('{} : {}'.format(key,value))
         try:
-            
+
             filter_change = input('Type a value to change (case sensitive),'\
                                   ' or hit Ctrl+C if done. ')
             try :
                 new_value = input('The current value is set to {}. Type a'\
                                   ' new value. : '.format(d[filter_change]))
                 if filter_change not in list(exceptions.keys()):
-                    try : 
+                    try :
                         new_value_float = int(new_value)
                         logging.info('{} changed from {} to {}'.format(
                              filter_change, d[filter_change], new_value_float))
-                        d[filter_change] = new_value_float   
+                        d[filter_change] = new_value_float
                     except ValueError:
                         print('\nInvalid entry. New value must be an integer.\n')
                 elif filter_change in list(exceptions.keys()):
@@ -552,9 +565,9 @@ def dict_modifier(d,exceptions = {},exception_float = True):
                         logging.info('{} changed from {} to {}'.format(
                              filter_change, d[filter_change], new_value))
                         d[filter_change] = new_value
-                        
+
                     elif exception_float:
-                        try : 
+                        try :
                             new_value_float = float(new_value)
                             logging.info('{} changed from {} to {}'.format(
                                  filter_change, d[filter_change],
@@ -567,63 +580,63 @@ def dict_modifier(d,exceptions = {},exception_float = True):
                                  ' {}.\n'.format(valid_exceptions))
             except KeyError :
                 print('\nInvalid filter value.\n')
-                
+
         except KeyboardInterrupt:
             print('')
             break
-    return d   
+    return d
 
 def nan_popper(lst):
     return [x for x in lst if not np.isnan(x)]
 
-    
-def fancyprint(ShowText,string_size=12): 
+
+def fancyprint(ShowText,string_size=12):
     try :
         font = ImageFont.truetype('arialbd.ttf', string_size) #load the font
         font_import  = True
     except IOError:
         font_import = False
         print(ShowText)
-    if font_import:    
+    if font_import:
         size = font.getsize(ShowText)  #calc the size of text in pixels
         image = Image.new('1', size, 1)  #create a b/w image
         draw = ImageDraw.Draw(image)
         draw.text((0, 0), ShowText, font=font) #render the text to the bitmap
-        for rownum in range(size[1]): 
+        for rownum in range(size[1]):
         # scan the bitmap:
-        # print ' ' for black pixel and 
+        # print ' ' for black pixel and
         # print '#' for white one
             line = []
             for colnum in range(size[0]):
                 if image.getpixel((colnum, rownum)): line.append(' '),
                 else: line.append('#'),
-            print(''.join(line))      
+            print(''.join(line))
 
 #def AUC_PSM_flagger(df,Filter_IS, Filter_qV,Filter_PEP, Filter_IDG, Filter_Z_min, Filter_Z_max, Filter_Modi):
 def AUC_PSM_flagger(df,d):
     if d['Filter_PEP'] =='all' : d['Filter_PEP'] = float('inf')
     if d['Filter_IDG'] =='all' : d['Filter_IDG'] = float('inf')
-    #if df['IonScore'] == '' and df['q-Value'] == '': 
+    #if df['IonScore'] == '' and df['q-Value'] == '':
     if df['Charge'] < d['Filter_Z_min'] or df['Charge'] > d['Filter_Z_max'] :
          # if charge is empty (nan), this will not be true
         AUC_flag = 0
         PSM_flag = 0
-    elif df['psm_SequenceModiCount'] > d['Filter_Modi'] : 
+    elif df['psm_SequenceModiCount'] > d['Filter_Modi'] :
         AUC_flag = 0
         PSM_flag = 0
-    elif np.isnan(df['IonScore']) and np.isnan(df['q_value']): 
+    elif np.isnan(df['IonScore']) and np.isnan(df['q_value']):
         AUC_flag = 1 #retains WLs Q2up assignments
         PSM_flag = 0
-    elif df['IonScore'] < d['Filter_IS'] : 
+    elif df['IonScore'] < d['Filter_IS'] :
         AUC_flag = 0
         PSM_flag = 0
-    elif df['q_value'] > d['Filter_qV'] : 
+    elif df['q_value'] > d['Filter_qV'] :
         AUC_flag = 0
         PSM_flag = 0
-    elif df['PEP'] > d['Filter_PEP'] : 
+    elif df['PEP'] > d['Filter_PEP'] :
         AUC_flag = 0
         PSM_flag = 0
-    elif df['psm_PSM_IDG'] > d['Filter_IDG'] : 
+    elif df['psm_PSM_IDG'] > d['Filter_IDG'] :
         AUC_flag = 0
         PSM_flag = 0
     elif df['psm_Peak_UseFLAG'] == 0 :
@@ -633,7 +646,7 @@ def AUC_PSM_flagger(df,d):
             PSM_flag = 1
         else:
             PSM_flag = 0
-    else: 
+    else:
         AUC_flag = 1
         PSM_flag = 1
 
@@ -641,7 +654,7 @@ def AUC_PSM_flagger(df,d):
         AUC_flag = 0
 
     return AUC_flag, PSM_flag
-    
+
 
 def IDG_picker(IonScore, qvalue):
 
@@ -649,25 +662,25 @@ def IDG_picker(IonScore, qvalue):
     elif (IonScore >= 30 and qvalue <= .05): IDGout = 2
     elif (IonScore >= 20 and qvalue <= .01): IDGout = 3
     elif (IonScore >= 20 and qvalue <= .05): IDGout = 4
-    elif (IonScore >= 10 and qvalue <= .01): IDGout = 5       
+    elif (IonScore >= 10 and qvalue <= .01): IDGout = 5
     elif (IonScore >= 10 and qvalue <= .05): IDGout = 6
     elif (IonScore >= 0 and qvalue <= .01): IDGout = 7
     elif (IonScore >= 0 and qvalue <= .05): IDGout = 8
     else: IDGout  = 9
     return IDGout
- 
-        
+
+
 def seq_modi(sequence, modifications, keeplog=True):
 
     '''
-    function to output a modified string of sequence that includes all 
+    function to output a modified string of sequence that includes all
     modifications at the appropriate place.
-    Modified amino acids are indicated in the input 'sequence' by a lowercase 
+    Modified amino acids are indicated in the input 'sequence' by a lowercase
     letter.
-    A dictionary of potential modification keys and their corresponding 
+    A dictionary of potential modification keys and their corresponding
     substitutions in the primary sequence is provided;
     all other modifications should be ignored.
-    Sometimes N-terminal modifications are present, this should be considered 
+    Sometimes N-terminal modifications are present, this should be considered
     the same as a modification at the first amino acid.
     '''
     amino_acids = list('ACDEFGHIKLMNPQRSTVWY')
@@ -710,7 +723,7 @@ def seq_modi(sequence, modifications, keeplog=True):
         if 'N-Term' in modifications:
             modpos.insert(0,0)
             # first of the modkeys will be the N-Term modification
-        modi_len = len(modpos)                
+        modi_len = len(modpos)
         mod_dict = defaultdict(list)
         for (key,value) in zip(modpos, modkeys):
             mod_dict[key].append(value)
@@ -723,7 +736,7 @@ def seq_modi(sequence, modifications, keeplog=True):
             if ix in mod_dict:
                 if s == 'X':  # deal with the X first
                     to_replace = [x for x in mod_dict[ix] if x in amino_acids]
-                    
+
                     if len(to_replace) == 1:
                         #print(seqlist[ix],to_replace)
                         if seqlist[ix].islower():
@@ -737,7 +750,7 @@ def seq_modi(sequence, modifications, keeplog=True):
                     elif len(to_replace) == 0:
                          pass  # not an amino acid (listed above at least)
                     #Probably an unidentified mass of the form X10(110.0)
-                    
+
                     else:
                         print('Error parsing sequence {} with '\
                               'modifications {}'.format(sequence, modifications))
@@ -750,29 +763,29 @@ def seq_modi(sequence, modifications, keeplog=True):
                         if keeplog:
                             logging.warning('New modification {} that'\
                                             ' is not found in sequence {}'.format(
-                                                modi, sequence))                
+                                                modi, sequence))
 
     sequence = ''.join(seqlist)
     if not seqmodi:
         seqmodi = sequence
     return sequence, seqmodi, modi_len, label
-    
+
 def pept_print(df,usrdata):
     # Here, try this - returns peptides that are present within the data
     '''
-    Lookup info from userdata. Also sorts based on alphabet. 
+    Lookup info from userdata. Also sorts based on alphabet.
     '''
 
     IDquery = df['e2g_GeneID']
     #print(IDquery)  # for debugging
-    try : 
+    try :
         matches = usrdata[usrdata.psm_GeneID == IDquery]
         # need to do check for if matches is empty
         #print('matches : {}'.format(matches))
 
         matches.Sequence = matches.Sequence.astype('object').str.upper()
         #matches.drop_duplicates(cols='Sequence', take_last=False,
-        #inplace = True) # cols is depreciated, use subset    
+        #inplace = True) # cols is depreciated, use subset
         matches.drop_duplicates(subset='Sequence', keep='first',
                                 inplace=True)
 
@@ -784,13 +797,13 @@ def pept_print(df,usrdata):
         pepts_str = '_'.join(sorted(matches.Sequence))
     except AttributeError as e: #have never had this happen. Shouldn't occur
          #since the df is derived from usrdata in the first place
-        print(e)        
+        print(e)
         pepts_str = ''
         protcount = 0
         uniques = 0
     return (set(sorted(matches.Sequence)), pepts_str, protcount, uniques,
-         protcount_S, uniques_S)        
-    
+         protcount_S, uniques_S)
+
 def e2g_PSM_helper(gene_df_ID, data, EXPTechRepNo=1):
     total = data[
                 data['psm_GeneID']==gene_df_ID]\
@@ -809,17 +822,17 @@ def e2g_PSM_helper(gene_df_ID, data, EXPTechRepNo=1):
                       ]['psm_PSM_UseFLAG'].sum()/EXPTechRepNo
     #for match in matches:
     return total, total_u2g, total_S, total_S_u2g
-  
+
 def area_calculator(gene_df, usrdata, area_col, normalization, EXPTechRepNo=1):
 
     matches  = usrdata[(usrdata['psm_GeneID'] == gene_df['e2g_GeneID']) &
                            (usrdata['psm_AUC_UseFLAG']==1)] [
                                 [area_col, 'psm_GeneCount',
                                  'psm_PSM_IDG', 'MissedCleavages']]
- 
+
     uniq_matches = matches[matches['psm_GeneCount']==1]
     uniq_matches_0 = uniq_matches[uniq_matches['MissedCleavages']==0]
-    matches_strict = matches[matches['psm_PSM_IDG'] < 4] 
+    matches_strict = matches[matches['psm_PSM_IDG'] < 4]
     values_max = matches[area_col].sum()
     #values_max = nan_popper([value for value in
     #                         matches[area_col].values])
@@ -851,7 +864,7 @@ def AUC_distributor(inputdata, genes_df, area_col, taxon_totals):
     that this particular peptide also maps to.
     """
     #if EXPQuantSource == 'AUC':
-    #    inputvalue = inputdata['Precursor Area'] 
+    #    inputvalue = inputdata['Precursor Area']
     #elif EXPQuantSource == 'Intensity':
     #    inputvalue = inputdata['Intensity']
     #else:
@@ -870,7 +883,7 @@ def AUC_distributor(inputdata, genes_df, area_col, taxon_totals):
         # this should never happen (and never has)
     else :
         distArea = 0
-        print('No distArea for GeneID : {}'.format(inputdata['psm_GeneID'])) 
+        print('No distArea for GeneID : {}'.format(inputdata['psm_GeneID']))
     if u2gPept != 0 :
         totArea = 0
         gene_list = inputdata.psm_GeneList.split(',')
@@ -976,7 +989,7 @@ def capacity_grabber(geneid, gene_metadata):
          genefraglengths.append(data[3])
     #sel = df[df.psm_GeneID == geneid][['psm_tProteinList',
     #                                     'psm_ProteinCapacity']]
-    #capacity = 0    
+    #capacity = 0
     #if len(sel) > 0:
     #    sel.reset_index(inplace = True)
     #    lst_indx = sel.loc[0]['psm_tProteinList'].split(',').index(geneid)
