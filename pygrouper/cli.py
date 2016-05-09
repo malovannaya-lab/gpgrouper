@@ -1,9 +1,11 @@
 import os
+from datetime import datetime
 from configparser import ConfigParser
 import click
 from pygrouper.manual_tests import test as manual_test
 from pygrouper import subfuncts
 from pygrouper import auto_grouper
+from pygrouper import genericdata as gd
 __author__ = 'Alexander B. Saltzman'
 __copyright__ = 'Copyright January 2016'
 __credits__ = ['Alexander B. Saltzman', 'Anna Malovannaya']
@@ -129,7 +131,7 @@ def parse_configfile(config):
     refseqs = dict()
     for taxon, location in parser.items('refseq locations'):
         refseqs[taxon] = {'loc': location,
-                          'size': parser.getfloat('refseq file sizes', taxon)} 
+                          'size': parser.getfloat('refseq file sizes', taxon)}
     config.refseqs = refseqs
 
 
@@ -166,6 +168,53 @@ def add_taxon(config, taxonid, taxonfile):
     parser.set('refseq file sizes', str(taxonid), filesize)
     write_configfile(config.CONFIG_FILE, parser)
     click.echo('Updating taxon id {} to path {}'.format(taxonid, taxonfile))
+
+@cli.command(context_settings=CONTEXT_SETTINGS)
+@click.option('-p', '--path', type=click.Path(exists=True), default='.')
+@click.argument('taxon', type=int, nargs=-1)
+@pass_config
+def download_taxon(config, path, taxon):
+    """Downloads a new taxon"""
+    if any(x not in (10090, 9606) for x in taxon):
+        raise NotImplementedError('No support for updating taxon {} yet.'.format(*(x for x in taxon
+                                                                                   if x not in (10090,
+                                                                                                9606))))
+    gz_path = os.path.join(PROFILE_DIR, 'tempfiles')
+    print(path)
+    if not os.path.exists(gz_path):
+        os.mkdir(gz_path)
+
+    for download in (gd.download_ebi_files, gd.download_ncbi_files):
+        try:
+            download(path=gz_path, taxa=taxon)
+        except Exception as e:
+            # gd.cleanup(gz_path)
+            raise(e)
+    gd.unzip_all(path=gz_path)
+    gd.entrylist_formatter(path=gz_path)
+    gd.protein2ipr_formatter(path=gz_path)
+    for taxa in taxon:
+        gd.idmapping_formatter(taxa, path=gz_path)
+        gd.inputfiles = append_all_files(taxa, path=gz_path)
+        gd.refseq = refseq_dict(inputfiles) # Make refseq dictionary
+        gd.gene2accession_formatter(taxa, path=gz_path)
+        g2a = gd.g2acc_dict(refseq, path=gz_path)
+        gd.homologene_formatter(path=gz_path)
+        hid = gd.hid_dict(path=gz_path)
+        gd.file_input(inputfiles, refseq, g2a, hid, taxonid)
+        gd.file_write(taxa, lines_seen, path=path)
+        gd.refseq_formatter_4_mascot(taxon, path=path)
+
+@cli.command(context_settings=CONTEXT_SETTINGS)
+@pass_config
+def view_taxons(config):
+    """List current taxa and their locations based on the config file"""
+    parser = get_configfile()
+    for taxon, file in parser.items('refseq locations'):
+        filestat = os.stat(file)
+        click.echo('{} : {}\t{}'.format(taxon, file,
+                                        datetime.fromtimestamp(filestat.st_mtime)))
+
 
 @cli.command(context_settings=CONTEXT_SETTINGS)
 @click.option('--path-type', type=click.Choice(['input', 'output', 'rawfile']),
