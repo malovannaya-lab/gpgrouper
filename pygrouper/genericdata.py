@@ -96,12 +96,11 @@ def download_ncbi_files(path='.', taxa=None):
             print('Getting ' + filename)
             ftp.retrbinary('RETR {}'.format(filename),  fhandle.write)
             fhandle.close()
-    ftp.retrbinary('RETR go_process.dtd', open(os.path.join(path,
-                                                            'go_process.dtd'), 'wb').write)
-    ftp.retrbinary('RETR go_process.xml', open(os.path.join(path,
-                                                            'go_process.xml'), 'wb').write)
-    ftp.retrbinary('RETR mim2gene_medgen', open(os.path.join(path,
-                                                             'mim2gene_medgen'),  'wb').write)
+    for outpath, retbin in [(os.path.join(path, 'go_process.dtd'), 'RETR go_process.dtd'),
+                         (os.path.join(path, 'go_process.xml'), 'RETR go_process.xml'),
+                         (os.path.join(path, 'mim2gene_medgen'), 'RETR mim2gene_medgen')]:
+        if not os.path.exists(outpath):
+            ftp.retrbinary(retbin, open(outpath).write)
 
 
 # Unzip Files:
