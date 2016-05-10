@@ -34,11 +34,11 @@ def download_ebi_files(path='.', taxa=None):
     ftp = FTP('ftp.ebi.ac.uk')
     ftp.login()
     ftp.cwd('/pub/databases/interpro')
-    out = os.path.join(path, 'entry_'+dt+'.tab')
+    out = os.path.join(path, 'entry_.tab')
     ftp.retrbinary('RETR entry.list', open(out, 'wb').write)
 
     #Downloading protein2ipr from EBI
-    out = os.path.join(path, 'protein2ipr_'+dt+'.gz')
+    out = os.path.join(path, 'protein2ipr_.gz')
     if not os.path.exists(out):
         ftp.retrbinary('RETR protein2ipr.dat.gz', open(out, 'wb').write)
 
@@ -46,7 +46,7 @@ def download_ebi_files(path='.', taxa=None):
     ftp.cwd('/pub/databases/uniprot/current_release/knowledgebase/idmapping/by_organism')
     for taxon in taxa:
         out = os.path.join(path,
-                           '{}_{}_idmapping_selected_{}.gz'.format(org_dict.get(taxon), taxon, dt))
+                           '{}_{}_idmapping_selected.gz'.format(org_dict.get(taxon), taxon))
 
         if not os.path.exists(out):
             ftp.retrbinary('RETR {}_{}_idmapping_selected.tab.gz'.format(org_dict.get(taxon), taxon),
@@ -64,7 +64,7 @@ def download_ncbi_files(path='.', taxa=None):
         for filename in ftp.nlst(filematch):
             fname, extension = os.path.splitext(filename)
             out = os.path.join(path,
-                               '{}_{}{}'.format(fname, dt, extension))
+                               '{}{}'.format(fname, extension))
             if not os.path.exists(out):
                 fhandle = open(out, 'wb')
                 print ('Getting files ' + filename)
@@ -80,7 +80,7 @@ def download_ncbi_files(path='.', taxa=None):
     latest = sorted([x for x in ftp.nlst() if x.startswith('build')], reverse=True)[0]
     ftp.cwd('/pub/HomoloGene/{}'.format(latest))  #get latest built
     out = os.path.join(path,
-                       'homologene_download_{}.tab'.format(dt))
+                       'homologene_download.tab')
 
     if not os.path.exists(out):
         ftp.retrbinary('RETR homologene.data',
@@ -90,15 +90,18 @@ def download_ncbi_files(path='.', taxa=None):
     for filename in ftp.nlst(filematch):
         fname, extension= os.path.splitext(filename)
         out = os.path.join(path,
-                           '{}_{}{}'.format(fname, dt, extension))
+                           '{}{}'.format(fname, extension))
         if not os.path.exists(out):
             fhandle = open(out, 'wb')
             print('Getting ' + filename)
             ftp.retrbinary('RETR {}'.format(filename),  fhandle.write)
             fhandle.close()
-    ftp.retrbinary('RETR go_process.dtd', open('go_process' + dt + '.dtd', 'wb').write)
-    ftp.retrbinary('RETR go_process.xml', open('go_process' + dt+ '.xml', 'wb').write)
-    ftp.retrbinary('RETR mim2gene_medgen', open('mim2gene_medgen_ '+ dt + 'wb').write)
+    ftp.retrbinary('RETR go_process.dtd', open(os.path.join(path,
+                                                            'go_process.dtd'), 'wb').write)
+    ftp.retrbinary('RETR go_process.xml', open(os.path.join(path,
+                                                            'go_process.xml'), 'wb').write)
+    ftp.retrbinary('RETR mim2gene_medgen', open(os.path.join(path,
+                                                             'mim2gene_medgen'),  'wb').write)
 
 
 # Unzip Files:
@@ -119,9 +122,9 @@ def unzip_all(path='.'):
 def entrylist_formatter(filein=None, fileout=None, path='.'):
 
     if filein is None:
-        filein = 'entry_{}.tab'.format(dt)
+        filein = 'entry.tab'
     if fileout is None:
-        fileout = 'IPRentry_{}.tab'.format(dt)
+        fileout = 'IPRentry.tab'
 
     category = ''
     with open(filein, 'r') as fin, open(fileout, 'w') as fout:
@@ -137,9 +140,9 @@ def entrylist_formatter(filein=None, fileout=None, path='.'):
 def protein2ipr_formatter(filein=None, fileout=None, path='.'):
 
     if filein is None:
-        filein = 'protein2ipr_{}.tab'.format(dt)
+        filein = 'protein2ipr.tab'
     if fileout is None:
-        fileout = 'protein2ipr_uni2ipr_{}.tab'.format(dt)
+        fileout = 'protein2ipr_uni2ipr.tab'
     filein = os.path.join(path, filein)
     fileout = os.path.join(path, fileout)
     with open(filein, 'r') as fin, open(fileout, 'w') as fout:
@@ -150,14 +153,14 @@ def protein2ipr_formatter(filein=None, fileout=None, path='.'):
 def idmapping_formatter(taxonid, fileout=None, path='.'):
 
     if fileout is None:
-        fileout = 'idmapping_{}_{}.tab'.format(taxonid, dt)
+        fileout = 'idmapping_{}.tab'.format(taxonid)
     fileout = os.path.join(path, fileout)
 
     inputfiles = list()
     searchterm = org_dict.get(taxonid)
-    filepat = re.compile('{}_{}_idmapping_selected_{}.tab'.format(searchterm,
-                                                                  taxonid,
-                                                                  dt), re.IGNORECASE)
+    filepat = re.compile('{}_{}_idmapping_selected.tab'.format(searchterm,
+                                                                  taxonid,),
+                         re.IGNORECASE)
 
     heading=['UniProt_AC', 'UniProtKB_ID', 'GeneID', 'RefSeq', 'GI',
              'PDB', 'GO', 'UniRef100', 'UniRef90', 'UniRef50', 'UniParc', 'PIR',
@@ -179,9 +182,9 @@ def idmapping_formatter(taxonid, fileout=None, path='.'):
 def gene_info_formatter(taxonid, filein=None, fileout=None):
 
     if filein is None:
-        filein = 'gene_info_{}.tab'.format(dt)
+        filein = 'gene_info.tab'
     if fileout is None:
-        fileout = 'gene_info_formatted_{}_{}.tab'.format(taxonid, dt)
+        fileout = 'gene_info_formatted_{}.tab'.format(taxonid)
     filein = os.path.join(path, filein)
     fileout = os.path.join(path, fileout)
 
@@ -203,8 +206,8 @@ def append_all_files(taxon, path='.'):
     """get a list of files that match a given searchterm"""
     searchterm = org_dict.get(taxon)
     inputfiles = list()
-    searchterm = re.compile('{}\.[0-9=+\.protein.faa_{}.tab'.format(searchterm,
-                                                                    dt), re.IGNORECASE)
+    searchterm = re.compile('{}\.[0-9=+\.protein.faa.tab'.format(searchterm),
+                            re.IGNORECASE)
     for entry in os.scandir(path):
         if entry.is_file and searchterm.search(entry.name):
             inputfiles.append(os.path.append(path, entry.name))
@@ -231,9 +234,9 @@ def refseq_dict(inputfiles):
 def gene2accession_formatter(taxonid, filein=None, fileout=None, path='.'):
 
     if filein is None:
-        filein = 'gene2accession_{}.tab'.format(dt)
+        filein = 'gene2accession.tab'
     if fileout is None:
-        fileout = 'gene2accession_formatted_{}_{}.tab'.format(taxonid, dt)
+        fileout = 'gene2accession_formatted_{}.tab'.format(taxonid)
     filein = os.path.join(path, filein)
     fileout = os.path.join(path, fileout)
     with open(filein,'r') as filein, open(fileout,'w') as fileout:
@@ -247,7 +250,7 @@ def gene2accession_formatter(taxonid, filein=None, fileout=None, path='.'):
 def g2acc_dict(taxonid, filein=None, path='.'):
 
     if filein is None:
-        filein = 'gene2accession_formatted_{}_{}.tab'.format(taxonid, dt)
+        filein = 'gene2accession_formatted_{}.tab'.format(taxonid)
     filein = os.path.join(filein)
     g2a = dict()
     with open(filein, 'r') as f:
@@ -259,7 +262,7 @@ def g2acc_dict(taxonid, filein=None, path='.'):
 def homologene_formatter(taxonid, filein=None, fileout=None, path='.'):
     'just adds tabs to a header'
     if filein is None:
-        filein = 'homologene_download_{}.tab'.format('homologene_download', dt, 'tab')
+        filein = 'homologene_download.tab'
     filein = os.path.join(path, filein)
     header = ['hid_HomologeneID', 'hid_TaxonID', 'hid_GeneID', 'hid_GeneSymbol', 'hid_ProteinGI',
               'hid_ProteinAccession']
@@ -271,7 +274,7 @@ def homologene_formatter(taxonid, filein=None, fileout=None, path='.'):
 
 def hid_dict(filein=None, path='.'):
     if filein is None:
-        filein = 'homologene_download_{}.tab'.format('homologene_download', dt, 'tab')
+        filein = 'homologene_download.tab'
     filein = os.path.join(path, filein)
     hid = dict()
     with open (filein, 'r') as f:
