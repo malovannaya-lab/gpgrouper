@@ -100,7 +100,7 @@ def download_ncbi_files(path='.', taxa=None):
                          (os.path.join(path, 'go_process.xml'), 'RETR go_process.xml'),
                          (os.path.join(path, 'mim2gene_medgen'), 'RETR mim2gene_medgen')]:
         if not os.path.exists(outpath):
-            ftp.retrbinary(retbin, open(outpath).write)
+            ftp.retrbinary(retbin, open(outpath, 'wb').write)
 
 
 # Unzip Files:
