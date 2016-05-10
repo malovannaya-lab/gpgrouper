@@ -34,11 +34,11 @@ def download_ebi_files(path='.', taxa=None):
     ftp = FTP('ftp.ebi.ac.uk')
     ftp.login()
     ftp.cwd('/pub/databases/interpro')
-    out = os.path.join(path, 'entry_.tab')
+    out = os.path.join(path, 'entry.tab')
     ftp.retrbinary('RETR entry.list', open(out, 'wb').write)
 
     #Downloading protein2ipr from EBI
-    out = os.path.join(path, 'protein2ipr_.gz')
+    out = os.path.join(path, 'protein2ipr.gz')
     if not os.path.exists(out):
         ftp.retrbinary('RETR protein2ipr.dat.gz', open(out, 'wb').write)
 
