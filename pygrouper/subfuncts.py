@@ -407,6 +407,8 @@ def protease(seq,minlen = 0, cutsites=[], exceptions=[], miscuts=2):
         if cut == 0 or len(seq) == 0:
             if cut == 0 and len(frags) == 0:
                 frags.append(chop+seq)
+            elif cut == 0 and chop and seq:
+                frags.append(chop+seq)
             #print(chop)
             elif len(seq) != 0 : frags.append(seq)
             elif len(seq) == 0 and chop : frags.append(chop) #special case for
