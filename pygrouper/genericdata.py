@@ -115,7 +115,8 @@ def unzip_all(path='.'):
     for entry in os.scandir(path):
         if entry.is_file() and entry.name.endswith('.gz'):
             entry_base, _ = os.path.splitext(entry.name)
-            unzip(entry.name, entry_base + '.tab')
+            unzip(os.path.join(path, entry.name),
+                  os.path.join(path, entry_base + '.tab'))
 
 # Reformat Files:
 def entrylist_formatter(filein=None, fileout=None, path='.'):
