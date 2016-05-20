@@ -32,7 +32,7 @@ def grab_one():
     files = [os.path.join(BASE_DIR, f) for f in files]
     return (files, setups)
 
-def grab_data(quick, prof):
+def grab_data(quick, prof, tmt):
 
     setups = [{'EXPRecNo': 30490,
                'EXPRunNo': 1,
@@ -64,6 +64,9 @@ def grab_data(quick, prof):
               ]
     if quick:
         files = ['30490_1_EQP_6KiP_all.txt']
+    elif tmt:
+        files = ['30490_1_EQP_6KiP_all_tmt.txt']
+        setups[0]['EXPLabelType'] = 'TMT'
     elif prof:
         files = ['30404_1_QEP_ML262_75min_020_RPall.txt']
         setups = [setups[1]]
@@ -90,9 +93,9 @@ def make_processes(max_processes, data_args):
     return (processes, more)
 
 
-def runtest(quick=False, prof=False, testone=False, **kwargs):
+def runtest(quick=False, prof=False, tmt=False, testone=False, **kwargs):
     inputdir = BASE_DIR
-    files, setups, inputdir = grab_data(quick, prof)
+    files, setups, inputdir = grab_data(quick, prof, tmt)
     if testone: # overwrite previous
         files, setups =  grab_one()
     if inputdir is None:
@@ -104,7 +107,7 @@ def runtest(quick=False, prof=False, testone=False, **kwargs):
         print(f)
     print('running test')
     pygrouper.main(usrfiles=files, exp_setups=setups,
-                   automated=True, 
+                   automated=True,
                    usedb=False, **kwargs)
 
 if __name__ == '__main__':

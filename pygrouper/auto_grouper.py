@@ -63,37 +63,6 @@ def experiment_checker():
         rundata[col] = rundata[col].fillna('')
 
     return rundata
-    #sql = ('SELECT record_no, run_no, search_no FROM experimentruns WHERE '
-    #       'record_no in ({})').format(', '.join([str(rec) for rec in rundata.index.tolist()]))
-    #local_conn = db.get_connection()
-    #local_recs = pd.read_sql(sql, local_conn, index_col='record_no')
-    #newexps = defaultdict(list)
-    #for ix, row in rundata.iterrows():
-    #    ix = int(ix)
-    #    if isinstance(row.exp_CreationTS, str):
-    #        try:
-    #            creation = datetime.strptime(row.exp_CreationTS, '%Y/%m/%d %H:%M:%S')
-    #        except ValueError:
-    #            creation = None
-    #    else:
-    #        creation = row.exp_CreationTS
-    #    in_local_db = False
-    #    if len(local_recs[(local_recs.index==ix) & (local_recs.run_no == row['exprun_EXPRunNo']) &
-    #                      (local_recs.search_no==row['exprun_EXPSearchNo'])]) == 0:
-    #        newexps[ix].append(
-    #            {'run_no':row.exprun_EXPRunNo,
-    #             'search_no': row.exprun_EXPSearchNo, 'taxon': row.exprun_TaxonID,
-    #             'addedby': row.exprun_AddedBy, 'creation_ts': creation,
-    #             'purpose': row.exprun_Purpose, 'label': row.exprun_LabelType,
-    #             'techrep': row.exprun_nTechRepeats, 'instrument':row.exprun_MS_Instrument,
-    #             'msexperimenter': row.exprun_MS_Experimenter, 'mscomment':row.exprun_MS_Experimenter,
-    #             'quant': row.exprun_Search_QuantSource, 'searchexperimenter': row.exprun_Search_Experimenter}
-    #            )
-
-    #if newexps:
-    #    print('Updating experiment records')
-    #    db.add_experiments(newexps)
-    #conn.close()
 
 def file_checker(INPUT_DIR, OUTPUT_DIR, maxqueue, **kwargs):
     """Docstring
@@ -152,10 +121,10 @@ def file_checker(INPUT_DIR, OUTPUT_DIR, maxqueue, **kwargs):
                   ' {}.'.format(setup['EXPRecNo'], usrfile))
             conn = ispec.filedb_connect()
             cursor = conn.cursor()
-            cursor.execute("""UPDATE iSPEC_ExperimentRuns 
+            cursor.execute("""UPDATE iSPEC_ExperimentRuns
             SET exprun_Grouper_StartFLAG = ?
-            WHERE exprun_EXPRecNo= ? AND 
-            exprun_EXPRunNo = ? AND 
+            WHERE exprun_EXPRecNo= ? AND
+            exprun_EXPRunNo = ? AND
             exprun_EXPSearchNo = ?
             """, 1, setup['EXPRecNo'],
                            setup['EXPRunNo'], setup['EXPSearchNo'])
@@ -170,7 +139,7 @@ def schedule(INTERVAL, INPUT_DIR, OUTPUT_DIR, maxfiles, kwargs):
     #experiment_checker()  # not supposed to call this here
     #db.get_ispec_experiment_info(os.path.join(INPUT_DIR,ispecf), todb=True, norepeats=True)
     file_checker(INPUT_DIR, OUTPUT_DIR, maxfiles, **kwargs)
-    #print(INTERVAL, args) 
+    #print(INTERVAL, args)
     #for kwarg in kwargs:
     #    print(kwarg)
     global thread

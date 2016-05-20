@@ -1,10 +1,11 @@
 import os
+import re
+import getpass
 from datetime import datetime
 from configparser import ConfigParser
 import click
 from pygrouper.manual_tests import test as manual_test
-from pygrouper import subfuncts
-from pygrouper import auto_grouper
+from pygrouper import subfuncts, auto_grouper, pygrouper
 from pygrouper import genericdata as gd
 __author__ = 'Alexander B. Saltzman'
 __copyright__ = 'Copyright January 2016'
@@ -34,6 +35,7 @@ class Config(object):
         self.inputdir = PROFILE_DIR
         self.outputdir = PROFILE_DIR
         self.rawfiledir = PROFILE_DIR
+        self.labels = dict()
         self.refseqs = dict()
 class CaseConfigParser(ConfigParser):
     def optionxform(self, optionstr):
@@ -133,25 +135,39 @@ def parse_configfile(config):
         refseqs[taxon] = {'loc': location,
                           'size': parser.getfloat('refseq file sizes', taxon)}
     config.refseqs = refseqs
+    labels = dict()
+    for label in parser['labels']:
+        labels[label] = [x.strip() for x in
+                         parser.get('labels', label).splitlines() if x]
+    config.labels = labels
 
+@cli.command(context_settings=CONTEXT_SETTINGS)
+@pass_config
+def openconfig(config):
+    CONFIG_DIR = os.path.join(PROFILE_DIR, config.user)
+    CONFIG_FILE = os.path.join(CONFIG_DIR, 'config.ini')
+    click.launch(CONFIG_FILE)
 
 @cli.command(context_settings=CONTEXT_SETTINGS)
 @click.option('-q', '--quick', is_flag=True, help='Run a single small file')
 @click.option('-p', '--profile', is_flag=True, help='Run a large profiling file with multiple taxons')
+@click.option('-t', '--tmt', is_flag=True, help='Run a large profiling file with multiple taxons')
 @pass_config
-def test(config, quick, profile ):
+def test(config, quick, profile, tmt):
     """Test pygrouper with some pre-existing data."""
     parse_configfile()
     INPUT_DIR = config.inputdir
     OUTPUT_DIR = config.outputdir
     RAWFILE_DIR = config.rawfiledir
+    LABELS = config.labels
     refseqs = config.refseqs
     filtervalues = config.filtervalues
     column_aliases = config.column_aliases
     gid_ignore_file = os.path.join(config.CONFIG_DIR, 'geneignore.txt')
-    manual_test.runtest(quick, profile, inputdir=INPUT_DIR, outputdir=OUTPUT_DIR,
+    manual_test.runtest(quick, profile, tmt, inputdir=INPUT_DIR, outputdir=OUTPUT_DIR,
                         rawfilepath=RAWFILE_DIR, refs=refseqs, FilterValues=filtervalues,
                         column_aliases=column_aliases, gid_ignore_file=gid_ignore_file,
+                        labels=LABELS,
                         configpassed=True)
 
 @cli.command(context_settings=CONTEXT_SETTINGS)
@@ -243,6 +259,7 @@ def run(config, autorun, interval, max_files):
     INPUT_DIR = config.inputdir
     OUTPUT_DIR = config.outputdir
     RAWFILE_DIR = config.rawfiledir
+    LABELS = config.labels
     refseqs = config.refseqs
     filtervalues = config.filtervalues
     column_aliases = config.column_aliases
@@ -253,7 +270,50 @@ def run(config, autorun, interval, max_files):
                                     refs=refseqs, FilterValues=filtervalues,
                                     column_aliases=column_aliases,
                                     gid_ignore_file=gid_ignore_file,
+                                    labels=LABELS,
                                     configpassed=True)
     else:
-        click.echo('Not implemented yet')
-        usrfile = click.prompt('Enter a file to group', type=click.Path(exists=True))
+        usrfiles, setups = list(), list()
+        username = click.prompt('Enter your name', default=getpass.getuser())
+        label_type = click.prompt('Enter label type', default='none')
+        usrfile = click.prompt('Enter a file to group', type=click.Path(exists=True, dir_okay=False,
+                                                                        resolve_path=True))
+        try:
+            rec, run, search = find_rec_run_search(usrfile)
+            rec, run, search = int(rec), int(run), int(search)
+        except AttributeError:  # regex search failed, just get from user
+            rec = click.prompt('Enter record number', type=int)
+            run = click.prompt('Enter run number', default=1, type=int)
+            search = click.prompt('Enter search number', default=1, type=int)
+        taxon = click.prompt('Enter taxon id', default=9606, type=int,)
+        usrfiles.append(usrfile)
+        setup = {'EXPRecNo': rec,
+                 'EXPRunNo': run,
+                 'EXPSearchNo': search,
+                 'taxonID': taxon,
+                 'EXPQuantSource': 'AUC',
+                 'AddedBy': username,
+                 'EXPTechRepNo': 1,
+                 'EXPLabelType': label_type,
+                 }
+        INPUT_DIR, usrfile = os.path.split(usrfile)
+        OUTPUT_DIR = INPUT_DIR
+        usrfiles.append(usrfile)
+        setups.append(setup)
+        pygrouper.main(usrfiles=usrfiles, exp_setups=setups, automated=True,
+                       inputdir=INPUT_DIR, outputdir=OUTPUT_DIR, usedb=False,
+                       refs=refseqs, FilterValues=filtervalues,
+                       column_aliases=column_aliases,
+                       gid_ignore_file=gid_ignore_file,
+                       configpassed=True)
+
+def find_rec_run_search(target):
+    "Try to get record, run, and search numbers with regex"
+    rec_run_search = re.compile(r'^\d+_\d+_\d+_')
+    match = rec_run_search.search(target).group()
+    recno = re.search(r'^\d+', match).group()
+    recno_pat = re.compile('(?<={}_)\d+'.format(recno))
+    runno = re.search(recno_pat, match).group()
+    runno_pat = re.compile('(?<={}_{}_)\d+'.format(recno, runno))
+    searchno = re.search(runno_pat, match).group()
+    return recno, runno, searchno

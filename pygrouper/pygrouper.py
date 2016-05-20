@@ -10,6 +10,7 @@ from configparser import ConfigParser
 import multiprocessing as mp
 from itertools import repeat
 import pandas as pd
+from pygrouper import cli
 from pygrouper.subfuncts import *
 try:
     from bcmproteomics import ispec
@@ -25,7 +26,7 @@ __author__ = 'Alexander B. Saltzman'
 __copyright__ = 'Copyright January 2016'
 __credits__ = ['Alexander B. Saltzman', 'Anna Malovannaya']
 __license__ = 'MIT'
-__version__ = '0.1.015'
+__version__ = '0.1.016'
 __maintainer__ = 'Alexander B. Saltzman'
 __email__ = 'saltzman@bcm.edu'
 program_title = 'Pygrouper v{}'.format(__version__)
@@ -33,6 +34,19 @@ BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 logfilename = program_title.replace(' ', '_') + '.log'
 logging.basicConfig(filename=logfilename, level=logging.DEBUG)
 logging.info('{}: Initiating {}'.format(datetime.now(), program_title))
+
+labelflag = {'none': 0,  # hard coded number IDs for labels
+             '126': 1260,
+             '127_C': 1270,
+             '127_N': 1271,
+             '128_C': 1280,
+             '128_N': 1281,
+             '129_C': 1290,
+             '129_N': 1291,
+             '130_C': 1300,
+             '130_N': 1301,
+             '131': 1310,
+}
 
 try:
     from PIL import Image, ImageFont, ImageDraw
@@ -52,104 +66,6 @@ def quick_save(df,name='df_snapshot.p', path=None, q=False):
     if q:
         print('Exiting prematurely')
         sys.exit(0)
-
-
-def user_cli(FilterValues, usrfiles, exp_setups, usedb=False, inputdir='', outputdir='' ):
-    """Function to get files to group based on manual entry via user through CLI.
-    """
-    usr_name = input('Enter your name : ')
-    Filter_Stamp ='is{}_qv{}_pep{}_idg{}_z{}to{}mo{}'.format(
-        FilterValues['Filter_IS'],
-        FilterValues['Filter_qV'] * 100,
-        FilterValues['Filter_PEP'],
-        FilterValues['Filter_IDG'], 
-        FilterValues['Filter_Z_min'],
-        FilterValues['Filter_Z_max'], 
-        FilterValues['Filter_Modi'])
-
-    try:
-        explog = open(os.path.join(inputdir, 'PyGrouper_grouped_exps.log'),
-                      'r+U')
-    except IOError:
-        explog = open(os.path.join(inputdir, 'PyGrouper_grouped_exps.log'),
-                      'a+')
-    grouped_exps = [value for value in re.findall(r'(\d+\S*\.txt)',\
-                                                  ' '.join(explog.readlines()))]
-    try:
-        input('Press enter to continue, or Ctrl+C to modify the filter'\
-              'values.\n')
-    except KeyboardInterrupt:
-        print('\nFilter_PEP and Filter_IDG can be set to "all",'\
-              ' but all other values must be numbers only.')
-        dict_modifier(FilterValues, {'Filter_PEP': ['all'],
-                                     'Filter_IDG': ['all'], 'Filter_qV': []})
-        logging.info('Filter stamp : {}'.format(Filter_Stamp))
-
-    while True:
-        try:
-            exp_setup = {'taxonID': 9606, 'EXPTechRepNo': 1,
-                         'EXPQuantSource': 'AUC', 'EXPRunNo': 1,
-                         'EXPSearchNo': 1, 'EXPLabelType': 'none'}
-            usrfile_input = input('Enter a file to group or press'\
-                                  ' Ctrl+C if done : ')
-            if usrfile_input == 'forcequit':
-                logging.info('forcequit without selecting any files')
-                logging.shutdown()
-                sys.exit(0)
-            if os.path.isfile(usrfile_input):  # check to see if file exists
-                proceed = True
-                if usrfile_input.strip() in grouped_exps:  # strip any
-                    #whitespace to match correctly
-                    while True:
-                        proceed = input(
-                            'Records show that {} has been grouped before.'\
-                            'Are you sure you want to regroup (Y/n)? '\
-                            .format(usrfile_input))
-                        if 'Y' in proceed:
-                            proceed = True
-                            break
-                        elif 'n' in proceed.lower():
-                            proceed = False
-                            break
-                if proceed:
-                    try:
-                        exp_setup['EXPRecNo'] = int(re.search('(\d{3,})',
-                                                              usrfile_input).group())
-                        # find first number of at least 3 digits
-                    except AttributeError:
-                        exprecno = input("Couldn't locate experimental"\
-                                         " record automatically,"\
-                                         " please enter it now. ")
-                        exp_setup['EXPRecNo'] = int(exprecno)
-
-                    print('Experimental setup is : {}'.format(exp_setup))
-                    try:
-                        input('Press enter to accept values and continue,'\
-                              'or Ctrl+C to modify the experimental'\
-                              'values.\n')
-                    except KeyboardInterrupt:
-                        print(
-                            '\nEXPQuantSource can be set to AUC or '\
-                            'Intensity, but all other values must be '\
-                            'numbers only.')
-                        dict_modifier(exp_setup, {'EXPQuantSource':
-                                                  ['AUC', 'Intensity']}, 
-                                      exception_float=False)
-                    if usedb:
-                        exp_setup.get('add_to_db',False) == True
-                    exp_setups.append(exp_setup)
-                    usrfiles.append(usrfile_input)
-            else:
-                print('File {} not found.'.format(usrfile_input))
-                # morefile = raw_input('Do you have more files to group? ')
-        except KeyboardInterrupt:
-            if len(usrfiles) > 0:
-                print()
-
-            else:
-                print('No files selected!')
-
-    return (usr_name, usrfiles, exp_setups)
 
 def get_gid_ignore_list(inputfile):
     """Input a file with a list of geneids to ignore when normalizing across taxa
@@ -209,7 +125,7 @@ def assign_IDG(usrdata):
 
     usrdata['psm_PSM_IDG'] = usrdata.apply(lambda x:
                                            IDG_picker(x['IonScore'],
-                                                      x['q_value']), axis=1) 
+                                                      x['q_value']), axis=1)
     return usrdata
 
 def make_seqlower(usrdata, col='Sequence'):
@@ -306,8 +222,8 @@ def update_database(program_title='version',exp_setup=dict(), matched_psms=0, un
     cursor.commit()
     cursor.execute("""UPDATE iSPEC_ExperimentRuns
     SET exprun_Grouper_EndFLAG = ?
-    WHERE exprun_EXPRecNo= ? AND 
-    exprun_EXPRunNo = ? AND 
+    WHERE exprun_EXPRecNo= ? AND
+    exprun_EXPRunNo = ? AND
     exprun_EXPSearchNo = ?
     """, 1, exp_setup['EXPRecNo'],
                    exp_setup['EXPRunNo'], exp_setup['EXPSearchNo'])
@@ -406,11 +322,11 @@ def create_e2g_df(inputdf, label, inputcol='psm_GeneID'):
     peptide DataFrame"""
     return pd.DataFrame({'e2g_GeneID':
                          list(set(inputdf[inputcol])),
-                         'e2g_EXPLabelFLAG': label})
+                         'e2g_EXPLabelFLAG': labelflag.get(label, 0)})
 
-def select_good_peptides(usrdata, label):
+def select_good_peptides(usrdata, labelix):
     """Selects peptides of a given label with the correct flag and at least one genecount"""
-    temp_df = usrdata[(usrdata['psm_LabelFLAG'] == label) &
+    temp_df = usrdata[(usrdata['psm_LabelFLAG'] == labelix) &
                       (usrdata['psm_AUC_UseFLAG'] == 1) &
                       (usrdata['psm_GeneCount'] > 0)].copy()  # should keep WL's
     return temp_df
@@ -510,8 +426,27 @@ def set_gene_gpgroups(genes_df):
     #strings, convert all strings to NaN
     return genes_df
 
+def get_labels(usrdata, labels, labeltype='none'):
+    '""labels is a dictionary of lists for each label type""'
+    if labeltype == 'none':  # label free
+        return ['none']
+    mylabels = labels.get(labeltype)
+    included_labels = [label for label in mylabels if label in usrdata.columns]
+    return included_labels
+
+def redistribute_area(temp_df, label, labeltypes, area_col):
+    """for tmt"""
+
+    with_reporter = temp_df[temp_df['Quan Usage'] == 'Use']
+    reporter_area = with_reporter[label] * with_reporter[area_col] / with_reporter[labeltypes].sum(1)
+    new_area_col = area_col + '_reporter'
+    reporter_area.name = new_area_col
+    temp_df = temp_df.join(reporter_area)
+    temp_df[new_area_col].fillna(temp_df[area_col], inplace=True)
+    return temp_df, new_area_col
+
 def grouper(usrfile, usrdata, exp_setup, FilterValues, usedb=False, outdir='',
-            gid_ignore_file='', *args):
+            gid_ignore_file='', labels=dict()):
     """Function to group a psm file from PD after Mascot Search"""
     #import RefseqInfo
 
@@ -638,18 +573,29 @@ def grouper(usrfile, usrdata, exp_setup, FilterValues, usedb=False, outdir='',
                  'e2g_nGPArea_Sum_max', 'e2g_nGPArea_Sum_dstrAdj',
                  'e2g_GeneCapacity', 'e2g_n_iBAQ_dstrAdj']  # cols of interest
 
-    for label in range(1):  # increase the range to go through more label types
+    labeltypes = get_labels(usrdata, labels, exp_setup['EXPLabelType'])
+    orig_area_col = area_col
+    for label in labeltypes:  # increase the range to go through more label types
+        labelix = labelflag.get(label, 0)
+        area_col = orig_area_col
         logfile.write('{} | Starting gene assignment for label {}.\n'.format(
-            time.ctime(), labeltypes[label]))
+            time.ctime(), label))
         # ==========Select only peptides flagged  with good quality=========== #
-        temp_df = select_good_peptides(usrdata, label)
+        mylabelix = labelix
+        if exp_setup['EXPLabelType'] == 'TMT':
+            mylabelix = 0 # should be 1 but not today
+        temp_df = select_good_peptides(usrdata, mylabelix)
+        if exp_setup['EXPLabelType'] == 'TMT':
+            temp_df, area_col = redistribute_area(temp_df, label, labeltypes, area_col)
+        if exp_setup['EXPLabelType'] == 'SILAC':
+            pass
         # ==================================================================== #
         if len(temp_df) > 0:  # only do if we actually have peptides selected
             genedata_out = '_'.join(str(x) for x in [exp_setup['EXPRecNo'],
                                                      exp_setup['EXPRunNo'],
                                                      exp_setup['EXPSearchNo'],
                                                      exp_setup['EXPLabelType'],
-                                                     labeltypes[label],
+                                                     labelix,
                                                      'e2g.tab'])
             print('{}: Populating gene table for {}.'.format(datetime.now(),
                                                              usrfile))
@@ -713,12 +659,13 @@ def grouper(usrfile, usrdata, exp_setup, FilterValues, usedb=False, outdir='',
                 gid_ignore_list)].e2g_n_iBAQ_dstrAdj.sum()
 
             #genes_df.rename(columns=torename, inplace=True)
+            print(os.path.join(outdir, genedata_out))
             genes_df.to_csv(os.path.join(outdir, genedata_out), columns=e2g_cols,
                             index=False, encoding='utf-8', sep='\t')
             logfile.write('{} | Export of genetable for labeltype {}'\
                           'completed.\n'.format(
                               time.ctime(),
-                              labeltypes[label]))
+                              label))
 
             # ========================================================================= #
 
@@ -826,25 +773,19 @@ def grouper(usrfile, usrdata, exp_setup, FilterValues, usedb=False, outdir='',
 
 def main(usrfiles=[], exp_setups=[], automated=False, setup=False, fullpeptread=False,
          usedb=False, inputdir='', outputdir='', refs=dict(), rawfilepath=None,
-         FilterValues=dict(), column_aliases=dict(), gid_ignore_file='', configpassed=False):
+         FilterValues=dict(), column_aliases=dict(), gid_ignore_file='', configpassed=False,
+         labels=dict()):
     """
     usedb : Connect to the iSPEC database and update some record information.
             This does not currently import the results, but does import some metada.
     """
     # ===================Configuration Setup / Loading==========================#
-    if usedb:
-        if bcmprot:  # try to connect to iSPEC first
-            conn = ispec.filedb_connect()
-            if isinstance(conn, str):
-                print(conn)
-                sys.exit(1)
+    if usedb and bcmprot:  # try to connect to iSPEC first
+        conn = ispec.filedb_connect()
+        if isinstance(conn, str):
+            print(conn)
+            sys.exit(1)
 
-    #if not os.path.isfile(os.path.join(BASE_DIR,'py_config.ini')):
-        #input("No config file detected. Don't worry, we'll make one now\n"\
-              #"Press [Enter] to continue")
-        #pysetup()
-    #elif setup:
-        #pysetup()
     if not configpassed:
         parser = ConfigParser(comment_prefixes=(';')) # allow number sign to be read in configfile
         parser.optionxform = str  # preserve case
@@ -935,14 +876,13 @@ def main(usrfiles=[], exp_setups=[], automated=False, setup=False, fullpeptread=
         for alias in column_aliases:
             if alias.startswith('psm_') or alias.startswith('e2g_'):
                 exp_setup[alias] = column_aliases[alias]
-                
+
         #for key in exp_setup: print(key,'   :   ', exp_setup[key])
         usrdata.rename(columns={v: k
                                 for k,v in standard_names.items()},
                        inplace=True)
         if not automated:
             usrdata['psm_AddedBy'] = usr_name
-
         elif automated:
             usrdata['psm_AddedBy'] = exp_setup['AddedBy']
 
@@ -956,7 +896,6 @@ def main(usrfiles=[], exp_setups=[], automated=False, setup=False, fullpeptread=
     print('{}: Loading refseq database.'.format(datetime.now()))
     #RefseqInfo = namedtuple('RefseqInfo',
     #                    'taxonid, geneid, homologeneid,proteingi,genefraglen')
-
     for organism in refs.keys():
         if any(any(x['psm_TaxonID'].isin([int(organism)])) for x in\
                usrdatas):  # check if we even need to read the
@@ -964,8 +903,6 @@ def main(usrfiles=[], exp_setups=[], automated=False, setup=False, fullpeptread=
             ref_reader = csv_reader(refs[organism]['loc'])
             searchdb = os.path.split(refs[organism]['loc'])[1]
             print('Using peptidome {} '.format(searchdb))
-            #print('Breakups : {}'.format(pept_breakups[organism]))
-            #sys.exit(0)
             for breakup in pept_breakups[organism]:  # Read refseq in chunks,
                                                      #uses less memory
                 prot = defaultdict(list)
@@ -981,7 +918,7 @@ def main(usrfiles=[], exp_setups=[], automated=False, setup=False, fullpeptread=
                         for fragment in fragments:
                             prot[fragment].append(
                                 RefseqInfo._make([row.taxonid, row.geneid,
-                                                  row.homologeneid,row.proteingi, 
+                                                  row.homologeneid,row.proteingi,
                                                   fraglen]))
 
                     except StopIteration:  # breakups won't be exact since they
@@ -992,7 +929,7 @@ def main(usrfiles=[], exp_setups=[], automated=False, setup=False, fullpeptread=
                 for usrdata, usrfile, exp_setup in zip(usrdatas, usrfiles, exp_setups):
                     #print(usrdata.loc[0]['_data_TaxonID'])
                     if usrdata.loc[0]['psm_TaxonID'] == int(organism):
-                        # check to see if the inputdata 
+                        # check to see if the inputdata
                         #taxonID matches with the proteome
                         exp_setup['searchdb'] = searchdb
                         usrdata['Sequence'], usrdata['psm_SequenceModi'],\
@@ -1018,25 +955,10 @@ def main(usrfiles=[], exp_setups=[], automated=False, setup=False, fullpeptread=
     #pool = mp.Pool(processes=2)
     grouperdata = zip(usrfiles, usrdatas, exp_setups, repeat(FilterValues),
                       repeat(usedb), repeat(outputdir))
-    #pool.starmap(grouper, zip(usrfiles, usrdatas, exp_setups, repeat(FilterValues),
-    #                                repeat(usedb), repeat(outputdir)))
-    #pool.close()
-    #pool.join()
-    #more = True
-    #while more:
-    #    processes, more = make_processes(max_processes, grouperdata)
-    #    if processes:
-    #        for p in processes:
-    #            p.start()
-    #
-    #    pool.apply(grouper, args=(usrfile, usrdata, expsetup, FilterValues, usedb, outputdir,))
-
-    #pool.close()
-    #pool.join()
     for usrfile, usrdata, esetup in zip(usrfiles, usrdatas, exp_setups):
         try:
             grouper(usrfile, usrdata, esetup, FilterValues, usedb=usedb, outdir=outputdir,
-                    gid_ignore_file=gid_ignore_file)
+                    gid_ignore_file=gid_ignore_file, labels=labels)
         except Exception as e:  # catch and store all exceptions, won't crash
                                 # the whole program at least
             failed_exps.append((usrfile, e))
@@ -1062,8 +984,8 @@ def main(usrfiles=[], exp_setups=[], automated=False, setup=False, fullpeptread=
                     cursor = conn.cursor()
                     cursor.execute("""UPDATE iSPEC_ExperimentRuns
                     SET exprun_Grouper_FailedFLAG = ?
-                    WHERE exprun_EXPRecNo= ? AND 
-                    exprun_EXPRunNo = ? AND 
+                    WHERE exprun_EXPRecNo= ? AND
+                    exprun_EXPRunNo = ? AND
                     exprun_EXPSearchNo = ?
                     """, 1, exp_setup['EXPRecNo'],
                                    exp_setup['EXPRunNo'], exp_setup['EXPSearchNo'])

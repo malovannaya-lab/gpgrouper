@@ -32,6 +32,8 @@ def byte_formatter(b):
             return '{:.4f} GB'.format(conv)
 
 def get_rawfile_info(path, spectraf):
+    if path is None:
+        path = '.'
 
     if not os.path.isdir(path):
         return ('not found, check rawfile path', 'not found')
