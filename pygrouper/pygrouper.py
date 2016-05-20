@@ -26,7 +26,7 @@ __author__ = 'Alexander B. Saltzman'
 __copyright__ = 'Copyright January 2016'
 __credits__ = ['Alexander B. Saltzman', 'Anna Malovannaya']
 __license__ = 'MIT'
-__version__ = '0.1.016'
+__version__ = '0.1.017'
 __maintainer__ = 'Alexander B. Saltzman'
 __email__ = 'saltzman@bcm.edu'
 program_title = 'Pygrouper v{}'.format(__version__)
@@ -547,7 +547,7 @@ def grouper(usrfile, usrdata, exp_setup, FilterValues, usedb=False, outdir='',
     taxon_ids = get_all_taxons(usrdata['psm_TaxonIDList'].tolist())
     #area_col_new = 'psm_Area_taxonAdj'
     taxon_totals = dict()
-    if len(taxon_ids) == 1:  # just 1 taxon id present
+    if len(taxon_ids) == 1 or exp_setup['no_taxa_redistrib']:  # just 1 taxon id present
         taxon_totals[list(taxon_ids)[0]] = 1  # taxon_ids is a set
     #    usrdata[area_col_new] = usrdata[area_col]
     elif len(taxon_ids) > 1:  # more than 1 taxon id

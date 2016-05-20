@@ -33,7 +33,7 @@ def experiment_checker():
                    'exprun_nTechRepeats',
                    'exprun_Search_QuantSource', 'exprun_Purpose',
                    'exprun_MS_Instrument', 'exprun_MS_Experimenter',
-                   'exprun_Search_Experimenter', ]
+                   'exprun_Search_Experimenter', 'exprun_Grouper_notaxaRedistribute']
 
     sql = ("SELECT {} FROM iSPEC_ISPEC.iSPEC_ExperimentRuns "
            "WHERE exprun_Grouper_EndFLAG != 1 AND "
@@ -54,7 +54,7 @@ def experiment_checker():
     rundata = rundata.join(recdata)  # join on index, the record number
 
     intfields = ['exprun_EXPRunNo', 'exprun_EXPSearchNo',
-                 'exprun_TaxonID', 'exprun_nTechRepeats']
+                 'exprun_TaxonID', 'exprun_nTechRepeats', 'exprun_Grouper_notaxaRedistribute']
     for field in intfields:
         rundata[field] = rundata[field].fillna(0)
         rundata[field] = rundata[field].astype('int')  # get rid of decimals
@@ -91,6 +91,7 @@ def file_checker(INPUT_DIR, OUTPUT_DIR, maxqueue, **kwargs):
                  'AddedBy': exp.exprun_AddedBy,
                  'EXPTechRepNo': exp.exprun_nTechRepeats,
                  'EXPLabelType': exp.exprun_LabelType,
+                 'no_taxa_redistrib' : exprun_Grouper_notaxaRedistribute
                  }
         expfilematch = '_'.join([str(setup['EXPRecNo']),
                                  str(setup['EXPRunNo']),

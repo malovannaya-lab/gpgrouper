@@ -11,7 +11,7 @@ __author__ = 'Alexander B. Saltzman'
 __copyright__ = 'Copyright January 2016'
 __credits__ = ['Alexander B. Saltzman', 'Anna Malovannaya']
 __license__ = 'MIT'
-__version__ = '0.1.016'
+__version__ = '0.1.017'
 __maintainer__ = 'Alexander B. Saltzman'
 __email__ = 'saltzman@bcm.edu'
 
