@@ -434,14 +434,14 @@ def get_labels(usrdata, labels, labeltype='none'):
     included_labels = [label for label in mylabels if label in usrdata.columns]
     return included_labels
 
-def redistribute_area(temp_df, label, labeltypes, area_col):
+def redistribute_area_tmt(temp_df, label, labeltypes, area_col):
     """for tmt"""
 
     with_reporter = temp_df[temp_df['Quan Usage'] == 'Use']
     reporter_area = with_reporter[label] * with_reporter[area_col] / with_reporter[labeltypes].sum(1)
     new_area_col = area_col + '_reporter'
     reporter_area.name = new_area_col
-    temp_df = temp_df.join(reporter_area)
+    temp_df = temp_df.join(reporter_area, how='right')  # only keep peptides with good reporter ion
     temp_df[new_area_col].fillna(temp_df[area_col], inplace=True)
     return temp_df, new_area_col
 
@@ -586,7 +586,7 @@ def grouper(usrfile, usrdata, exp_setup, FilterValues, usedb=False, outdir='',
             mylabelix = 0 # should be 1 but not today
         temp_df = select_good_peptides(usrdata, mylabelix)
         if exp_setup['EXPLabelType'] == 'TMT':
-            temp_df, area_col = redistribute_area(temp_df, label, labeltypes, area_col)
+            temp_df, area_col = redistribute_area_tmt(temp_df, label, labeltypes, area_col)
         if exp_setup['EXPLabelType'] == 'SILAC':
             pass
         # ==================================================================== #
