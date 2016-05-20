@@ -201,7 +201,7 @@ def update_database(program_title='version',exp_setup=dict(), matched_psms=0, un
            "exprun_PSMCount_unmatched={unmatched}, "
            "exprun_InputFileName='{inputname}', "
            "exprun_Fraction_9606={hu}, "
-           "exprun_Fraction_10090={mou} "
+           "exprun_Fraction_10090={mou}, "
            "exprun_Fraction_9031={gg} "
            "WHERE exprun_EXPRecNo={recno} "
            "AND exprun_EXPRunNo={runno} "
