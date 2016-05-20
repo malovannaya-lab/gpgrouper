@@ -91,7 +91,7 @@ def file_checker(INPUT_DIR, OUTPUT_DIR, maxqueue, **kwargs):
                  'AddedBy': exp.exprun_AddedBy,
                  'EXPTechRepNo': exp.exprun_nTechRepeats,
                  'EXPLabelType': exp.exprun_LabelType,
-                 'no_taxa_redistrib' : exprun_Grouper_notaxaRedistribute
+                 'no_taxa_redistrib' : exp.exprun_Grouper_notaxaRedistribute
                  }
         expfilematch = '_'.join([str(setup['EXPRecNo']),
                                  str(setup['EXPRunNo']),
