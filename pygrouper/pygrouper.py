@@ -445,6 +445,18 @@ def redistribute_area_tmt(temp_df, label, labeltypes, area_col):
     temp_df[new_area_col].fillna(temp_df[area_col], inplace=True)
     return temp_df, new_area_col
 
+def concat_tmt_e2gs(rec, run, search, outdir, cols=None):
+    pat = re.compile('^{}_{}_{}_TMT_\d+_e2g.tab'.format(rec, run, search))
+    files = list()
+    for entry in os.scandir(outdir):
+        if entry.is_file() and pat.search(entry.name):
+            files.append(os.path.join(outdir, entry.name))
+    df = pd.concat([pd.read_table(f) for f in files])
+    outf = '{}_{}_{}_TMT_all_e2g.tab'.format(rec, run, search)
+    df.to_csv(os.path.join(outdir, outf), columns=cols,
+                    index=False, encoding='utf-8', sep='\t')
+    print('Export of TMT e2g file : {}'.format(outf))
+
 def grouper(usrfile, usrdata, exp_setup, FilterValues, usedb=False, outdir='',
             gid_ignore_file='', labels=dict()):
     """Function to group a psm file from PD after Mascot Search"""
@@ -670,6 +682,9 @@ def grouper(usrfile, usrdata, exp_setup, FilterValues, usedb=False, outdir='',
             # ========================================================================= #
 
     # ----------------End of none/silac loop--------------------------------- #
+    if exp_setup['EXPLabelType'] == 'TMT':
+        concat_tmt_e2gs(exp_setup['EXPRecNo'], exp_setup['EXPRunNo'], exp_setup['EXPSearchNo'],
+                        outdir, cols=e2g_cols)
     usrdata.drop('metadatainfo', axis=1, inplace=True)  # Don't need this
                                       # column anymore.
     #print('Length of usrdata before merge : ',len(usrdata))
