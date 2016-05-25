@@ -5,6 +5,7 @@ import argparse
 from itertools import repeat
 import multiprocessing as mp
 from pygrouper import pygrouper
+from pygrouper.containers import UserData
 #sys.path.append('..')  # access to pygrouper
 #import pygrouper
 
@@ -32,82 +33,59 @@ def grab_one():
     files = [os.path.join(BASE_DIR, f) for f in files]
     return (files, setups)
 
+def get_quick_data():
+    data = UserData('30490_1_EQP_6KiP_all.txt')
+    data.recno = 30490
+    data.taxonid = 9606
+    data.quant_source = 'AUC'
+    data.added_by = 'test'
+    data.labeltype = 'none'
+    data.usedb = False
+    data.indir = BASE_DIR
+    data.outdir = './testresults'
+
+    return data
+
+def get_prof_data():
+    data = UserData('30404_1_QEP_ML262_75min_020_RPall.txt')
+    data.recno = 30404
+    data.taxonid = 20150811
+    data.quant_source = 'AUC'
+    data.added_by = 'test'
+    data.labeltype = 'none'
+    data.indir = BASE_DIR
+    data.outdir = './testresults'
+
+    return data
+
 def grab_data(quick, prof, tmt):
+    quick_data = get_quick_data()
+    tmt_data = get_quick_data()
+    tmt_data.labeltype = 'TMT'
+    tmt_data.datafile = '30490_1_EQP_6KiP_all_TMT.txt'
+    prof_data = get_prof_data()
 
-    setups = [{'EXPRecNo': 30490,
-               'EXPRunNo': 1,
-               'EXPSearchNo': 1,
-               'taxonID': 9606,
-               'EXPQuantSource': 'AUC',
-               'AddedBy': 'test',
-               'EXPTechRepNo': 1,
-               'EXPLabelType': 'none'
-                     },
-              {'EXPRecNo': 30404,
-               'EXPRunNo': 1,
-               'EXPSearchNo': 1,
-               'taxonID': 20150811,
-               'EXPQuantSource': 'AUC',
-               'AddedBy': 'test',
-               'EXPTechRepNo': 1,
-               'EXPLabelType': 'none'
-                     },
-              {'EXPRecNo': 30259,
-               'EXPRunNo': 1,
-               'EXPSearchNo': 1,
-               'taxonID': 20150811,
-               'EXPQuantSource': 'AUC',
-               'AddedBy': 'test',
-               'EXPTechRepNo': 1,
-               'EXPLabelType': 'none'
-                     },
-              ]
     if quick:
-        files = ['30490_1_EQP_6KiP_all.txt']
+        return [quick_data]
+        # files = ['30490_1_EQP_6KiP_all.txt']
     elif tmt:
-        files = ['30490_1_EQP_6KiP_all_tmt.txt']
-        setups[0]['EXPLabelType'] = 'TMT'
+        return [tmt_data]
     elif prof:
-        files = ['30404_1_QEP_ML262_75min_020_RPall.txt']
-        setups = [setups[1]]
+        return [prof_data]
     else:
-        files = ['30490_1_EQP_6KiP_all.txt','30404_1_QEP_ML262_75min_020_RPall.txt']
+        return [quick_data, tmt_data, prof_data]
 
-
-
-    inputdir = None
-
-    return (files, setups, inputdir)
-
-def make_processes(max_processes, data_args):
-
-    processes = []
-    more = True
-    while len(processes) <= max_processes:
-        try:
-            inputs = next(data_args)
-            processes.append(mp.Process(target=pygrouper.main, args=inputs))
-        except StopIteration:
-            more = False
-
-    return (processes, more)
-
-
-def runtest(quick=False, prof=False, tmt=False, testone=False, **kwargs):
+def runtest(quick=False, prof=False, tmt=False, inputdir=None, **kwargs):
     inputdir = BASE_DIR
-    files, setups, inputdir = grab_data(quick, prof, tmt)
-    if testone: # overwrite previous
-        files, setups =  grab_one()
+    usrdatas = grab_data(quick, prof, tmt)
     if inputdir is None:
         inputdir = os.getcwd()
-    kwargs['outputdir'] = './testresults'
     print('Files for testing :')
-    files = [os.path.join(BASE_DIR, f) for f in files]
+    files = [usrdata.datafile for usrdata in usrdatas]
     for f in files:
         print(f)
     print('running test')
-    pygrouper.main(usrfiles=files, exp_setups=setups,
-                   automated=True,
+    pygrouper.main(usrdatas,
                    usedb=False, **kwargs)
 
 if __name__ == '__main__':

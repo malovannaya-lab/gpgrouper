@@ -36,16 +36,16 @@ logging.basicConfig(filename=logfilename, level=logging.DEBUG)
 logging.info('{}: Initiating {}'.format(datetime.now(), program_title))
 
 labelflag = {'none': 0,  # hard coded number IDs for labels
-             '126': 1260,
-             '127_C': 1270,
-             '127_N': 1271,
-             '128_C': 1280,
-             '128_N': 1281,
-             '129_C': 1290,
-             '129_N': 1291,
-             '130_C': 1300,
-             '130_N': 1301,
-             '131': 1310,
+             'TMT_126': 1260,
+             'TMT_127_C': 1270,
+             'TMT_127_N': 1271,
+             'TMT_128_C': 1280,
+             'TMT_128_N': 1281,
+             'TMT_129_C': 1290,
+             'TMT_129_N': 1291,
+             'TMT_130_C': 1300,
+             'TMT_130_N': 1301,
+             'TMT_131': 1310,
 }
 
 try:
@@ -66,6 +66,16 @@ def quick_save(df,name='df_snapshot.p', path=None, q=False):
     if q:
         print('Exiting prematurely')
         sys.exit(0)
+
+
+# def get_protease_dict(reader, )
+
+def _psm_to_gene_product(organism, usrdatas, usrfiles, exp_setups, refs, pept_breakups):
+    """Map psms to gene products"""
+    ref_reader = csv_reader(refs[organism]['loc'])
+    searchdb = os.path.split(refs[organism]['loc'])[1]
+    print('Using peptidome {} '.format(searchdb))
+
 
 def get_gid_ignore_list(inputfile):
     """Input a file with a list of geneids to ignore when normalizing across taxa
@@ -279,6 +289,7 @@ def flag_AUC_PSM(usrdata, FilterValues):
     list(zip(*usrdata.apply(AUC_PSM_flagger, args=(FilterValues,), axis=1)))
     return usrdata
 
+
 def gene_taxon_map(usrdata, gene_taxon_dict):
     """make 'gene_taxon_map' column per row which displays taxon for given gene"""
 
@@ -457,64 +468,57 @@ def concat_tmt_e2gs(rec, run, search, outdir, cols=None):
                     index=False, encoding='utf-8', sep='\t')
     print('Export of TMT e2g file : {}'.format(outf))
 
-def grouper(usrfile, usrdata, exp_setup, FilterValues, usedb=False, outdir='',
+def grouper(usrdata, FilterValues, usedb=False, outdir='',
             gid_ignore_file='', labels=dict()):
     """Function to group a psm file from PD after Mascot Search"""
     #import RefseqInfo
 
-    if exp_setup.get('add_to_db',False) == True:
+    if usrdata.exp_setup.get('add_to_db',False) == True:
         print('Updating iSPEC after grouping')
-    usrfile = os.path.split(usrfile)[1]
+    usrfile = usrdata.datafile
     # file with entry of gene ids to ignore for normalizations
     #gid_ignore_file = 'pygrouper_geneignore.txt'
     gid_ignore_list = []
 
-    usrdata_out = '_'.join(str(x) for x in [exp_setup['EXPRecNo'],
-                                            exp_setup['EXPRunNo'],
-                                            exp_setup['EXPSearchNo'],
-                                            exp_setup['EXPLabelType'],
-                                            'psms.tab'])
+    usrdata_out = usrdata.output_name('psms', ext='tab')
     if os.path.isfile(gid_ignore_file):
         print('Using gene filter file for normalization.')
         gid_ignore_list = get_gid_ignore_list(gid_ignore_file)
 
-    if exp_setup['EXPQuantSource'].strip() == 'AUC':
+    if usrdata.quant_source.strip() == 'AUC':
         area_col = 'PrecursorArea'  # we always use Precursor Area
         normalize = 10**9
-    elif exp_setup['EXPQuantSource'].strip() == 'Intensity':
+    elif usrdata.quant_source.strip() == 'Intensity':
         area_col = 'Intensity'
         normalize = 10**5
 
     print('Starting Grouper for exp file {}'.format(usrfile))
-    logfilestr = '_'.join(str(x) for x in [exp_setup['EXPRecNo'],
-                                           exp_setup['EXPRunNo'],
-                                           exp_setup['EXPSearchNo'],
-                                           str(exp_setup['EXPLabelType']) +
-                                           '.log'])
-    logfile = open(os.path.join(outdir,logfilestr), 'w+')  # append to previously opened log file
+    logfilestr = usrdata.output_name(ext='log')
+    logfile = open(os.path.join(usrdata.outdir, logfilestr),
+                   'w+')  # append to previously opened log file
     logfile.write('{} | Starting {} for file : {}\n'.format(
         time.ctime(),program_title, usrfile))
     # ==================== Populate gene info ================================ #
-    gene_metadata = extract_metadata(usrdata.metadatainfo)
+    gene_metadata = extract_metadata(usrdata.df.metadatainfo)
     gene_taxon_dict = gene_taxon_mapper(gene_metadata)
 
-    usrdata = extract_genelist(usrdata)
+    usrdata.df = extract_genelist(usrdata.df)
 
 
     # ==================== Populate gene info ================================ #
 
-    usrdata['psm_HID'], usrdata['psm_ProteinGI'] = '', ''
+    usrdata.df['psm_HID'], usrdata.df['psm_ProteinGI'] = '', ''
     # potentially filled in later,
     #fields will exist in database at least
 
     logfile.write('{} | Finished matching PSMs to {} '\
                   'refseq\n'.format(time.ctime(),
-                                    usrdata.loc[0]['psm_TaxonID']))
+                                    usrdata.taxonid))
     logging.info('Starting Grouper for exp number'\
-                 '{}'.format(exp_setup['EXPRecNo']))
-    nomatches = usrdata[usrdata['psm_GeneCount'] == 0].Sequence  # select all
+                 '{}'.format(repr(usrdata)))
+    nomatches = usrdata.df[usrdata.df['psm_GeneCount'] == 0].Sequence  # select all
     #PSMs that didn't get a match to the refseq peptidome
-    matched_psms = len(usrdata[usrdata['psm_GeneCount'] != 0])
+    matched_psms = len(usrdata.df[usrdata.df['psm_GeneCount'] != 0])
     unmatched_psms = len(nomatches)
     logfile.write('{} | Total identified PSMs : {}\n'.format(time.ctime(),
                                                              matched_psms))
@@ -525,45 +529,45 @@ def grouper(usrfile, usrdata, exp_setup, FilterValues, usedb=False, outdir='',
                                                                 usrfile))
         # Store all of these sequences in the big log file, not per experiment.
     logfile.write('{} | Starting grouper.\n'.format(time.ctime()))
-    usrdata = assign_IDG(usrdata)
-    usrdata = make_seqlower(usrdata)
-    usrdata = usrdata.sort_values(by=['SpectrumFile', area_col,
+    usrdata.df = assign_IDG(usrdata.df)
+    usrdata.df = make_seqlower(usrdata.df)
+    usrdata.df = usrdata.df.sort_values(by=['SpectrumFile', area_col,
                                       'Sequence', 'Modifications',
                                       'Charge', 'psm_PSM_IDG', 'IonScore', 'PEP',
                                       'q_value'], ascending=[0, 0, 1, 1, 1, 1, 0, 1, 1])
-    usrdata = redundant_peaks(usrdata)
+    usrdata.df = redundant_peaks(usrdata.df)
     # remove ambiguous peaks
-    usrdata = sum_area(usrdata, area_col)
+    usrdata.df = sum_area(usrdata.df, area_col)
     # now remove duplicate sequence areas
-    usrdata, area_col = auc_reflagger(usrdata, area_col)
+    usrdata.df, area_col = auc_reflagger(usrdata.df, area_col)
     # area_col = 'psm_SequenceArea'  # this is equal to what is returned by auc_reflagger
     #usrdata.to_csv(os.path.join(outdir, usrdata_out),index=False, sep='\t')
     #print('exiting...')
     #return
     # ============= Gather all genes that all peptides map to =============== #
-    usrdata = split_on_geneid(usrdata)
+    usrdata.df = split_on_geneid(usrdata.df)
     # ========================================================================= #
     logfile.write('{} | Starting peptide ranking.\n'.format(time.ctime()))
 
     logfile.write('{} | Peptide ranking complete.\n'.format(time.ctime()))
-    print('{}: Peptide ranking complete for {}.'.format(datetime.now(), usrfile))
+    print('{}: Peptide ranking complete for {}.'.format(datetime.now(), usrdata.datafile))
     logging.info('{}: Peptide ranking complete for {}.'.format(datetime.now(),
-                                                               usrfile))
+                                                               usrdata.datafile))
 
     # Now calculate AUC and PSM use flags
-    usrdata = flag_AUC_PSM(usrdata, FilterValues)
+    usrdata.df = flag_AUC_PSM(usrdata.df, FilterValues)
 
-    usrdata = gene_taxon_map(usrdata, gene_taxon_dict)
+    usrdata.df = gene_taxon_map(usrdata.df, gene_taxon_dict)
     # Flag good quality peptides
         # ======================== Plugin for multiple taxons  ===================== #
-    taxon_ids = get_all_taxons(usrdata['psm_TaxonIDList'].tolist())
+    taxon_ids = get_all_taxons(usrdata.df['psm_TaxonIDList'].tolist())
     #area_col_new = 'psm_Area_taxonAdj'
     taxon_totals = dict()
-    if len(taxon_ids) == 1 or exp_setup['no_taxa_redistrib']:  # just 1 taxon id present
+    if len(taxon_ids) == 1 or usrdata.no_taxa_redistrib:  # just 1 taxon id present
         taxon_totals[list(taxon_ids)[0]] = 1  # taxon_ids is a set
     #    usrdata[area_col_new] = usrdata[area_col]
     elif len(taxon_ids) > 1:  # more than 1 taxon id
-        taxon_totals = multi_taxon_splitter(taxon_ids, usrdata, gid_ignore_list, area_col)
+        taxon_totals = multi_taxon_splitter(taxon_ids, usrdata.df, gid_ignore_list, area_col)
         print('Multiple taxons found, redistributing areas...')
         logfile.write('{} | Multiple taxons found, '\
                       'redistributing areas.\n'.format(time.ctime()))
@@ -585,7 +589,10 @@ def grouper(usrfile, usrdata, exp_setup, FilterValues, usedb=False, outdir='',
                  'e2g_nGPArea_Sum_max', 'e2g_nGPArea_Sum_dstrAdj',
                  'e2g_GeneCapacity', 'e2g_n_iBAQ_dstrAdj']  # cols of interest
 
-    labeltypes = get_labels(usrdata, labels, exp_setup['EXPLabelType'])
+    labeltypes = get_labels(usrdata.df, labels, usrdata.labeltype)
+    print(labeltypes)
+    additional_labels = list()
+
     orig_area_col = area_col
     for label in labeltypes:  # increase the range to go through more label types
         labelix = labelflag.get(label, 0)
@@ -594,23 +601,18 @@ def grouper(usrfile, usrdata, exp_setup, FilterValues, usedb=False, outdir='',
             time.ctime(), label))
         # ==========Select only peptides flagged  with good quality=========== #
         mylabelix = labelix
-        if exp_setup['EXPLabelType'] == 'TMT':
+        if usrdata.labeltype == 'TMT':
             mylabelix = 0 # should be 1 but not today
-        temp_df = select_good_peptides(usrdata, mylabelix)
-        if exp_setup['EXPLabelType'] == 'TMT':
+        temp_df = select_good_peptides(usrdata.df, mylabelix)
+        if usrdata.labeltype == 'TMT':
             temp_df, area_col = redistribute_area_tmt(temp_df, label, labeltypes, area_col)
-        if exp_setup['EXPLabelType'] == 'SILAC':
+        elif usrdata.labeltype == 'SILAC':
             pass
         # ==================================================================== #
         if len(temp_df) > 0:  # only do if we actually have peptides selected
-            genedata_out = '_'.join(str(x) for x in [exp_setup['EXPRecNo'],
-                                                     exp_setup['EXPRunNo'],
-                                                     exp_setup['EXPSearchNo'],
-                                                     exp_setup['EXPLabelType'],
-                                                     labelix,
-                                                     'e2g.tab'])
+            genedata_out = usrdata.output_name(labelix, 'e2g', ext='tab')
             print('{}: Populating gene table for {}.'.format(datetime.now(),
-                                                             usrfile))
+                                                             usrdata.datafile))
             # genes_df['_e2g_GeneID'] = Set(temp_df['_data_GeneID']) #only in 2.7
             genes_df = create_e2g_df(temp_df, label)
 
@@ -619,17 +621,17 @@ def grouper(usrfile, usrdata, exp_setup, FilterValues, usedb=False, outdir='',
             genes_df = get_psms_for_gene(genes_df, temp_df)
 
             print('{}: Calculating peak areas for {}.'.format(
-                datetime.now(), usrfile))
+                datetime.now(), usrdata.datafile))
             logging.info('{}: Calculating peak areas for {}.'.format(
-                datetime.now(), usrfile))
+                datetime.now(), usrdata.datafile))
             logfile.write('{} | Calculating peak areas.\n'.format(time.ctime()))
 
             genes_df = calculate_protein_area(genes_df, temp_df, area_col, normalize)
             # pandas may give a warning from this though it is fine
             print('{}: Calculating distributed area ratio for {}.'.format(
-                datetime.now(), usrfile))
+                datetime.now(), usrdata.datafile))
             logging.info('{}: Calculating distributed area ratio for {}.'.format(
-                datetime.now(), usrfile))
+                datetime.now(), usrdata.datafile))
             logfile.write('{} | Calculating distributed area ratio.\n'.format(
                 time.ctime()))
             temp_df = distribute_psm_area(temp_df, genes_df, area_col, taxon_totals)
@@ -656,11 +658,11 @@ def grouper(usrfile, usrdata, exp_setup, FilterValues, usedb=False, outdir='',
             genes_df['e2g_GPGroup'].fillna('', inplace=True)  # convert all NaN
                                                            #back to empty string
             # =============================================================#
-            genes_df['e2g_EXPRecNo'] = exp_setup['EXPRecNo']
-            genes_df['e2g_EXPRunNo'] = exp_setup['EXPRunNo']
-            genes_df['e2g_EXPSearchNo'] = exp_setup['EXPSearchNo']
-            genes_df['e2g_EXPTechRepNo'] = exp_setup['EXPTechRepNo']
-            genes_df['e2g_AddedBy'] = usrdata.loc[1]['psm_AddedBy']
+            genes_df['e2g_EXPRecNo'] = usrdata.recno
+            genes_df['e2g_EXPRunNo'] = usrdata.runno
+            genes_df['e2g_EXPSearchNo'] = usrdata.searchno
+            genes_df['e2g_EXPTechRepNo'] = usrdata.techrepno
+            genes_df['e2g_AddedBy'] = usrdata.added_by
             genes_df['e2g_CreationTS'] = datetime.now().strftime("%m/%d/%Y %H:%M:%S")
             genes_df['e2g_ModificationTS'] = datetime.now().strftime("%m/%d/%Y %H:%M:%S")
             #renamed_genecols = [exp_setup.get(genecol, genecol) for genecol in e2g_cols]
@@ -671,8 +673,8 @@ def grouper(usrfile, usrdata, exp_setup, FilterValues, usedb=False, outdir='',
                 gid_ignore_list)].e2g_n_iBAQ_dstrAdj.sum()
 
             #genes_df.rename(columns=torename, inplace=True)
-            print(os.path.join(outdir, genedata_out))
-            genes_df.to_csv(os.path.join(outdir, genedata_out), columns=e2g_cols,
+            # print(os.path.join(outdir, genedata_out))
+            genes_df.to_csv(os.path.join(usrdata.outdir, genedata_out), columns=e2g_cols,
                             index=False, encoding='utf-8', sep='\t')
             logfile.write('{} | Export of genetable for labeltype {}'\
                           'completed.\n'.format(
@@ -682,28 +684,22 @@ def grouper(usrfile, usrdata, exp_setup, FilterValues, usedb=False, outdir='',
             # ========================================================================= #
 
     # ----------------End of none/silac loop--------------------------------- #
-    if exp_setup['EXPLabelType'] == 'TMT':
-        concat_tmt_e2gs(exp_setup['EXPRecNo'], exp_setup['EXPRunNo'], exp_setup['EXPSearchNo'],
-                        outdir, cols=e2g_cols)
-    usrdata.drop('metadatainfo', axis=1, inplace=True)  # Don't need this
+    if usrdata.labeltype == 'TMT':
+        concat_tmt_e2gs(usrdata.recno, usrdata.runno, usrdata.searchno,
+                        usrdata.outdir, cols=e2g_cols)
+    usrdata.df.drop('metadatainfo', axis=1, inplace=True)  # Don't need this
                                       # column anymore.
     #print('Length of usrdata before merge : ',len(usrdata))
     #print('Length of temp_df : ',len(temp_df))
-    usrdata = pd.merge(usrdata, temp_df, how='left')
-    usrdata = rank_peptides(usrdata, 'psm_PrecursorArea_dstrAdj')
-    usrdata['psm_PeptRank'] = usrdata['psm_PeptRank'].fillna(0)  # anyone who
+    usrdata.df = pd.merge(usrdata.df, temp_df, how='left')
+    usrdata.df = rank_peptides(usrdata.df, 'psm_PrecursorArea_dstrAdj')
+    usrdata.df['psm_PeptRank'] = usrdata.df['psm_PeptRank'].fillna(0)  # anyone who
                               # didn't get a rank gets a rank of 0
     #print('Length of usrdata after merge : ',len(usrdata))
-    usrdata['psm_EXPRecNo'], usrdata['psm_EXPRunNo'],\
-    usrdata['psm_EXPSearchNo'],\
-    usrdata['psm_EXPTechRepNo'] = exp_setup['EXPRecNo'],\
-    exp_setup['EXPRunNo'], exp_setup['EXPSearchNo'],\
-    exp_setup['EXPTechRepNo']
 
-    usrdata['psm_CreationTS'] = datetime.now().strftime("%m/%d/%Y %H:%M:%S")
-    usrdata['psm_ModificationTS'] = datetime.now().strftime("%m/%d/%Y %H:%M:%S")
-    usrdata['psm_HIDList'] = ''  # will be populated later
-    usrdata['psm_HIDCount'] = ''  # will be populated later
+    usrdata.df['psm_ModificationTS'] = datetime.now().strftime("%m/%d/%Y %H:%M:%S")
+    usrdata.df['psm_HIDList'] = ''  # will be populated later
+    usrdata.df['psm_HIDCount'] = ''  # will be populated later
     data_cols = ['psm_EXPRecNo', 'psm_EXPRunNo', 'psm_EXPSearchNo',
                  'psm_EXPTechRepNo', 'Sequence',
                  'PSMAmbiguity', 'Modifications', 'ActivationType',
@@ -729,19 +725,19 @@ def grouper(usrfile, usrdata, exp_setup, FilterValues, usedb=False, outdir='',
     #usrdata.to_csv(usrdata_out, columns=usrdata.columns,
                                 #encoding='utf-8', sep='\t')
     #print(usrdata.columns.values)  # for debugging
-    if not all(x in usrdata.columns.values for x in data_cols):
+    if not all(x in usrdata.df.columns.values for x in data_cols):
         print('Potential error, not all columns filled.')
-        print([x for x in data_cols if x not in usrdata.columns.values])
-        data_cols = [x for x in data_cols if x in usrdata.columns.values]
+        print([x for x in data_cols if x not in usrdata.df.columns.values])
+        data_cols = [x for x in data_cols if x in usrdata.df.columns.values]
         # will still export successfully
 
 
     msfdata = pd.DataFrame()
-    msfdata['RawFileName']       = list(set(usrdata.SpectrumFile.tolist()))
-    msfdata['EXPRecNo']       = exp_setup['EXPRecNo']
-    msfdata['EXPRunNo']       = exp_setup['EXPRunNo']
-    msfdata['EXPSearchNo']    = exp_setup['EXPSearchNo']
-    msfdata['AddedBy']        = exp_setup['AddedBy']
+    msfdata['RawFileName']       = list(set(usrdata.df.SpectrumFile.tolist()))
+    msfdata['EXPRecNo']       = usrdata.recno
+    msfdata['EXPRunNo']       = usrdata.runno
+    msfdata['EXPSearchNo']    = usrdata.searchno
+    msfdata['AddedBy']        = usrdata.added_by
     msfdata['CreationTS']     = datetime.now().strftime("%m/%d/%Y %H:%M:%S")
     msfdata['ModificationTS'] = datetime.now().strftime("%m/%d/%Y %H:%M:%S")
     msfdata['RTmin_min'], msfdata['RTmin_max'], msfdata['IonScore_min'],\
@@ -750,12 +746,12 @@ def grouper(usrfile, usrdata, exp_setup, FilterValues, usedb=False, outdir='',
         msfdata['Area_max'], msfdata['PSMCount'], msfdata['DeltaMassPPM_med']= \
             list(zip(*msfdata.apply(lambda x:
                                     spectra_summary(x['RawFileName'],
-                                                    usrdata),
+                                                    usrdata.df),
                                     axis=1)))
 
     msfdata['RawFileSize'], msfdata['RawFileTS'] = \
         list(zip(*msfdata.apply(lambda x:
-                                get_rawfile_info(exp_setup['rawfilepath'],
+                                get_rawfile_info(usrdata.exp_setup['rawfilepath'],
                                                  x['RawFileName']),
                                 axis=1)))
     msfdata.rename(columns={c: 'msf_'+c for c in msfdata.columns}, inplace=True)
@@ -763,32 +759,27 @@ def grouper(usrfile, usrdata, exp_setup, FilterValues, usedb=False, outdir='',
     if bcmprot and exp_setup.get('add_to_db',False):  # we have bcmprot installed
         update_database(program_title=program_title, exp_setup=exp_setup, matched_psms=matched_psms,
                         unmatched_psms=unmatched_psms, usrfile=usrfile, taxon_totals=taxon_totals)
-    msfname = '_'.join(str(x) for x in [exp_setup['EXPRecNo'],
-                                        exp_setup['EXPRunNo'],
-                                        exp_setup['EXPSearchNo'],
-                                        'msf.tab'])
+    msfname = usrdata.output_name('msf', ext='tab')
 
     #renamed_datacols = [exp_setup.get(datacol, datacol) if datacol.startswith('psm_') else datacol
                         #for datacol in data_cols]
     #usrdata.rename(columns={k:v for k, v in exp_setup.items() if k.startswith('psm_')},
                    #inplace=True)
-    usrdata.to_csv(os.path.join(outdir, usrdata_out), columns=data_cols,
+    usrdata.df.to_csv(os.path.join(usrdata.outdir, usrdata_out), columns=data_cols,
                    index=False, encoding='utf-8', sep='\t')
 
-    msfdata.to_csv(os.path.join(outdir, msfname), index=False, sep='\t')
+    msfdata.to_csv(os.path.join(usrdata.outdir, msfname), index=False, sep='\t')
 
     logfile.write('{} | Export of datatable completed.\n'.format(time.ctime()))
     logfile.write('Successful grouping of file completed.')
     logfile.close()
 
     print('Successful grouping of {} completed.\n' \
-          .format('_'.join(
-              [str(exp_setup['EXPRecNo'])+'_'+str(exp_setup['EXPRunNo']
-              )])))
+          .format(repr(usrdata)))
 
-def main(usrfiles=[], exp_setups=[], automated=False, setup=False, fullpeptread=False,
+def main(usrdatas=[], FilterValues=None, setup=False, fullpeptread=False,
          usedb=False, inputdir='', outputdir='', refs=dict(), rawfilepath=None,
-         FilterValues=dict(), column_aliases=dict(), gid_ignore_file='', configpassed=False,
+         Filtervalues=dict(), column_aliases=dict(), gid_ignore_file='', configpassed=False,
          labels=dict()):
     """
     usedb : Connect to the iSPEC database and update some record information.
@@ -850,14 +841,6 @@ def main(usrfiles=[], exp_setups=[], automated=False, setup=False, fullpeptread=
 
     print('\nFilter values set to : {}'.format(Filter_Stamp))
 
-    if not automated:
-        print('Not implemented')
-        sys.exit(1)
-        #usr_name, usrfiles, exp_setups = user_cli(FilterValues, usrfiles=[],
-        #                                          exp_setups=[], usedb=usedb,
-        #                                          inputdir='', outputdir='')
-        # user manually enters files to group
-
     startTime = datetime.now()
     if FilterValues['Filter_PEP'] == 'all' or FilterValues['Filter_IDG'] == 'all':
         FilterValues['Filter_PEP'] = float('inf')
@@ -865,7 +848,6 @@ def main(usrfiles=[], exp_setups=[], automated=False, setup=False, fullpeptread=
     print('\nStart at {}'.format(startTime))
     logging.info('Start at {}'.format(startTime))
     if fullpeptread: print('Running with fullpeptread option')
-    usrdatas = []
     if not column_aliases:
         column_aliases = dict(parser.items('column names'))
         for key in column_aliases:  # find the right column name
@@ -878,43 +860,35 @@ def main(usrfiles=[], exp_setups=[], automated=False, setup=False, fullpeptread=
                 column_aliases[key] = list(filter(None,
                                                   (x.strip() for
                                                    x in column_aliases[key].splitlines())))
-    for usrfile in usrfiles:  # load all data
-        usrdatas.append(pd.read_csv(os.path.join(inputdir,usrfile), sep='\t'))
-    for usrdata, exp_setup in zip(usrdatas, exp_setups):
-        standard_names = column_identifier(usrdata, column_aliases)
-        exp_setup['rawfilepath'] = rawfilepath
-        exp_setup['filterstamp'] = Filter_Stamp
+    for usrdata in usrdatas:
+        usrdata.read_csv(sep='\t')
+        standard_names = column_identifier(usrdata.df, column_aliases)
+        usrdata.exp_setup['rawfilepath'] = rawfilepath
+        usrdata.exp_setup['filterstamp'] = Filter_Stamp
         if usedb:
-            exp_setup['add_to_db'] = True
+            usrdata.usedb = True
+            usrdata.exp_setup['add_to_db'] = True
         for name in standard_names:
-            exp_setup[name] = standard_names[name]
+            usrdata.exp_setup[name] = standard_names[name]
         for alias in column_aliases:
             if alias.startswith('psm_') or alias.startswith('e2g_'):
-                exp_setup[alias] = column_aliases[alias]
+                usrdata.exp_setup[alias] = column_aliases[alias]
 
         #for key in exp_setup: print(key,'   :   ', exp_setup[key])
-        usrdata.rename(columns={v: k
+        usrdata.df.rename(columns={v: k
                                 for k,v in standard_names.items()},
                        inplace=True)
-        if not automated:
-            usrdata['psm_AddedBy'] = usr_name
-        elif automated:
-            usrdata['psm_AddedBy'] = exp_setup['AddedBy']
-
-        usrdata['psm_TaxonID'] = exp_setup['taxonID']
-        usrdata['psm_GeneList'], usrdata['psm_ProteinList'],\
-        usrdata['psm_GeneCount'],usrdata['psm_ProteinCount'],\
-        usrdata['psm_HomologeneID'], usrdata['psm_ProteinCapacity'], \
-        usrdata['metadatainfo'] = '', '', 0, 0, '', '', ''
+        usrdata.populate_base_data()
 
     # ============== Load refseq and start matching peptides ================ #
     print('{}: Loading refseq database.'.format(datetime.now()))
     #RefseqInfo = namedtuple('RefseqInfo',
     #                    'taxonid, geneid, homologeneid,proteingi,genefraglen')
+    inputdata_refseqs = set([usrdata.taxonid for usrdata in usrdatas])
     for organism in refs.keys():
-        if any(any(x['psm_TaxonID'].isin([int(organism)])) for x in\
-               usrdatas):  # check if we even need to read the
-                           #peptidome for that organism
+        if any(x == int(organism) for x in inputdata_refseqs):
+                                        # check if we even need to read the
+                                        # peptidome for that organism
             ref_reader = csv_reader(refs[organism]['loc'])
             searchdb = os.path.split(refs[organism]['loc'])[1]
             print('Using peptidome {} '.format(searchdb))
@@ -927,9 +901,6 @@ def main(usrfiles=[], exp_setups=[], automated=False, setup=False, fullpeptread=
                         fragments, fraglen = protease(row.fasta, minlen=7,
                                                       cutsites=['K', 'R'],
                                                       exceptions=['P'])
-                        # should stop else clause here (??)
-                        # fragments = protease((linesplit[4].strip('\n'),minlen =
-                                                  #7, cutsites=['k','r'])
                         for fragment in fragments:
                             prot[fragment].append(
                                 RefseqInfo._make([row.taxonid, row.geneid,
@@ -941,21 +912,19 @@ def main(usrfiles=[], exp_setups=[], automated=False, setup=False, fullpeptread=
                         #move this up and use else clause
                         break
 
-                for usrdata, usrfile, exp_setup in zip(usrdatas, usrfiles, exp_setups):
+                for usrdata in usrdatas:
                     #print(usrdata.loc[0]['_data_TaxonID'])
-                    if usrdata.loc[0]['psm_TaxonID'] == int(organism):
-                        # check to see if the inputdata
-                        #taxonID matches with the proteome
-                        exp_setup['searchdb'] = searchdb
-                        usrdata['Sequence'], usrdata['psm_SequenceModi'],\
-                        usrdata['psm_SequenceModiCount'],\
-                        usrdata['psm_LabelFLAG'] = \
-                        list(zip(*usrdata.apply(lambda x :
+                    if usrdata.taxonid == int(organism):
+                        usrdata.exp_setup['searchdb'] = searchdb
+                        usrdata.df['Sequence'], usrdata.df['psm_SequenceModi'],\
+                        usrdata.df['psm_SequenceModiCount'],\
+                        usrdata.df['psm_LabelFLAG'] = \
+                        list(zip(*usrdata.df.apply(lambda x :
                                                 seq_modi(x['Sequence'],
                                                          x['Modifications']),
                                                 axis=1)))
                         # print 'Matching for {}'.format(usrfile)
-                        usrdata['metadatainfo'] = usrdata.apply(lambda x:
+                        usrdata.df['metadatainfo'] = usrdata.df.apply(lambda x:
                                                                 genematcher(x['Sequence'],
                                                                             x['metadatainfo'],
                                                                             prot), axis=1)
@@ -967,50 +936,46 @@ def main(usrfiles=[], exp_setups=[], automated=False, setup=False, fullpeptread=
     logging.info('{}: Finished matching peptides to'\
                  'genes.'.format(datetime.now()))
     failed_exps = []
-    #pool = mp.Pool(processes=2)
-    grouperdata = zip(usrfiles, usrdatas, exp_setups, repeat(FilterValues),
-                      repeat(usedb), repeat(outputdir))
-    for usrfile, usrdata, esetup in zip(usrfiles, usrdatas, exp_setups):
+    for usrdata in usrdatas:
         try:
-            grouper(usrfile, usrdata, esetup, FilterValues, usedb=usedb, outdir=outputdir,
+            grouper(usrdata, FilterValues, usedb=usedb,
                     gid_ignore_file=gid_ignore_file, labels=labels)
         except Exception as e:  # catch and store all exceptions, won't crash
                                 # the whole program at least
-            failed_exps.append((usrfile, e))
+            failed_exps.append((usrdata, e))
             print('Failure for file of experiment {}.\n'\
-                  'The reason is : {}'.format(esetup['EXPRecNo'], e))
+                  'The reason is : {}'.format(repr(usrdata), e))
             logging.warn('Failure for file of experiment {}.\n'\
-                         'The reason is : {}'.format(esetup['EXPRecNo'], e))
+                         'The reason is : {}'.format(repr(usrdata), e))
             raise  # usually don't need to raise, will kill the script. Re-enable
                    #if need to debug and find where errors are
     print('Time taken : {}\n'.format(datetime.now() - startTime))
     logging.info('Time taken : {}.\n\n'.format(datetime.now() - startTime))
-    if automated and not usedb:
+    if not usedb:
         return failed_exps
     else:
         if failed_exps:  # list of failed experiments, is empty if no failures
 
             for failed in failed_exps:  # failed is a tuple with the datafile and
                                         #then the reason for failure
-                usrfiles.remove(failed[0])  # remove all of the failed
+                usrdatas.remove(failed[0])  # remove all of the failed
                                             #experiments so they won't go in log
-                if usedb:
-                    conn = ispec.filedb_connect()
-                    cursor = conn.cursor()
-                    cursor.execute("""UPDATE iSPEC_ExperimentRuns
-                    SET exprun_Grouper_FailedFLAG = ?
-                    WHERE exprun_EXPRecNo= ? AND
-                    exprun_EXPRunNo = ? AND
-                    exprun_EXPSearchNo = ?
-                    """, 1, exp_setup['EXPRecNo'],
-                                   exp_setup['EXPRunNo'], exp_setup['EXPSearchNo'])
-                    conn.commit()
+                conn = ispec.filedb_connect()
+                cursor = conn.cursor()
+                cursor.execute("""UPDATE iSPEC_ExperimentRuns
+                SET exprun_Grouper_FailedFLAG = ?
+                WHERE exprun_EXPRecNo= ? AND
+                exprun_EXPRunNo = ? AND
+                exprun_EXPSearchNo = ?
+                """, 1, exp_setup['EXPRecNo'],
+                                exp_setup['EXPRunNo'], exp_setup['EXPSearchNo'])
+                conn.commit()
                 failedlog.write('{} : failed grouping {},'\
                                 ' reason : {}\n'.format(datetime.now(), *failed))
-        if usrfile and not usedb:
-            for usrfile in usrfiles:
-                explog.write('{} : grouped experiment file {}'\
-                             '\n'.format(datetime.now(), usrfile))
+        # if usrfile and not usedb:
+        #     for usrfile in usrfiles:
+        #         explog.write('{} : grouped experiment file {}'\
+        #                      '\n'.format(datetime.now(), usrfile))
 
 if __name__ == '__main__':
 

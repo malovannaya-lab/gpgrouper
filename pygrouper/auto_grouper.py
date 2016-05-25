@@ -68,7 +68,7 @@ def file_checker(INPUT_DIR, OUTPUT_DIR, maxqueue, **kwargs):
     """Docstring
     """
     validfiles = [f for f in os.listdir(INPUT_DIR) if '.txt' in f]
-    setups, usrfiles = [], []
+    userdatas = list()
     #ungrouped = db.get_ungrouped_exps()
     #session = db.make_session()
     ungrouped = experiment_checker()  # may be empty, is ok
@@ -76,26 +76,17 @@ def file_checker(INPUT_DIR, OUTPUT_DIR, maxqueue, **kwargs):
     MAX_SIZE = 2796774193548.3867
     queue_size = 0
     for recno, exp in ungrouped.iterrows():  # the index is the record number
-        recno = int(recno)  # int to remove decimal to match file name
-        #try:
-        #    query = session.query(db.Experiment).filter_by(record_no=exp.record_no).one()
-        #    added_by = query.added_by
-        #except NoResultFound:  # should not occur do to how database is set up
-        #    added_by = ''
+        usrdata = UserData()
+        usrdata.recno = int(recno)  # int to remove decimal to match file name
+        usrdata.runno = int(exp.exprun_EXPRunNo)
+        usrdata.searchno = int(exp.exprun_EXPSearchNo)
+        usrdata.taxonid = exp.exprun_TaxonID
+        usrdata.quant_source = exp.exprun_Search_QuantSource
+        usrdata.addedby = exp.exprun_AddedBy
+        usrdata.labeltype = exp.exprun_LabelType
+        usrdata.no_taxa_redistrib = exp.exprun_Grouper_notaxaRedistribute
 
-        setup = {'EXPRecNo': recno,
-                 'EXPRunNo': exp.exprun_EXPRunNo,
-                 'EXPSearchNo': exp.exprun_EXPSearchNo,
-                 'taxonID': exp.exprun_TaxonID,
-                 'EXPQuantSource': exp.exprun_Search_QuantSource,
-                 'AddedBy': exp.exprun_AddedBy,
-                 'EXPTechRepNo': exp.exprun_nTechRepeats,
-                 'EXPLabelType': exp.exprun_LabelType,
-                 'no_taxa_redistrib' : exp.exprun_Grouper_notaxaRedistribute
-                 }
-        expfilematch = '_'.join([str(setup['EXPRecNo']),
-                                 str(setup['EXPRunNo']),
-                                 str(setup['EXPSearchNo'])])
+        expfilematch = repr(usrdata)  # format recno_runno_searchno
         usrfilelist = [f for f in validfiles if f.startswith(expfilematch)]
 
         if len(usrfilelist) == 1: # ensure we have just one match
@@ -103,7 +94,6 @@ def file_checker(INPUT_DIR, OUTPUT_DIR, maxqueue, **kwargs):
         elif len(usrfilelist) > 1:
             usrfilelist = [f for f in usrfilelist if 'all' in f]
             # 'all' should have all fractions combined
-
             if len(usrfilelist) == 1:
                 usrfile == usrfilelist[0]
             else:
@@ -112,14 +102,16 @@ def file_checker(INPUT_DIR, OUTPUT_DIR, maxqueue, **kwargs):
                       ', skipping'.format(expfilematch))
         elif len(usrfilelist) == 0: # file not here yet
             usrfile = None
-        if usrfile:
-            usrfilesize += os.stat(os.path.join(INPUT_DIR, usrfile)).st_size
-        if setup and usrfile and (usrfilesize <= MAX_SIZE) and queue_size < maxqueue:  # if we have both,
-            setups.append(setup)                     # a cap on max files to group at once
-            usrfiles.append(usrfile)
+        usrdata.datafile = usrfile
+        usrdata.indir = INPUT_DIR
+        if usrdata is True:
+            usrfilesize += os.stat(usrdata.full_path).st_size
+        if usrdata and (usrfilesize <= MAX_SIZE) and queue_size < maxqueue:  # if we have both,
+                                                     # a cap on max files to group at once
+            usrdatas.append(usrdata)
             queue_size += 1
             print('Found experiment {} from datafile'\
-                  ' {}.'.format(setup['EXPRecNo'], usrfile))
+                  ' {}.'.format(repr(usrdata), usrdata.datafile))
             conn = ispec.filedb_connect()
             cursor = conn.cursor()
             cursor.execute("""UPDATE iSPEC_ExperimentRuns
