@@ -8,7 +8,7 @@ def calculate_version(inputfile):
     else:
         return '1.0'
 
-package_version = calculate_version('./pygrouper/cli.py')
+package_version = calculate_version('./pygrouper/_version.py')
 
 setup(
     name='PyGrouper',

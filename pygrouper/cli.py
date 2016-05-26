@@ -4,14 +4,19 @@ import getpass
 from datetime import datetime
 from configparser import ConfigParser
 import click
-from pygrouper.manual_tests import test as manual_test
-from pygrouper import subfuncts, auto_grouper, pygrouper
+from .manual_tests import test as manual_test
+from . import subfuncts, auto_grouper, pygrouper, _version
 from pygrouper import genericdata as gd
+
+
+# from manual_tests import test as manual_test
+# import subfuncts, auto_grouper, grouper
+# from pygrouper import genericdata as gd
 __author__ = 'Alexander B. Saltzman'
 __copyright__ = 'Copyright January 2016'
 __credits__ = ['Alexander B. Saltzman', 'Anna Malovannaya']
 __license__ = 'MIT'
-__version__ = '0.1.017'
+__version__ = _version.__version__
 __maintainer__ = 'Alexander B. Saltzman'
 __email__ = 'saltzman@bcm.edu'
 
@@ -317,3 +322,8 @@ def find_rec_run_search(target):
     runno_pat = re.compile('(?<={}_{}_)\d+'.format(recno, runno))
     searchno = re.search(runno_pat, match).group()
     return recno, runno, searchno
+
+if __name__ == '__main__':
+    print('hi')
+    # from click.testing import CliRunner
+    # test()

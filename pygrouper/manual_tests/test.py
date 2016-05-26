@@ -3,8 +3,8 @@ import os
 import shutil
 import argparse
 from itertools import repeat
-import multiprocessing as mp
-from pygrouper import pygrouper
+# from pygrouper import grouper
+from .. import pygrouper
 from pygrouper.containers import UserData
 #sys.path.append('..')  # access to pygrouper
 #import pygrouper

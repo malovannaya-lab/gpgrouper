@@ -111,7 +111,7 @@ class GrouperTestCase(unittest.TestCase):
                                  msg=('Error in label flag at input index {}, '
                                       'result index {}').format(ix1, ix2))
 
-        
+
     def gene_mapperAssert(self):
         """Test peptide to gene mapping.
         Lots of copy-pasted code as not currently defined in a stand-alone function.
@@ -134,7 +134,7 @@ class GrouperTestCase(unittest.TestCase):
                 for fragment in fragments:
                     prot[fragment].append(
                         pygrouper.RefseqInfo._make([row.taxonid, row.geneid,
-                                                    row.homologeneid,row.proteingi, 
+                                                    row.homologeneid,row.proteingi,
                                                     fraglen]))
             except StopIteration:
                 break
@@ -163,7 +163,7 @@ class GrouperTestCase(unittest.TestCase):
 
         def get_sequences(ix1, df1, ix2, df2):
             return (df1.loc[ix1]['Sequence'], df2.loc[ix2]['Sequence'])
-        
+
         sortby = ['Sequence', 'FirstScan', 'IonScore', 'PEP']
         # test GeneList
         for (ix1,calc), (ix2,result) in zip(sortdf(usrdata, sortby).psm_GeneList.items(),
@@ -220,7 +220,7 @@ class GrouperTestCase(unittest.TestCase):
         #print('testing redundant peaks')
         #self.usrdata, self.presplit = update_df(self.usrdata, self.presplit, reassignments=reassign)
         #print('just updated input data')
-        
+
         #self.usrdata.to_csv('usrtest_part.tab', sep='\t')
         #self.presplit.to_csv('presplit_part.tab', sep='\t')
         usrdata = pygrouper.redundant_peaks(usrdata)
@@ -249,7 +249,7 @@ class GrouperTestCase(unittest.TestCase):
         #reassign = ['psm_Peak_UseFLAG']
         #self.usrdata = update_df(self.usrdata, self.presplit, reassignments=reassign)
 
-    
+
     def sum_areaAssert(self):
         """Test if similar peaks are summed appropriately"""
         self.presplit.fillna(0, inplace=True)
@@ -303,9 +303,9 @@ class GrouperTestCase(unittest.TestCase):
         #    result_list = result.values.tolist()
         #    with self.subTest(calc_list=calc_list):
         #        self.assertListEqual(calc_list, result_list)
-                
-        
-        
+
+
+
 class GrouperTest(GrouperTestCase):
 
     def setUp(self):
@@ -337,7 +337,7 @@ class GrouperTest(GrouperTestCase):
 
     def test_redundant_peaks(self):
         self.redundant_peakAssert()
-    
+
     #@unittest.skipIf(self.currentTest == 'simple')
     def test_sequence_area(self):
         self.sum_areaAssert()
@@ -347,12 +347,12 @@ class GrouperTest(GrouperTestCase):
 
     def test_split_on_geneid(self):
         self.split_on_geneid()
-    
+
 
 
 def suite():
     suite = unittest.TestSuite()
-    
+
     test_parameters = get_sample_data()
     for test_parameter in test_parameters:
         testdata = test_parameters[test_parameter]
@@ -394,7 +394,7 @@ def run_tests(verbose=2, hide_stdout=True, tofile=False, testrunner=None):
             f = open(log_file, 'w')
             runner = unittest.TextTestRunner(f, verbosity=verbose)
         else:
-            runner = unittest.TextTestRunner(verbosity=verbose)    
+            runner = unittest.TextTestRunner(verbosity=verbose)
         runner.run(test_suite)
     elif testrunner == 'html':
         import HTMLTestRunner
@@ -403,7 +403,7 @@ def run_tests(verbose=2, hide_stdout=True, tofile=False, testrunner=None):
             stream=fp,
             title='My pygrouper unit test',
             description='Testing pygrouper'
-        )        
+        )
         runner.run(test_suite)
     elif testrunner == 'nose':
         import nose

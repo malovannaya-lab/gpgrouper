@@ -10,8 +10,8 @@ from configparser import ConfigParser
 import multiprocessing as mp
 from itertools import repeat
 import pandas as pd
-from pygrouper import cli
-from pygrouper.subfuncts import *
+from . import _version
+from .subfuncts import *
 try:
     from bcmproteomics import ispec
     bcmprot = True
@@ -26,7 +26,8 @@ __author__ = 'Alexander B. Saltzman'
 __copyright__ = 'Copyright January 2016'
 __credits__ = ['Alexander B. Saltzman', 'Anna Malovannaya']
 __license__ = 'MIT'
-__version__ = '0.1.017'
+__version__ = '0.1.018'
+__version__ = _version.__version__
 __maintainer__ = 'Alexander B. Saltzman'
 __email__ = 'saltzman@bcm.edu'
 program_title = 'Pygrouper v{}'.format(__version__)
@@ -144,6 +145,9 @@ def make_seqlower(usrdata, col='Sequence'):
     return usrdata
 
 def peptidome_matcher(usrdata, ref_dict):
+    """Matches Sequence column with refseq dictionary
+    returns an empty list if there is no match.
+    returns input DataFrame with a metadata column with a list of named tuples"""
     usrdata['metadatainfo'] = usrdata.apply(lambda x:
                                             genematcher(x['Sequence'],
                                                         x['metadatainfo'],
@@ -473,7 +477,7 @@ def grouper(usrdata, FilterValues, usedb=False, outdir='',
     """Function to group a psm file from PD after Mascot Search"""
     #import RefseqInfo
 
-    if usrdata.exp_setup.get('add_to_db',False) == True:
+    if usrdata.usedb == True:
         print('Updating iSPEC after grouping')
     usrfile = usrdata.datafile
     # file with entry of gene ids to ignore for normalizations
@@ -751,12 +755,12 @@ def grouper(usrdata, FilterValues, usedb=False, outdir='',
 
     msfdata['RawFileSize'], msfdata['RawFileTS'] = \
         list(zip(*msfdata.apply(lambda x:
-                                get_rawfile_info(usrdata.exp_setup['rawfilepath'],
+                                get_rawfile_info(usrdata.rawfiledir,
                                                  x['RawFileName']),
                                 axis=1)))
     msfdata.rename(columns={c: 'msf_'+c for c in msfdata.columns}, inplace=True)
 
-    if bcmprot and exp_setup.get('add_to_db',False):  # we have bcmprot installed
+    if bcmprot and usrdata.usedb:  # we have bcmprot installed
         update_database(program_title=program_title, exp_setup=exp_setup, matched_psms=matched_psms,
                         unmatched_psms=unmatched_psms, usrfile=usrfile, taxon_totals=taxon_totals)
     msfname = usrdata.output_name('msf', ext='tab')
@@ -863,18 +867,10 @@ def main(usrdatas=[], FilterValues=None, setup=False, fullpeptread=False,
     for usrdata in usrdatas:
         usrdata.read_csv(sep='\t')
         standard_names = column_identifier(usrdata.df, column_aliases)
-        usrdata.exp_setup['rawfilepath'] = rawfilepath
-        usrdata.exp_setup['filterstamp'] = Filter_Stamp
+        usrdata.rawfiledir = rawfilepath
+        usrdata.filterstamp = Filter_Stamp
         if usedb:
             usrdata.usedb = True
-            usrdata.exp_setup['add_to_db'] = True
-        for name in standard_names:
-            usrdata.exp_setup[name] = standard_names[name]
-        for alias in column_aliases:
-            if alias.startswith('psm_') or alias.startswith('e2g_'):
-                usrdata.exp_setup[alias] = column_aliases[alias]
-
-        #for key in exp_setup: print(key,'   :   ', exp_setup[key])
         usrdata.df.rename(columns={v: k
                                 for k,v in standard_names.items()},
                        inplace=True)
@@ -915,7 +911,7 @@ def main(usrdatas=[], FilterValues=None, setup=False, fullpeptread=False,
                 for usrdata in usrdatas:
                     #print(usrdata.loc[0]['_data_TaxonID'])
                     if usrdata.taxonid == int(organism):
-                        usrdata.exp_setup['searchdb'] = searchdb
+                        usrdata.searchdb = searchdb
                         usrdata.df['Sequence'], usrdata.df['psm_SequenceModi'],\
                         usrdata.df['psm_SequenceModiCount'],\
                         usrdata.df['psm_LabelFLAG'] = \
@@ -923,13 +919,8 @@ def main(usrdatas=[], FilterValues=None, setup=False, fullpeptread=False,
                                                 seq_modi(x['Sequence'],
                                                          x['Modifications']),
                                                 axis=1)))
-                        # print 'Matching for {}'.format(usrfile)
-                        usrdata.df['metadatainfo'] = usrdata.df.apply(lambda x:
-                                                                genematcher(x['Sequence'],
-                                                                            x['metadatainfo'],
-                                                                            prot), axis=1)
 
-#                        peptidome_matcher(usrdata, prot)  # call matcher
+                        usrdata.df  = peptidome_matcher(usrdata.df, prot)  # call matcher
                 del prot  # free up memory
 
     print('{}: Finished matching peptides to genes.'.format(datetime.now()))
@@ -976,57 +967,3 @@ def main(usrdatas=[], FilterValues=None, setup=False, fullpeptread=False,
         #     for usrfile in usrfiles:
         #         explog.write('{} : grouped experiment file {}'\
         #                      '\n'.format(datetime.now(), usrfile))
-
-if __name__ == '__main__':
-
-    parser = ConfigParser(comment_prefixes=(';')) # allow number sign to be read in configfile
-    parser.optionxform = str  # preserve case
-    parser.read('py_config.ini')
-
-    INPUT_DIR = parser['directories']['inputdir']  # where to look
-                                                   # for files to group
-    OUTPUT_DIR = parser['directories']['outputdir']
-
-    parser = argparse.ArgumentParser()
-    parser.add_argument('-fpr', '--fullpeptread',
-                        action='store_true',
-                        help='Default FALSE. Load the peptidome all at once,'
-                        'minor speed improvement at the expense of memory. '\
-                        'Use at your own risk.')
-    parser.add_argument('-gs', '--genesets',
-                        action='store_true',
-                        help='Optional inclusion of peptide sets for each gene. '\
-                        'Legacy and not useful.')
-    parser.add_argument('-s', '--setup',
-                        action='store_true',
-                        help='Run setup wizard for PyGrouper.\n'\
-                        'Not necessary unless adding a new refseq or need to'\
-                        'change refseq location.')
-    parser.add_argument('-a', '--automated',
-                        action='store_true', help='(Depreciated) '\
-                        'Automated run of PyGrouper.'\
-                        'Note, requires experiment dump from iSPEC to be set up'\
-                        'seperately.\nIf you are not sure if this is correctly'\
-                        'set up, automation will probably not work.')
-    parser.add_argument('-nd', '--nodatabase', action='store_true', default=True,
-                        help='Do not use database to store '\
-                        'experiment info. Default False.')
-    args = parser.parse_args()
-
-    options = {}
-    options['setup'] = args.setup
-    options['fullpeptread'] = args.fullpeptread
-    options['usedb'] = not args.nodatabase
-    options['inputdir'] = INPUT_DIR
-    options['outputdir'] = OUTPUT_DIR
-    if args.automated:
-        print('--automated is not obsolete. Please run auto_grouper.py instead')
-        sys.exit(0)
-
-    else:
-        try:
-            main(**options)
-            # logging.shutdown()
-        except Exception as e:
-            logging.exception('Fatal error with Grouper function : {}'.format(e))
-            raise

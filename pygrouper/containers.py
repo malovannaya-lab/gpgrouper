@@ -1,0 +1,75 @@
+"""Container for each experiment, has a dataframe and metadata"""
+import os
+from datetime import datetime
+import pandas as pd
+
+class UserData:
+
+    def __init__(self, datafile=None, runno=1, searchno=1, no_taxa_redistrib=0,
+                 indir = '.', outdir='.', rawfiledir='.', usedb=False):
+        self.recno = None
+        self.runno = runno
+        self.searchno = searchno
+        self.taxonid = None
+        self.quant_source = None
+        self.added_by = ''
+        self.techrepno = 1 # depreciated
+        self.labeltype = None
+        self.no_taxa_redistrib = no_taxa_redistrib
+        self.usedb = usedb
+        self.filtervalues = dict()
+        self.indir = indir
+        self.outdir = outdir
+        self.rawfiledir = rawfiledir
+        self.searchdb = None # file name for refseq
+        self.filterstamp = None
+        self.datafile = datafile
+        self.df = pd.DataFrame()
+
+    def __repr__(self):
+        return '{}_{}_{}'.format(self.recno, self.runno, self.searchno)
+
+    def __nonzero__(self):
+        if self.datafile and self.recno:
+            return True
+        return False
+
+    def full_path(self, in_or_out='in'):
+        """returns data file with given path"""
+        if in_or_out == 'in':
+            mydir = self.indir
+        elif in_or_out == 'out':
+            mydir = self.outdir
+        else:
+            mydir = '.'
+        return os.path.join(mydir, self.datafile or '')
+
+    def read_csv(self, *args, **kwargs):
+        """Uses pandas read_csv function to read an input file
+        args and kwargs are passed to this function"""
+        self.df = pd.read_csv(self.full_path(), *args, **kwargs)
+        return self
+
+    def output_name(self, *suffix, ext='tab'):
+        """generate an appropriate output file name
+        returns rec_run_search_labeltype_filetype.tab"""
+        suffix = '_'.join([str(ix) for ix in suffix])
+        return '{!r}_{}{}.{}'.format(self,
+                                     self.labeltype,
+                                     '_' + suffix if suffix else '',
+                                     ext
+        )
+
+    def populate_base_data(self):
+        """Populate dataframe with base data prior to grouping"""
+        self.df['psm_EXPRecNo'] = self.recno
+        self.df['psm_EXPRunNo'] = self.runno
+        self.df['psm_EXPSearchNo'] = self.searchno
+        self.df['psm_EXPTechRepNo'] = self.techrepno
+        self.df['psm_CreationTS'] = datetime.now().strftime("%m/%d/%Y %H:%M:%S")
+        self.df['psm_AddedBy'] = self.added_by
+        self.df['psm_TaxonID'] = self.taxonid
+        self.df['psm_GeneList'], self.df['psm_ProteinList'],\
+        self.df['psm_GeneCount'],self.df['psm_ProteinCount'],\
+        self.df['psm_HomologeneID'], self.df['psm_ProteinCapacity'], \
+        self.df['metadatainfo'] = '', '', 0, 0, '', '', ''
