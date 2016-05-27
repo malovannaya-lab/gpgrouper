@@ -106,6 +106,7 @@ def file_checker(INPUT_DIR, OUTPUT_DIR, maxqueue, **kwargs):
             usrfile = None
         usrdata.datafile = usrfile
         usrdata.indir = INPUT_DIR
+        usrdata.outdir = OUTPUT_DIR
         if bool(usrdata) is True:
             usrfilesize += os.stat(usrdata.full_path()).st_size
         if bool(usrdata) is True and (usrfilesize <= MAX_SIZE) and queue_size < maxqueue:  # if we have both,
