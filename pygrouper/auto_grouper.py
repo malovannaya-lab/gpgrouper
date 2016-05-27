@@ -1,4 +1,5 @@
 import os
+import sys
 import time
 import threading
 import argparse
@@ -7,7 +8,8 @@ from configparser import ConfigParser
 #from datetime import datetime
 import pandas as pd
 #import database_config as db
-from pygrouper import pygrouper
+from . import pygrouper
+from .containers import UserData
 try:
     from bcmproteomics import ispec
     bcmprot = True
@@ -68,7 +70,7 @@ def file_checker(INPUT_DIR, OUTPUT_DIR, maxqueue, **kwargs):
     """Docstring
     """
     validfiles = [f for f in os.listdir(INPUT_DIR) if '.txt' in f]
-    userdatas = list()
+    usrdatas = list()
     #ungrouped = db.get_ungrouped_exps()
     #session = db.make_session()
     ungrouped = experiment_checker()  # may be empty, is ok
@@ -104,9 +106,9 @@ def file_checker(INPUT_DIR, OUTPUT_DIR, maxqueue, **kwargs):
             usrfile = None
         usrdata.datafile = usrfile
         usrdata.indir = INPUT_DIR
-        if usrdata is True:
-            usrfilesize += os.stat(usrdata.full_path).st_size
-        if usrdata and (usrfilesize <= MAX_SIZE) and queue_size < maxqueue:  # if we have both,
+        if bool(usrdata) is True:
+            usrfilesize += os.stat(usrdata.full_path()).st_size
+        if bool(usrdata) is True and (usrfilesize <= MAX_SIZE) and queue_size < maxqueue:  # if we have both,
                                                      # a cap on max files to group at once
             usrdatas.append(usrdata)
             queue_size += 1
@@ -119,12 +121,11 @@ def file_checker(INPUT_DIR, OUTPUT_DIR, maxqueue, **kwargs):
             WHERE exprun_EXPRecNo= ? AND
             exprun_EXPRunNo = ? AND
             exprun_EXPSearchNo = ?
-            """, 1, setup['EXPRecNo'],
-                           setup['EXPRunNo'], setup['EXPSearchNo'])
+            """, 1, usrdata.recno,
+                           usrdata.runno, usrdata.searchno)
             conn.commit()
-    if len(usrfiles) > 0:
-        pygrouper.main(usrfiles=usrfiles, exp_setups=setups, automated=True,
-                       inputdir=INPUT_DIR, outputdir=OUTPUT_DIR, usedb=True, **kwargs)
+    if len(usrdatas) > 0:
+        pygrouper.main(usrdatas, inputdir=INPUT_DIR, outputdir=OUTPUT_DIR, usedb=True, **kwargs)
     #session.close()
 
 def schedule(INTERVAL, INPUT_DIR, OUTPUT_DIR, maxfiles, kwargs):

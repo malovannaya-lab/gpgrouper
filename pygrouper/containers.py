@@ -29,8 +29,8 @@ class UserData:
     def __repr__(self):
         return '{}_{}_{}'.format(self.recno, self.runno, self.searchno)
 
-    def __nonzero__(self):
-        if self.datafile and self.recno:
+    def __bool__(self):
+        if self.datafile is not None and self.recno is not None:
             return True
         return False
 
