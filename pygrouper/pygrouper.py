@@ -200,7 +200,7 @@ def auc_reflagger(usrdata, area_col):
     area_col = 'psm_SequenceArea'
     return usrdata, area_col
 
-def update_database(program_title='version',exp_setup=dict(), matched_psms=0, unmatched_psms=0,
+def update_database(program_title='version',usrdata=None, matched_psms=0, unmatched_psms=0,
                     usrfile='file', taxon_totals=dict(), **kwargs):
     """Update iSPEC database with some metadata information
     """
@@ -220,17 +220,17 @@ def update_database(program_title='version',exp_setup=dict(), matched_psms=0, un
            "WHERE exprun_EXPRecNo={recno} "
            "AND exprun_EXPRunNo={runno} "
            "AND exprun_EXPSearchNo={searchno}").format(version=program_title,
-                                                       searchdb=exp_setup['searchdb'],
-                                                       filterstamp=exp_setup['filterstamp'],
+                                                       searchdb=usrdata.searchdb,
+                                                       filterstamp=usrdata.filterstamp,
                                                        matched=matched_psms,
                                                        unmatched=unmatched_psms,
-                                                       inputname=usrfile,
+                                                       inputname=usrdata.datafile,
                                                        hu=taxon_totals.get('9606', 0),
                                                        mou=taxon_totals.get('10090', 0),
                                                        gg=taxon_totals.get('9031', 0),
-                                                       recno=exp_setup['EXPRecNo'],
-                                                       runno=exp_setup['EXPRunNo'],
-                                                       searchno=exp_setup['EXPSearchNo'])
+                                                       recno=usrdata.recno,
+                                                       runno=usrdata.runno,
+                                                       searchno=usrdata.searchno)
     #sys.exit(0)
     cursor = conn.execute(sql)
     cursor.commit()
@@ -239,8 +239,8 @@ def update_database(program_title='version',exp_setup=dict(), matched_psms=0, un
     WHERE exprun_EXPRecNo= ? AND
     exprun_EXPRunNo = ? AND
     exprun_EXPSearchNo = ?
-    """, 1, exp_setup['EXPRecNo'],
-                   exp_setup['EXPRunNo'], exp_setup['EXPSearchNo'])
+    """, 1, usrdata.recno,
+                   usrdata.runno, usrdata.searchno)
     cursor.commit()
 
 def split_on_geneid(usrdata):
@@ -452,7 +452,7 @@ def get_labels(usrdata, labels, labeltype='none'):
 def redistribute_area_tmt(temp_df, label, labeltypes, area_col):
     """for tmt"""
 
-    with_reporter = temp_df[temp_df['Quan Usage'] == 'Use']
+    with_reporter = temp_df[temp_df['QuanUsage'] == 'Use']
     reporter_area = with_reporter[label] * with_reporter[area_col] / with_reporter[labeltypes].sum(1)
     new_area_col = area_col + '_reporter'
     reporter_area.name = new_area_col
@@ -726,6 +726,10 @@ def grouper(usrdata, FilterValues, usedb=False, outdir='',
                  'psm_SequenceModiCount', 'psm_LabelFLAG',
                  'psm_PeptRank', 'psm_AUC_UseFLAG', 'psm_PSM_UseFLAG',
                  'psm_Peak_UseFLAG', 'psm_SequenceArea', 'psm_PrecursorArea_dstrAdj']
+    if usrdata.labeltype == 'TMT':
+        data_cols = data_cols + ['TMT_126', 'TMT_127_N', 'TMT_127_C', 'TMT_128_N',
+                                 'TMT_128_C', 'TMT_129_N', 'TMT_129_C', 'TMT_130_N',
+                                 'TMT_130_C', 'TMT_131', 'QuanInfo', 'QuanUsage']
     #usrdata.to_csv(usrdata_out, columns=usrdata.columns,
                                 #encoding='utf-8', sep='\t')
     #print(usrdata.columns.values)  # for debugging
@@ -761,7 +765,7 @@ def grouper(usrdata, FilterValues, usedb=False, outdir='',
     msfdata.rename(columns={c: 'msf_'+c for c in msfdata.columns}, inplace=True)
 
     if bcmprot and usrdata.usedb:  # we have bcmprot installed
-        update_database(program_title=program_title, exp_setup=exp_setup, matched_psms=matched_psms,
+        update_database(program_title=program_title, usrdata=usrdata, matched_psms=matched_psms,
                         unmatched_psms=unmatched_psms, usrfile=usrfile, taxon_totals=taxon_totals)
     msfname = usrdata.output_name('msf', ext='tab')
 
@@ -790,6 +794,8 @@ def main(usrdatas=[], FilterValues=None, setup=False, fullpeptread=False,
             This does not currently import the results, but does import some metada.
     """
     # ===================Configuration Setup / Loading==========================#
+    print(usrdatas[0].indir, usrdatas[0].outdir)
+    sys.exit(0)
     if usedb and bcmprot:  # try to connect to iSPEC first
         conn = ispec.filedb_connect()
         if isinstance(conn, str):
