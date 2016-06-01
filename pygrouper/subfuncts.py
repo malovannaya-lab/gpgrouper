@@ -783,15 +783,16 @@ def pept_print(df,usrdata):
     IDquery = df['e2g_GeneID']
     #print(IDquery)  # for debugging
     try :
-        matches = usrdata[usrdata.psm_GeneID == IDquery]
+        matches = usrdata[usrdata.psm_GeneID == IDquery].copy()  # do I need to do this?
         # need to do check for if matches is empty
         #print('matches : {}'.format(matches))
 
         matches.Sequence = matches.Sequence.astype('object').str.upper()
         #matches.drop_duplicates(cols='Sequence', take_last=False,
         #inplace = True) # cols is depreciated, use subset
-        matches.drop_duplicates(subset='Sequence', keep='first',
-                                inplace=True)
+        matches.sort_values(by=['psm_PSM_IDG', ascending=True]).drop_duplicates(subset='Sequence',
+                                                                                keep='first',
+        inplace=True)
 
         protcount = matches.Sequence.count() # counting peptides (not proteins)
         protcount_S = matches[matches['psm_PSM_IDG' ] < 4].Sequence.count()
