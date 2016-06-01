@@ -790,7 +790,7 @@ def pept_print(df,usrdata):
         matches.Sequence = matches.Sequence.astype('object').str.upper()
         #matches.drop_duplicates(cols='Sequence', take_last=False,
         #inplace = True) # cols is depreciated, use subset
-        matches.sort_values(by=['psm_PSM_IDG', ascending=True]).drop_duplicates(subset='Sequence',
+        matches.sort_values(by=['psm_PSM_IDG'], ascending=True).drop_duplicates(subset='Sequence',
                                                                                 keep='first',
         inplace=True)
 

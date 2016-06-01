@@ -794,8 +794,6 @@ def main(usrdatas=[], FilterValues=None, setup=False, fullpeptread=False,
             This does not currently import the results, but does import some metada.
     """
     # ===================Configuration Setup / Loading==========================#
-    print(usrdatas[0].indir, usrdatas[0].outdir)
-    sys.exit(0)
     if usedb and bcmprot:  # try to connect to iSPEC first
         conn = ispec.filedb_connect()
         if isinstance(conn, str):
