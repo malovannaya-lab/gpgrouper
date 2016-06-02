@@ -22,7 +22,6 @@ class UserData:
         self.outdir = outdir
         self.rawfiledir = rawfiledir
         self.searchdb = None # file name for refseq
-        self.filterstamp = None
         self.datafile = datafile
         self.df = pd.DataFrame()
 
@@ -73,3 +72,7 @@ class UserData:
         self.df['psm_GeneCount'],self.df['psm_ProteinCount'],\
         self.df['psm_HomologeneID'], self.df['psm_ProteinCapacity'], \
         self.df['metadatainfo'] = '', '', 0, 0, '', '', ''
+
+    @property
+    def filterstamp(self):
+        return 'is{ion_score}_qv{qvalue}_pep{pep}_idg{idg}_z{zmin}to{zmax}_mo{modi}'.format(**self.filtervalues)

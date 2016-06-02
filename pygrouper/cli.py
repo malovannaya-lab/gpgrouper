@@ -121,13 +121,13 @@ def parse_configfile(config):
     config.outputdir = parser.get('directories', 'outputdir')
     config.rawfiledir = parser.get('directories', 'rawfiledir')
     fv_section = parser['filter values']
-    filtervalues = {'Filter_IS': fv_section.getfloat('ion score'),
-                    'Filter_qV': fv_section.getfloat('q value'),
-                    'Filter_PEP': fv_section.getfloat('PEP'),
-                    'Filter_IDG': fv_section.getfloat('IDG'),
-                    'Filter_Z_min': fv_section.getint('charge_min'),
-                    'Filter_Z_max': fv_section.getint('charge_max'),
-                    'Filter_Modi': fv_section.getint('max modis'),
+    filtervalues = {'ion_score': fv_section.getfloat('ion score'),
+                    'qvalue': fv_section.getfloat('q value'),
+                    'pep': fv_section.getfloat('PEP'),
+                    'idg': fv_section.getfloat('IDG'),
+                    'zmin': fv_section.getint('charge_min'),
+                    'zmax': fv_section.getint('charge_max'),
+                    'modi': fv_section.getint('max modis'),
                     }
     config.filtervalues = filtervalues
     column_aliases = dict()
@@ -272,7 +272,7 @@ def run(config, autorun, interval, max_files):
     if autorun:
         auto_grouper.interval_check(interval, INPUT_DIR, OUTPUT_DIR,
                                     max_files, rawfilepath=RAWFILE_DIR,
-                                    refs=refseqs, FilterValues=filtervalues,
+                                    refs=refseqs,
                                     column_aliases=column_aliases,
                                     gid_ignore_file=gid_ignore_file,
                                     labels=LABELS,

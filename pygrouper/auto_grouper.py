@@ -35,7 +35,12 @@ def experiment_checker():
                    'exprun_nTechRepeats',
                    'exprun_Search_QuantSource', 'exprun_Purpose',
                    'exprun_MS_Instrument', 'exprun_MS_Experimenter',
-                   'exprun_Search_Experimenter', 'exprun_Grouper_notaxaRedistribute']
+                   'exprun_Search_Experimenter', 'exprun_Grouper_notaxaRedistribute',
+                   'exprun_Grouper_Filter_IonScore', 'exprun_Grouper_Filter_qValue',
+                   'exprun_Grouper_Filter_IDG', 'exprun_Grouper_Filter_PEP',
+                   'exprun_Grouper_Filter_zMin', 'exprun_Grouper_Filter_zMax',
+                   'exprun_Grouper_Filter_modiMax',
+                   ]
 
     sql = ("SELECT {} FROM iSPEC_ISPEC.iSPEC_ExperimentRuns "
            "WHERE exprun_Grouper_EndFLAG != 1 AND "
@@ -87,6 +92,13 @@ def file_checker(INPUT_DIR, OUTPUT_DIR, maxqueue, **kwargs):
         usrdata.addedby = exp.exprun_AddedBy
         usrdata.labeltype = exp.exprun_LabelType
         usrdata.no_taxa_redistrib = exp.exprun_Grouper_notaxaRedistribute
+        usrdata.filtervalues['ion_score'] = exp.exprun_Grouper_Filter_IonScore or 7
+        usrdata.filtervalues['qvalue']    = exp.exprun_Grouper_Filter_qValue or 0.05
+        usrdata.filtervalues['pep']       = exp.exprun_Grouper_Filter_PEP or 'all'
+        usrdata.filtervalues['idg']       = exp.exprun_Grouper_Filter_IDG or 'all'
+        usrdata.filtervalues['zmin']      = exp.exprun_Grouper_Filter_zMin or 2
+        usrdata.filtervalues['zmax']      = exp.exprun_Grouper_Filter_zMax or 6
+        usrdata.filtervalues['modi']      = exp.exprun_Grouper_Filter_modiMax or 4
 
         expfilematch = repr(usrdata)  # format recno_runno_searchno
         usrfilelist = [f for f in validfiles if f.startswith(expfilematch)]

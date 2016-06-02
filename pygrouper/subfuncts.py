@@ -618,29 +618,29 @@ def fancyprint(ShowText,string_size=12):
 
 #def AUC_PSM_flagger(df,Filter_IS, Filter_qV,Filter_PEP, Filter_IDG, Filter_Z_min, Filter_Z_max, Filter_Modi):
 def AUC_PSM_flagger(df,d):
-    if d['Filter_PEP'] =='all' : d['Filter_PEP'] = float('inf')
-    if d['Filter_IDG'] =='all' : d['Filter_IDG'] = float('inf')
+    if d['pep'] =='all' : d['pep'] = float('inf')
+    if d['idg'] =='all' : d['idg'] = float('inf')
     #if df['IonScore'] == '' and df['q-Value'] == '':
-    if df['Charge'] < d['Filter_Z_min'] or df['Charge'] > d['Filter_Z_max'] :
+    if df['Charge'] < d['zmin'] or df['Charge'] > d['zmax'] :
          # if charge is empty (nan), this will not be true
         AUC_flag = 0
         PSM_flag = 0
-    elif df['psm_SequenceModiCount'] > d['Filter_Modi'] :
+    elif df['psm_SequenceModiCount'] > d['modi'] :
         AUC_flag = 0
         PSM_flag = 0
     elif np.isnan(df['IonScore']) and np.isnan(df['q_value']):
         AUC_flag = 1 #retains WLs Q2up assignments
         PSM_flag = 0
-    elif df['IonScore'] < d['Filter_IS'] :
+    elif df['IonScore'] < d['ion_score'] :
         AUC_flag = 0
         PSM_flag = 0
-    elif df['q_value'] > d['Filter_qV'] :
+    elif df['q_value'] > d['qvalue'] :
         AUC_flag = 0
         PSM_flag = 0
-    elif df['PEP'] > d['Filter_PEP'] :
+    elif df['PEP'] > d['pep'] :
         AUC_flag = 0
         PSM_flag = 0
-    elif df['psm_PSM_IDG'] > d['Filter_IDG'] :
+    elif df['psm_PSM_IDG'] > d['idg'] :
         AUC_flag = 0
         PSM_flag = 0
     elif df['psm_Peak_UseFLAG'] == 0 :

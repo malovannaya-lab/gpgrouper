@@ -33,6 +33,17 @@ def grab_one():
     files = [os.path.join(BASE_DIR, f) for f in files]
     return (files, setups)
 
+def assign_filtervalues(data):
+    data.filtervalues['ion_score'] = 7
+    data.filtervalues['qvalue']    = .05
+    data.filtervalues['idg']       = 'all'
+    data.filtervalues['pep']       = 'all'
+    data.filtervalues['zmin']      = 2
+    data.filtervalues['zmax']      = 4
+    data.filtervalues['modi']      = 4
+    return data
+
+
 def get_quick_data():
     data = UserData('30490_1_EQP_6KiP_all.txt')
     data.recno = 30490
@@ -43,6 +54,7 @@ def get_quick_data():
     data.usedb = False
     data.indir = BASE_DIR
     data.outdir = './testresults'
+    data = assign_filtervalues(data)
 
     return data
 
@@ -55,6 +67,7 @@ def get_prof_data():
     data.labeltype = 'none'
     data.indir = BASE_DIR
     data.outdir = './testresults'
+    data = assign_filtervalues(data)
 
     return data
 

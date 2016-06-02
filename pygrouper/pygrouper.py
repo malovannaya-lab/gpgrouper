@@ -286,11 +286,11 @@ def rank_peptides(usrdata, area_col):
 
     return usrdata
 
-def flag_AUC_PSM(usrdata, FilterValues):
+def flag_AUC_PSM(usrdata, filtervalues):
     """Apply AUC and PSM flags per row"""
 
     usrdata['psm_AUC_UseFLAG'], usrdata['psm_PSM_UseFLAG'] = \
-    list(zip(*usrdata.apply(AUC_PSM_flagger, args=(FilterValues,), axis=1)))
+    list(zip(*usrdata.apply(AUC_PSM_flagger, args=(filtervalues,), axis=1)))
     return usrdata
 
 
@@ -472,7 +472,7 @@ def concat_tmt_e2gs(rec, run, search, outdir, cols=None):
                     index=False, encoding='utf-8', sep='\t')
     print('Export of TMT e2g file : {}'.format(outf))
 
-def grouper(usrdata, FilterValues, usedb=False, outdir='',
+def grouper(usrdata, usedb=False, outdir='',
             gid_ignore_file='', labels=dict()):
     """Function to group a psm file from PD after Mascot Search"""
     #import RefseqInfo
@@ -497,6 +497,7 @@ def grouper(usrdata, FilterValues, usedb=False, outdir='',
         normalize = 10**5
 
     print('Starting Grouper for exp file {}'.format(usrfile))
+    print('\nFilter values set to : {}'.format(usrdata.filterstamp))
     logfilestr = usrdata.output_name(ext='log')
     logfile = open(os.path.join(usrdata.outdir, logfilestr),
                    'w+')  # append to previously opened log file
@@ -559,7 +560,7 @@ def grouper(usrdata, FilterValues, usedb=False, outdir='',
                                                                usrdata.datafile))
 
     # Now calculate AUC and PSM use flags
-    usrdata.df = flag_AUC_PSM(usrdata.df, FilterValues)
+    usrdata.df = flag_AUC_PSM(usrdata.df, usrdata.filtervalues)
 
     usrdata.df = gene_taxon_map(usrdata.df, gene_taxon_dict)
     # Flag good quality peptides
@@ -785,9 +786,9 @@ def grouper(usrdata, FilterValues, usedb=False, outdir='',
     print('Successful grouping of {} completed.\n' \
           .format(repr(usrdata)))
 
-def main(usrdatas=[], FilterValues=None, setup=False, fullpeptread=False,
+def main(usrdatas=[], setup=False, fullpeptread=False,
          usedb=False, inputdir='', outputdir='', refs=dict(), rawfilepath=None,
-         Filtervalues=dict(), column_aliases=dict(), gid_ignore_file='', configpassed=False,
+         column_aliases=dict(), gid_ignore_file='', configpassed=False,
          labels=dict()):
     """
     usedb : Connect to the iSPEC database and update some record information.
@@ -834,24 +835,9 @@ def main(usrdatas=[], FilterValues=None, setup=False, fullpeptread=False,
     print('\nrelease date: {}'.format(__copyright__))
     print('Python version ' + sys.version)
     print('Pandas version: ' + pd.__version__)
-    if not FilterValues:
-        FilterValues = {'Filter_IS': 7, 'Filter_qV': 0.05, 'Filter_PEP': 'all',
-                        'Filter_IDG': 'all', 'Filter_Z_min': 2,'Filter_Z_max': 4,
-                        'Filter_Modi': 3}  # defaults
-    Filter_Stamp ='is{}_qv{}_pep{}_idg{}_z{}to{}mo{}'.format(
-        FilterValues['Filter_IS'],
-        FilterValues['Filter_qV'] * 100,
-        FilterValues['Filter_PEP'],
-        FilterValues['Filter_IDG'],
-        FilterValues['Filter_Z_min'],
-        FilterValues['Filter_Z_max'],
-        FilterValues['Filter_Modi'])
 
-    print('\nFilter values set to : {}'.format(Filter_Stamp))
 
     startTime = datetime.now()
-    if FilterValues['Filter_PEP'] == 'all' or FilterValues['Filter_IDG'] == 'all':
-        FilterValues['Filter_PEP'] = float('inf')
 
     print('\nStart at {}'.format(startTime))
     logging.info('Start at {}'.format(startTime))
@@ -872,7 +858,6 @@ def main(usrdatas=[], FilterValues=None, setup=False, fullpeptread=False,
         usrdata.read_csv(sep='\t')
         standard_names = column_identifier(usrdata.df, column_aliases)
         usrdata.rawfiledir = rawfilepath
-        usrdata.filterstamp = Filter_Stamp
         if usedb:
             usrdata.usedb = True
         usrdata.df.rename(columns={v: k
@@ -933,7 +918,7 @@ def main(usrdatas=[], FilterValues=None, setup=False, fullpeptread=False,
     failed_exps = []
     for usrdata in usrdatas:
         try:
-            grouper(usrdata, FilterValues, usedb=usedb,
+            grouper(usrdata,  usedb=usedb,
                     gid_ignore_file=gid_ignore_file, labels=labels)
         except Exception as e:  # catch and store all exceptions, won't crash
                                 # the whole program at least
