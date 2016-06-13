@@ -5,16 +5,16 @@ import pandas as pd
 
 class UserData:
 
-    def __init__(self, datafile=None, runno=1, searchno=1, no_taxa_redistrib=0,
-                 indir = '.', outdir='.', rawfiledir='.', usedb=False):
+    def __init__(self, datafile=None, runno=1, searchno=1, no_taxa_redistrib=0, addedby='',
+                 indir = '.', outdir='.', rawfiledir='.', usedb=False, labeltype='None'):
         self.recno = None
         self.runno = runno
         self.searchno = searchno
         self.taxonid = None
         self.quant_source = None
-        self.added_by = ''
+        self.added_by = addedby
         self.techrepno = 1 # depreciated
-        self.labeltype = None
+        self.labeltype = labeltype
         self.no_taxa_redistrib = no_taxa_redistrib
         self.usedb = usedb
         self.filtervalues = dict()

@@ -252,13 +252,27 @@ def setpath(config, path_type, path):
 
 @cli.command(context_settings=CONTEXT_SETTINGS)
 @click.option('-a', '--autorun', is_flag=True,
-              help='Run automatically by scanning directory and connecting to iSPEC')
+              help='Run automatically by scanning directory and connecting to iSPEC database.')
+@click.option('-d', '--database', type=click.File,
+              help='Database file to use. Ignored with autorun.')
+@click.option('-e', '--enzyme', type=click.Choice(['trypsin', 'trypsin/p', 'chymotrypsin', 'LysC', 'LysN', 'GluC', 'ArgC'
+                                                   'AspN',]),
+              default='trypsin', show_default=True,
+              help="Enzyme used for digestion. Ignored with autorun.")
 @click.option('-i', '--interval', type=int, default=3600,
-              help='Interval in seconds to wait between automatic checks for new files to group. Default is 1 hour.')
+              help='(Autorun only) Interval in seconds to wait between automatic checks for new files to group. Default is 1 hour.')
+@click.option('-l', '--labeltype', type=click.Choice(['None', 'SILAC', 'iTRAQ', 'TMT']),
+              default='None', show_default=True, help='Type of label for this experiment.')
 @click.option('-m', '--max-files', type=int, default=99,
-              help='Maximum number of experiments to quene for autorun')
+              help='(Autorun only) Maximum number of experiments to queue for autorun')
+@click.option('-n', '--name', type=str, default=os.getlogin(),
+              help='Name associated with the search')
+@click.option('-ntr', '--no-taxa-redistrib', is_flag=True, show_default=True,
+              help='Disable redistribution based on individual taxons')
+@click.option('-p', '--psms-file', type=click.File,
+              help='Tab deliminated file of psms to be grouped')
 @pass_config
-def run(config, autorun, interval, max_files):
+def run(config, autorun, database, enzyme, interval, interval, labeltype, max_files, name, psms_file):
     """Run PyGrouper"""
     parse_configfile()
     INPUT_DIR = config.inputdir
@@ -278,20 +292,14 @@ def run(config, autorun, interval, max_files):
                                     labels=LABELS,
                                     configpassed=True)
     else:
-        usrfiles, setups = list(), list()
-        username = click.prompt('Enter your name', default=getpass.getuser())
-        label_type = click.prompt('Enter label type', default='none')
-        usrfile = click.prompt('Enter a file to group', type=click.Path(exists=True, dir_okay=False,
-                                                                        resolve_path=True))
+        usrdata = UserData(datafile=psms_file, indir=INPUT_DIR, outdir=OUTPUT_DIR, rawfiledir=RAWFILE_DIR,
+                           no_taxa_redistrib=no_taxa_redistrib, labeltype=labeltype, addedby=name)
         try:
             rec, run, search = find_rec_run_search(usrfile)
-            rec, run, search = int(rec), int(run), int(search)
-        except AttributeError:  # regex search failed, just get from user
-            rec = click.prompt('Enter record number', type=int)
-            run = click.prompt('Enter run number', default=1, type=int)
-            search = click.prompt('Enter search number', default=1, type=int)
+            usrdata.recno, usrdata.runno, usrdata.search = int(rec), int(run), int(search)
+        except AttributeError:  # regex search failed, just use a default
+            usrdata.recno = 1
         taxon = click.prompt('Enter taxon id', default=9606, type=int,)
-        usrfiles.append(usrfile)
         setup = {'EXPRecNo': rec,
                  'EXPRunNo': run,
                  'EXPSearchNo': search,
@@ -303,9 +311,7 @@ def run(config, autorun, interval, max_files):
                  }
         INPUT_DIR, usrfile = os.path.split(usrfile)
         OUTPUT_DIR = INPUT_DIR
-        usrfiles.append(usrfile)
-        setups.append(setup)
-        pygrouper.main(usrfiles=usrfiles, exp_setups=setups, automated=True,
+        pygrouper.main(usrfiles=list(usrdata),
                        inputdir=INPUT_DIR, outputdir=OUTPUT_DIR, usedb=False,
                        refs=refseqs, FilterValues=filtervalues,
                        column_aliases=column_aliases,
@@ -313,7 +319,7 @@ def run(config, autorun, interval, max_files):
                        configpassed=True)
 
 def find_rec_run_search(target):
-    "Try to get record, run, and search numbers with regex"
+    "Try to get record, run, and search numbers with regex of a target string with pattern \d+_\d+_\d+"
     rec_run_search = re.compile(r'^\d+_\d+_\d+_')
     match = rec_run_search.search(target).group()
     recno = re.search(r'^\d+', match).group()
