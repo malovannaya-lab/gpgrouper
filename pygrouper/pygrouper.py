@@ -23,7 +23,7 @@ except ImportError:
         bcmprot = False
 
 __author__ = 'Alexander B. Saltzman'
-__copyright__ = 'Copyright January 2016'
+__copyright__ = _version.__copyright__
 __credits__ = ['Alexander B. Saltzman', 'Anna Malovannaya']
 __license__ = 'MIT'
 __version__ = '0.1.018'
@@ -485,7 +485,7 @@ def grouper(usrdata, usedb=False, outdir='',
     gid_ignore_list = []
 
     usrdata_out = usrdata.output_name('psms', ext='tab')
-    if os.path.isfile(gid_ignore_file):
+    if gid_ignore_file is not None and os.path.isfile(gid_ignore_file):
         print('Using gene filter file for normalization.')
         gid_ignore_list = get_gid_ignore_list(gid_ignore_file)
 
@@ -595,7 +595,6 @@ def grouper(usrdata, usedb=False, outdir='',
                  'e2g_GeneCapacity', 'e2g_n_iBAQ_dstrAdj']  # cols of interest
 
     labeltypes = get_labels(usrdata.df, labels, usrdata.labeltype)
-    print(labeltypes)
     additional_labels = list()
 
     orig_area_col = area_col
@@ -786,10 +785,9 @@ def grouper(usrdata, usedb=False, outdir='',
     print('Successful grouping of {} completed.\n' \
           .format(repr(usrdata)))
 
-def main(usrdatas=[], setup=False, fullpeptread=False,
+def main(usrdatas=[], fullpeptread=False,
          usedb=False, inputdir='', outputdir='', refs=dict(), rawfilepath=None,
-         column_aliases=dict(), gid_ignore_file='', configpassed=False,
-         labels=dict()):
+         column_aliases=dict(), gid_ignore_file='', labels=dict()):
     """
     usedb : Connect to the iSPEC database and update some record information.
             This does not currently import the results, but does import some metada.
@@ -800,15 +798,6 @@ def main(usrdatas=[], setup=False, fullpeptread=False,
         if isinstance(conn, str):
             print(conn)
             sys.exit(1)
-
-    if not configpassed:
-        parser = ConfigParser(comment_prefixes=(';')) # allow number sign to be read in configfile
-        parser.optionxform = str  # preserve case
-        parser.read(os.path.join(BASE_DIR,'py_config.ini'))
-        try:
-            rawfilepath = parser.items('rawfilepath')[0][1]
-        except NoSectionError:
-            rawfilepath = ''
 
     pept_breakups = {}
     breakup_size = 4

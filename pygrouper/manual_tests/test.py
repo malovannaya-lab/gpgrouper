@@ -45,7 +45,7 @@ def assign_filtervalues(data):
 
 
 def get_quick_data():
-    data = UserData('30490_1_EQP_6KiP_all.txt')
+    data = UserData('30490_1_1_EQP_6KiP_all.txt')
     data.recno = 30490
     data.taxonid = 9606
     data.quant_source = 'AUC'
@@ -75,7 +75,7 @@ def grab_data(quick, prof, tmt):
     quick_data = get_quick_data()
     tmt_data = get_quick_data()
     tmt_data.labeltype = 'TMT'
-    tmt_data.datafile = '30490_1_EQP_6KiP_all_TMT.txt'
+    tmt_data.datafile = '30490_1_1_EQP_6KiP_all_TMT.txt'
     prof_data = get_prof_data()
 
     if quick:
