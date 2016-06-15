@@ -88,7 +88,7 @@ def make_configfile(config):
                                'base_config.ini')
     parser.read(BASE_CONFIG)
     parser.set('profile', 'user', config.user)
-    CONFIG_FILE = os.path.join(PROFILE_DIR, 'config.ini')
+    CONFIG_FILE = os.path.join(CONFIG_DIR, 'config.ini')
     #click.echo(CONFIG_FILE)
     write_configfile(CONFIG_FILE, parser)
     click.echo('Creating new config file.')
@@ -292,7 +292,7 @@ def setpath(config, path_type, path):
 def run(config, autorun, contaminants, database, enzyme, interval, ion_score, labeltype, max_files, max_modis,
         name, no_taxa_redistrib, outdir, psms_file, psm_idg, pep, q_value, quant_source, taxonid, zmin, zmax):
     """Run PyGrouper"""
-    if not all([database, psms_file]):
+    if not all([database, psms_file]) and not autorun:
         click.echo('No database or psms file entered, showing help and exiting...')
         click.echo(click.get_current_context().get_help())
         sys.exit(0)
