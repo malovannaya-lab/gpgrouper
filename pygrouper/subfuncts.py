@@ -779,20 +779,24 @@ def pept_print(df,usrdata):
     '''
     Lookup info from userdata. Also sorts based on alphabet.
     '''
-
+    logf = open('/Users/alex/Desktop/templog.txt', 'a')
     IDquery = df['e2g_GeneID']
     #print(IDquery)  # for debugging
     try :
-        matches = usrdata[usrdata.psm_GeneID == IDquery].copy()  # do I need to do this?
+        matches = usrdata[usrdata.psm_GeneID == IDquery].copy()
         # need to do check for if matches is empty
         #print('matches : {}'.format(matches))
 
-        matches.Sequence = matches.Sequence.astype('object').str.upper()
+        logf.write(str(len(matches))+'\n')
+        logf.write(matches.to_string())
+        # matches.Sequence = matches.Sequence.astype('object').str.upper()
         #matches.drop_duplicates(cols='Sequence', take_last=False,
         #inplace = True) # cols is depreciated, use subset
-        matches.sort_values(by=['psm_PSM_IDG'], ascending=True).drop_duplicates(subset='Sequence',
-                                                                                keep='first',
-        inplace=True)
+        matches = matches.sort_values(by=['psm_PSM_IDG'], ascending=True).drop_duplicates(subset='sequence_lower',
+                                                                                keep='first',)
+        logf.write('\n')
+        logf.write(str(len(matches))+'\n')
+        logf.write(matches.to_string(header=False))
 
         protcount = matches.Sequence.count() # counting peptides (not proteins)
         protcount_S = matches[matches['psm_PSM_IDG' ] < 4].Sequence.count()
@@ -806,6 +810,8 @@ def pept_print(df,usrdata):
         pepts_str = ''
         protcount = 0
         uniques = 0
+    logf.write('\n'+ '='*180+ '\n')
+    logf.close()
     return (set(sorted(matches.Sequence)), pepts_str, protcount, uniques,
          protcount_S, uniques_S)
 
