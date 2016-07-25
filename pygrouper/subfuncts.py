@@ -441,7 +441,6 @@ def protease(seq,minlen = 0, cutsites=[], exceptions=[], miscuts=2):
 
 def genematcher(seq, metadata, prot):
     seq = seq.upper()
-    #print(type(metadata))  # for debugging
     if not isinstance(metadata, set):
         metadata = set()
     if seq in prot:
@@ -937,9 +936,9 @@ def AUC_distributor(inputdata, genes_df, area_col, taxon_totals):
 def gene_AUC_sum(genes_df,temp_df,normalization):
     gene = genes_df['e2g_GeneID']
     if genes_df['e2g_IDSet'] in [1,2]:
-        return temp_df[temp_df[
-             'psm_GeneID'
-        ] == gene].psm_PrecursorArea_dstrAdj.sum()/normalization
+        return temp_df[(temp_df['psm_GeneID'] == gene) &
+                       (temp_df['psm_AUC_UseFLAG'] == 1)
+        ].psm_PrecursorArea_dstrAdj.sum()/normalization
     elif genes_df['e2g_IDSet'] == 3:
         return 0
 

@@ -330,7 +330,8 @@ def create_e2g_df(inputdf, label, inputcol='psm_GeneID'):
 def select_good_peptides(usrdata, labelix):
     """Selects peptides of a given label with the correct flag and at least one genecount"""
     temp_df = usrdata[(usrdata['psm_LabelFLAG'] == labelix) &
-                      (usrdata['psm_AUC_UseFLAG'] == 1) &
+                      # (usrdata['psm_AUC_UseFLAG'] == 1) &
+                      (usrdata['psm_PSM_UseFLAG'] == 1) &
                       (usrdata['psm_GeneCount'] > 0)].copy()  # should keep WL's
     return temp_df
 
@@ -686,8 +687,6 @@ def grouper(usrdata, outdir='', database=None,
                         usrdata.outdir, cols=e2g_cols)
     usrdata.df.drop('metadatainfo', axis=1, inplace=True)  # Don't need this
                                       # column anymore.
-    #print('Length of usrdata before merge : ',len(usrdata))
-    #print('Length of temp_df : ',len(temp_df))
     usrdata.df = pd.merge(usrdata.df, temp_df, how='left')
     usrdata.df = rank_peptides(usrdata.df, 'psm_PrecursorArea_dstrAdj')
     usrdata.df['psm_PeptRank'] = usrdata.df['psm_PeptRank'].fillna(0)  # anyone who
@@ -813,6 +812,10 @@ def _match(usrdatas, refseq_file):
             counter = 0
             del prot # frees up memory, can get quite large otherwise
             prot = defaultdict(list)
+    else:
+        for usrdata in usrdatas:
+            usrdata.df  = peptidome_matcher(usrdata.df, prot)  # match peptides to peptidome
+        del prot
 
     # now extract info based on index
     for usrdata in usrdatas:
@@ -862,6 +865,7 @@ def main(usrdatas=[], fullpeptread=False, inputdir='', outputdir='', refs=dict()
     # first set the modifications. Importantly fills in X with the predicted amino acid
     for usrdata in usrdatas:
         usrdata.df = set_modifications(usrdata.df)
+        usrdata.df['metadatainfo'] = ''
 
     usrdatas, databases = match(usrdatas, refs)
     # raise BaseException(usrdatas[0].df.head())

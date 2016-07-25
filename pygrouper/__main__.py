@@ -105,12 +105,22 @@ def get_test_data():
 
 
 def work(params):
+
+    null = open(os.devnull,'w')
+    _stderr = sys.stderr
+    _stdout = sys.stdout
+    sys.stdout = sys.stderr = null
+
+    current = mp.current_process()
     usrdata, databases, labels, test = params
+    print('{!r} processing {!r}'.format(current, usrdata))
     grouper(usrdata,
             database=databases[usrdata.taxonid],
             gid_ignore_file=gid_ignore_file, labels=labels)
     if test is False:
         update_database(usrdata)
+    sys.stderr = _stderr
+    sys.stdout = _stdout
     return 0
 
 if __name__ == '__main__':
@@ -123,9 +133,6 @@ if __name__ == '__main__':
     processes = args.processes or mp.cpu_count() - 1
     test = args.test
 
-    _stderr = sys.stderr
-    _stdout = sys.stdout
-    # null = open(os.devnull,'w')
     config = parse_configfile(None)
 
     INPUT_DIR = config.inputdir or '.'
@@ -159,9 +166,10 @@ if __name__ == '__main__':
 
     pool = mp.Pool(processes=processes)
     params = zip(usrdatas, repeat(databases), repeat(LABELS), repeat(test))
+    print('Running multiple processes')
+
     results = pool.map(work, params)
 
-    # sys.stdout = sys.stderr = null
 
     sys.stderr = _stderr
     sys.stdout = _stdout
