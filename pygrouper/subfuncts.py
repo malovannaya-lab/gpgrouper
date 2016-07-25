@@ -422,6 +422,7 @@ def protease(seq,minlen = 0, cutsites=[], exceptions=[], miscuts=2):
             frags.append(chop)
             chop = ''
     merged_list = list()
+    no_met = list()
     for k in range(0, miscuts):
         for ix, chunk in enumerate(rolling_window(frags, k+2)):  # +2 to join adjacent
             merged_list.append(''.join(chunk))

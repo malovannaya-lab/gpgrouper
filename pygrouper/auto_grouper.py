@@ -1,3 +1,4 @@
+
 import os
 import sys
 import time
@@ -10,13 +11,69 @@ import pandas as pd
 #import database_config as db
 from . import pygrouper
 from .containers import UserData
+import json
 try:
     from bcmproteomics import ispec
     bcmprot = True
 except ImportError:
-    #import bcmproteomics as ispec
+    # print("will need to configure your own database connection")
     pass
 
+
+def _update_database(program_title='version',usrdata=None, matched_psms=0, unmatched_psms=0,
+                    usrfile='file', taxon_totals=dict(), **kwargs):
+    """Update iSPEC database with some metadata information
+    """
+    print('{} | Updating experiment runs table in iSPEC.'.format(time.ctime()))
+    #print('Number of matched psms : ', matched_psms)
+    conn = ispec.filedb_connect()
+    sql = ("UPDATE iSPEC_ExperimentRuns "
+           "SET exprun_Grouper_Version='{version}', "
+           "exprun_Grouper_RefDatabase='{searchdb}', "
+           "exprun_Grouper_FilterStamp='{filterstamp}', "
+           "exprun_PSMCount_matched={matched}, "
+           "exprun_PSMCount_unmatched={unmatched}, "
+           "exprun_InputFileName='{inputname}', "
+           "exprun_Fraction_9606={hu}, "
+           "exprun_Fraction_10090={mou}, "
+           "exprun_Fraction_9031={gg} "
+           "WHERE exprun_EXPRecNo={recno} "
+           "AND exprun_EXPRunNo={runno} "
+           "AND exprun_EXPSearchNo={searchno}").format(version=program_title,
+                                                       searchdb=usrdata.searchdb,
+                                                       filterstamp=usrdata.filterstamp,
+                                                       matched=matched_psms,
+                                                       unmatched=unmatched_psms,
+                                                       inputname=usrdata.datafile,
+                                                       hu=taxon_totals.get('9606', 0),
+                                                       mou=taxon_totals.get('10090', 0),
+                                                       gg=taxon_totals.get('9031', 0),
+                                                       recno=usrdata.recno,
+                                                       runno=usrdata.runno,
+                                                       searchno=usrdata.searchno)
+    #sys.exit(0)
+    cursor = conn.execute(sql)
+    cursor.commit()
+    cursor.execute("""UPDATE iSPEC_ExperimentRuns
+    SET exprun_Grouper_EndFLAG = ?
+    WHERE exprun_EXPRecNo= ? AND
+    exprun_EXPRunNo = ? AND
+    exprun_EXPSearchNo = ?
+    """, 1, usrdata.recno,
+                   usrdata.runno, usrdata.searchno)
+    cursor.commit()
+
+def update_database(usrdata):
+    """Update the database with an exported json file of data"""
+    outname = usrdata.output_name('metadata', ext='json')
+    with open(os.path.join(usrdata.outdir, outname), 'r') as f:
+        metadata = json.load(f)
+    _update_database(metadata)
+
+def run_and_update(usrdatas=None, inputdir='.', outputdir='.', **kwargs):
+    pygrouper.main(usrdatas, inputdir=inputdir, outputdir=outputdir, **kwargs)
+    for usrdata in usrdatas:
+        update_database(usrdata)
 
 def experiment_checker():
     """Looks for experiments that have records in ispec but have not been grouped yet
@@ -70,6 +127,8 @@ def experiment_checker():
         rundata[col] = rundata[col].fillna('')
 
     return rundata
+
+
 
 def file_checker(INPUT_DIR, OUTPUT_DIR, maxqueue, **kwargs):
     """Docstring
@@ -138,14 +197,20 @@ def file_checker(INPUT_DIR, OUTPUT_DIR, maxqueue, **kwargs):
                            usrdata.runno, usrdata.searchno)
             conn.commit()
     if len(usrdatas) > 0:
-        pygrouper.main(usrdatas, inputdir=INPUT_DIR, outputdir=OUTPUT_DIR, usedb=True, **kwargs)
-    #session.close()
+        return usrdatas
+    else:
+        return None
+
+def main(INPUT_DIR, OUTPUT_DIR, maxfiles, **kwargs):
+    out = file_checker(INPUT_DIR, OUTPUT_DIR, maxfiles, **kwargs)
+    if out:
+        run_and_update(out, INPUT_DIR, OUTPUT_DIR, **kwargs)
 
 def schedule(INTERVAL, INPUT_DIR, OUTPUT_DIR, maxfiles, kwargs):
     print('{} : Checking for new experiments.'.format(time.ctime()))
     #experiment_checker()  # not supposed to call this here
     #db.get_ispec_experiment_info(os.path.join(INPUT_DIR,ispecf), todb=True, norepeats=True)
-    file_checker(INPUT_DIR, OUTPUT_DIR, maxfiles, **kwargs)
+    main(INPUT_DIR, OUTPUT_DIR, maxfiles, **kwargs)
     #print(INTERVAL, args)
     #for kwarg in kwargs:
     #    print(kwarg)

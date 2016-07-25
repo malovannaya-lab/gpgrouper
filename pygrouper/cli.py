@@ -365,6 +365,7 @@ def run(config, autorun, contaminants, database, enzyme, interval, ion_score, la
                 usrdata.filtervalues['modi']      = max_modis
 
             usrdata.read_csv(sep='\t')  # read from the stored psms file
+            usrdata.df['metadatainfo'] = ''
             if column_aliases:
                 standard_names = column_identifier(usrdata.df, column_aliases)
                 usrdata.df.rename(columns={v: k
@@ -374,7 +375,7 @@ def run(config, autorun, contaminants, database, enzyme, interval, ion_score, la
             usrdata.populate_base_data()
             usrdatas.append(usrdata)
         pygrouper.main(usrdatas=usrdatas,
-                       inputdir=INPUT_DIR, outputdir=OUTPUT_DIR, usedb=False,
+                       inputdir=INPUT_DIR, outputdir=OUTPUT_DIR,
                        refs=refseqs, column_aliases=column_aliases,
                        gid_ignore_file=contaminants,)
 

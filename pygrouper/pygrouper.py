@@ -9,15 +9,7 @@ from itertools import repeat
 import pandas as pd
 from . import _version
 from .subfuncts import *
-try:
-    from bcmproteomics import ispec
-    bcmprot = True
-except ImportError:
-    try:
-        import bcmproteomics as ispec
-        bcmprot = True
-    except ImportError:
-        bcmprot = False
+import json
 
 __author__ = 'Alexander B. Saltzman'
 __copyright__ = _version.__copyright__
@@ -208,48 +200,31 @@ def auc_reflagger(usrdata, area_col):
     area_col = 'psm_SequenceArea'
     return usrdata, area_col
 
-def update_database(program_title='version',usrdata=None, matched_psms=0, unmatched_psms=0,
-                    usrfile='file', taxon_totals=dict(), **kwargs):
+def export_metadata(program_title='version',usrdata=None, matched_psms=0, unmatched_psms=0,
+                    usrfile='file', taxon_totals=dict(), outname=None, outpath='.', **kwargs):
     """Update iSPEC database with some metadata information
     """
     print('{} | Updating experiment runs table in iSPEC.'.format(time.ctime()))
     #print('Number of matched psms : ', matched_psms)
-    conn = ispec.filedb_connect()
-    sql = ("UPDATE iSPEC_ExperimentRuns "
-           "SET exprun_Grouper_Version='{version}', "
-           "exprun_Grouper_RefDatabase='{searchdb}', "
-           "exprun_Grouper_FilterStamp='{filterstamp}', "
-           "exprun_PSMCount_matched={matched}, "
-           "exprun_PSMCount_unmatched={unmatched}, "
-           "exprun_InputFileName='{inputname}', "
-           "exprun_Fraction_9606={hu}, "
-           "exprun_Fraction_10090={mou}, "
-           "exprun_Fraction_9031={gg} "
-           "WHERE exprun_EXPRecNo={recno} "
-           "AND exprun_EXPRunNo={runno} "
-           "AND exprun_EXPSearchNo={searchno}").format(version=program_title,
-                                                       searchdb=usrdata.searchdb,
-                                                       filterstamp=usrdata.filterstamp,
-                                                       matched=matched_psms,
-                                                       unmatched=unmatched_psms,
-                                                       inputname=usrdata.datafile,
-                                                       hu=taxon_totals.get('9606', 0),
-                                                       mou=taxon_totals.get('10090', 0),
-                                                       gg=taxon_totals.get('9031', 0),
-                                                       recno=usrdata.recno,
-                                                       runno=usrdata.runno,
-                                                       searchno=usrdata.searchno)
-    #sys.exit(0)
-    cursor = conn.execute(sql)
-    cursor.commit()
-    cursor.execute("""UPDATE iSPEC_ExperimentRuns
-    SET exprun_Grouper_EndFLAG = ?
-    WHERE exprun_EXPRecNo= ? AND
-    exprun_EXPRunNo = ? AND
-    exprun_EXPSearchNo = ?
-    """, 1, usrdata.recno,
-                   usrdata.runno, usrdata.searchno)
-    cursor.commit()
+    d = dict(
+        version=program_title,
+        searchdb=usrdata.searchdb,
+        filterstamp=usrdata.filterstamp,
+        matched=matched_psms,
+        unmatched=unmatched_psms,
+        inputname=usrdata.datafile,
+        hu=taxon_totals.get('9606', 0),
+        mou=taxon_totals.get('10090', 0),
+        gg=taxon_totals.get('9031', 0),
+        recno=usrdata.recno,
+        runno=usrdata.runno,
+        searchno=usrdata.searchno
+    )
+    with open(os.path.join(outpath, outname), 'w') as f:
+        json.dump(d, f)
+
+def determine_if_split(df):
+    print(df)
 
 def split_on_geneid(usrdata):
     """Duplicate psms based on geneids. Areas of each psm is recalculated based on
@@ -257,9 +232,14 @@ unique peptides unique for its particular geneid later.
 """
     glstsplitter = usrdata['psm_GeneList'].str.split(',').apply(pd.Series,
                                                                 1).stack()
+    glstsplitter.name = 'psm_GeneID'  # give the series a name
+    glstsplitter = pd.DataFrame(glstsplitter)
+    # use multi index to determine the original row
+    glstsplitter['psm_oriFLAG'] = glstsplitter.index.map(lambda x: 1 if x[-1] == 0 else 0)
+
     glstsplitter.index = glstsplitter.index.droplevel(-1)  # get rid of
                                                            # multi-index
-    glstsplitter.name = 'psm_GeneID'  # give the series a name
+
     usrdata = usrdata.join(glstsplitter)  # usrdata gains column 'psm_GeneID'
                                           #from glstsplitter Series
     usrdata.reset_index(inplace=True, drop=True)  # drop=True ?
@@ -459,6 +439,8 @@ def get_labels(usrdata, labels, labeltype='none'):
     if labeltype == 'none':  # label free
         return ['none']
     mylabels = labels.get(labeltype)
+    if mylabels is None:
+        return ['none']
     included_labels = [label for label in mylabels if label in usrdata.columns]
     return included_labels
 
@@ -485,12 +467,10 @@ def concat_tmt_e2gs(rec, run, search, outdir, cols=None):
                     index=False, encoding='utf-8', sep='\t')
     print('Export of TMT e2g file : {}'.format(outf))
 
-def grouper(usrdata, usedb=False, outdir='', database=None,
+def grouper(usrdata, outdir='', database=None,
             gid_ignore_file='', labels=dict()):
     """Function to group a psm file from PD after Mascot Search"""
     #import RefseqInfo
-    if usrdata.usedb == True:
-        print('Updating iSPEC after grouping')
     usrfile = usrdata.datafile
     # file with entry of gene ids to ignore for normalizations
     #gid_ignore_file = 'pygrouper_geneignore.txt'
@@ -708,14 +688,6 @@ def grouper(usrdata, usedb=False, outdir='', database=None,
                                       # column anymore.
     #print('Length of usrdata before merge : ',len(usrdata))
     #print('Length of temp_df : ',len(temp_df))
-    pd.set_option(
-        "display.width", 150,
-        #"display.max_rows", max_rows,
-        "display.max_columns", 500,
-        # "display.max_colwidth", max_colwidth
-                )
-    # raise BaseException(usrdata.df.head())
-    # raise BaseException(temp_df.head())
     usrdata.df = pd.merge(usrdata.df, temp_df, how='left')
     usrdata.df = rank_peptides(usrdata.df, 'psm_PrecursorArea_dstrAdj')
     usrdata.df['psm_PeptRank'] = usrdata.df['psm_PeptRank'].fillna(0)  # anyone who
@@ -738,6 +710,7 @@ def grouper(usrdata, usedb=False, outdir='', database=None,
                  'DeltaMassDa', 'DeltaMassPPM', 'RTmin',
                  'FirstScan', 'LastScan', 'MSOrder', 'MatchedIons',
                  'TotalIons', 'SpectrumFile', 'Annotation', 'psm_AddedBy',
+                 'psm_oriFLAG',
                  'psm_CreationTS', 'psm_ModificationTS', 'psm_GeneID',
                  'psm_GeneList', 'psm_GeneCount', 'psm_ProteinGI',
                  'psm_ProteinList', 'psm_ProteinCount',
@@ -753,7 +726,6 @@ def grouper(usrdata, usedb=False, outdir='', database=None,
                                  'TMT_130_C', 'TMT_131', 'QuanInfo', 'QuanUsage']
     #usrdata.to_csv(usrdata_out, columns=usrdata.columns,
                                 #encoding='utf-8', sep='\t')
-    #print(usrdata.columns.values)  # for debugging
     if not all(x in usrdata.df.columns.values for x in data_cols):
         print('Potential error, not all columns filled.')
         print([x for x in data_cols if x not in usrdata.df.columns.values])
@@ -785,9 +757,9 @@ def grouper(usrdata, usedb=False, outdir='', database=None,
                                 axis=1)))
     msfdata.rename(columns={c: 'msf_'+c for c in msfdata.columns}, inplace=True)
 
-    if bcmprot and usrdata.usedb:  # we have bcmprot installed
-        update_database(program_title=program_title, usrdata=usrdata, matched_psms=matched_psms,
-                        unmatched_psms=unmatched_psms, usrfile=usrfile, taxon_totals=taxon_totals)
+    export_metadata(program_title=program_title, usrdata=usrdata, matched_psms=matched_psms,
+                    unmatched_psms=unmatched_psms, usrfile=usrfile, taxon_totals=taxon_totals,
+                    outname=usrdata.output_name('metadata', ext='json'), outpath=usrdata.outdir)
     msfname = usrdata.output_name('msf', ext='tab')
 
     #renamed_datacols = [exp_setup.get(datacol, datacol) if datacol.startswith('psm_') else datacol
@@ -820,7 +792,7 @@ def set_modifications(usrdata):
     return usrdata
 
 def _match(usrdatas, refseq_file):
-    # print('Using peptidome {} '.format(refseq_file))
+    print('Using peptidome {} '.format(refseq_file))
     database = pd.read_table(refseq_file)
     database['capacity'] = 1
     breakup_size = calculate_breakup_size(len(database))
@@ -866,12 +838,9 @@ def match(usrdatas, refseqs):
 
     return usrdatas, databases
 
-def main(usrdatas=[], fullpeptread=False,
-         usedb=False, inputdir='', outputdir='', refs=dict(), rawfilepath=None,
-         column_aliases=dict(), gid_ignore_file='', labels=dict()):
+def main(usrdatas=[], fullpeptread=False, inputdir='', outputdir='', refs=dict(),
+         rawfilepath=None, column_aliases=dict(), gid_ignore_file='', labels=dict()):
     """
-    usedb : Connect to the iSPEC database and update some record information.
-            This does not currently import the results, but does import some metada.
     """
     # ====================Configuration Setup / Loading======================= #
 
@@ -900,7 +869,7 @@ def main(usrdatas=[], fullpeptread=False,
     failed_exps = []
     for usrdata in usrdatas:
         try:
-            grouper(usrdata,  usedb=usedb,
+            grouper(usrdata,
                     database=databases[usrdata.taxonid],
                     gid_ignore_file=gid_ignore_file, labels=labels)
         except Exception as e:  # catch and store all exceptions, won't crash
