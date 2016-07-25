@@ -391,7 +391,10 @@ def rolling_window(seq,length_of_window):
         window.append(next(it))
     yield tuple(window)
     while it:
-        window.append(next(it))
+        try:
+            window.append(next(it))
+        except StopIteration:
+            break
         yield tuple(window)
 
 def protease(seq,minlen = 0, cutsites=[], exceptions=[], miscuts=2):
@@ -405,7 +408,6 @@ def protease(seq,minlen = 0, cutsites=[], exceptions=[], miscuts=2):
         else : cut = 0
         chop += seq[:cut]
         seq = seq[cut:]
-        # print(chop, cut, seq)
         if cut == 0 or len(seq) == 0:
             if cut == 0 and len(frags) == 0:
                 frags.append(chop+seq)
@@ -430,7 +432,7 @@ def protease(seq,minlen = 0, cutsites=[], exceptions=[], miscuts=2):
                         no_met.append(c[1:])
                     else:
                         no_met.append(c)
-            merged_list.append(''.join(no_met))
+        merged_list.append(''.join(no_met))
     frags.append(frags[0][1:]) # chop off methionine
     nomiscuts_len = len([  x for x in frags if len(x) >= minlen  ])
     return [ x for x in frags+merged_list if len(x) >= minlen ], nomiscuts_len
@@ -439,14 +441,42 @@ def protease(seq,minlen = 0, cutsites=[], exceptions=[], miscuts=2):
 def genematcher(seq, metadata, prot):
     seq = seq.upper()
     #print(type(metadata))  # for debugging
-    if not isinstance(metadata,list):
-        metadata = []
+    if not isinstance(metadata, set):
+        metadata = set()
     if seq in prot:
-        for data in prot[seq]:
-            metadata.append(data)
+        metadata = metadata.union(prot[seq])
+        # [metadata.add(x) for x in prot[seq]]
+        # metadata.add(x for x in prot[seq]) # append index of protein info from with DataFrame
+        # for data in prot[seq]:
+        #     metadata.append(data)
     return metadata
 
-def genelist_extractor(metadata):
+def genelist_extractor(ixs, database):
+     taxonids = set()
+     homologeneids = set()
+     proteingis = set()
+     genefraglens = []
+     genelist = set()
+     capacity = list()
+
+     database_matches = database.ix[ixs]
+
+     for ix, row in database_matches.iterrows():
+         genelist.add(row.faa_GeneID)
+         taxonids.add(row.faa_TaxonID)
+         homologeneids.add(row.faa_HomologeneID)
+         proteingis.add(row.faa_ProteinGI)
+         capacity.append(row.capacity)
+     return (','.join(str(x) for x in genelist),
+             len(genelist),
+             ','.join(str(x) for x in taxonids),
+             len(taxonids),
+             ','.join(str(x) for x in proteingis),
+             len(proteingis),
+             tuple(capacity))
+
+
+def genelist_extractor_old(metadata):
      ''' at the peptide level'''
      taxonids = set()
      homologeneids = set()
@@ -686,6 +716,9 @@ def seq_modi(sequence, modifications, keeplog=True):
     all other modifications should be ignored.
     Sometimes N-terminal modifications are present, this should be considered
     the same as a modification at the first amino acid.
+
+    also modifies sequence to fill in Xs with the predicted modification
+    example : AAAx(P)R --> AAAPR
     '''
     amino_acids = list('ACDEFGHIKLMNPQRSTVWY')
     amino_acids = ['('+x+')' for x in amino_acids]
@@ -978,7 +1011,10 @@ def GPG_all_helper(genes_df,df_all):
     return str([k for k in GPGall]).strip('[').strip(']')
         #df_all[df_all['_e2g_PeptideSet'].str.contains(pept)
 
-def capacity_grabber(geneid, gene_metadata):
+def capacity_grabber(geneid, database):
+    return database[database.faa_GeneID == int(geneid)].capacity.mean()
+
+def capacity_grabber_old(geneid, gene_metadata):
     genefraglengths=[]
 
     for data in gene_metadata[geneid]:

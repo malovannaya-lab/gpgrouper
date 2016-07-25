@@ -6,7 +6,8 @@ import pandas as pd
 class UserData:
 
     def __init__(self, datafile=None, runno=1, searchno=1, no_taxa_redistrib=0, addedby='',
-                 indir = '.', outdir='.', rawfiledir='.', usedb=False, labeltype='None'):
+                 indir = '.', outdir='.', rawfiledir='.', usedb=False, labeltype='None',
+                 searchdb=None):
         self.recno = None
         self.runno = runno
         self.searchno = searchno
@@ -21,7 +22,7 @@ class UserData:
         self.indir = indir
         self.outdir = outdir
         self.rawfiledir = rawfiledir
-        self.searchdb = None # file name for refseq
+        self.searchdb = searchdb # file name for refseq
         self.datafile = datafile
         self.df = pd.DataFrame()
 

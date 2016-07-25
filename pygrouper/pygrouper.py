@@ -2,12 +2,9 @@
 # PyGrouper - Alex Saltzman
 import re, os, sys, time
 import logging
-import argparse
 from collections import defaultdict
 from math import ceil
-# from sets import Set #python2 only
 from configparser import ConfigParser
-import multiprocessing as mp
 from itertools import repeat
 import pandas as pd
 from . import _version
@@ -88,6 +85,17 @@ def get_gid_ignore_list(inputfile):
     # GIDs are not ints for the input data
     return [x.strip() for x in open(inputfile, 'r') if
             not x.strip().startswith('#')]
+
+def extract_peptideinfo(usrdata, database):
+    usrdata.df['psm_GeneList'], usrdata.df['psm_GeneCount'], \
+        usrdata.df['psm_TaxonIDList'],\
+        usrdata.df['psm_TaxonCount'], usrdata.df['psm_ProteinList'], \
+        usrdata.df['psm_ProteinCount'], usrdata.df['psm_GeneCapacities'] = \
+                                list(zip(*usrdata.df.apply(lambda x: genelist_extractor(x['metadatainfo'],
+                                                                                    database),
+                                                       axis=1)
+                                ))
+    return 0
 
 def extract_metadata(metadatainfo):
     """Extract metadata into a dictionary
@@ -346,13 +354,18 @@ def select_good_peptides(usrdata, labelix):
                       (usrdata['psm_GeneCount'] > 0)].copy()  # should keep WL's
     return temp_df
 
-def get_gene_capacity(genes_df, gene_metadata, col='e2g_GeneID'):
+def get_gene_capacity(genes_df, database, col='e2g_GeneID'):
     """Get gene capcaity from the stored metadata"""
     genes_df['e2g_GeneCapacity'] = genes_df.apply(lambda x:
-                                                   capacity_grabber(
-                                                       x[col],
-                                                       gene_metadata),
-                                                   axis=1).astype('float')
+                                                  capacity_grabber(
+                                                      x[col],
+                                                      database),
+                                                  axis=1)
+    # genes_df['e2g_GeneCapacity'] = genes_df.apply(lambda x:
+    #                                                capacity_grabber(
+    #                                                    x[col],
+    #                                                    gene_metadata),
+    #                                                axis=1).astype('float')
     return genes_df
 
 def get_peptides_for_gene(genes_df, temp_df):
@@ -472,11 +485,10 @@ def concat_tmt_e2gs(rec, run, search, outdir, cols=None):
                     index=False, encoding='utf-8', sep='\t')
     print('Export of TMT e2g file : {}'.format(outf))
 
-def grouper(usrdata, usedb=False, outdir='',
+def grouper(usrdata, usedb=False, outdir='', database=None,
             gid_ignore_file='', labels=dict()):
     """Function to group a psm file from PD after Mascot Search"""
     #import RefseqInfo
-
     if usrdata.usedb == True:
         print('Updating iSPEC after grouping')
     usrfile = usrdata.datafile
@@ -504,10 +516,10 @@ def grouper(usrdata, usedb=False, outdir='',
     logfile.write('{} | Starting {} for file : {}\n'.format(
         time.ctime(),program_title, usrfile))
     # ==================== Populate gene info ================================ #
-    gene_metadata = extract_metadata(usrdata.df.metadatainfo)
-    gene_taxon_dict = gene_taxon_mapper(gene_metadata)
+    # gene_metadata = extract_metadata(usrdata.df.metadatainfo)
+    # gene_taxon_dict = gene_taxon_mapper(gene_metadata)
 
-    usrdata.df = extract_genelist(usrdata.df)
+    # usrdata.df = extract_genelist(usrdata.df)
 
 
     # ==================== Populate gene info ================================ #
@@ -562,7 +574,7 @@ def grouper(usrdata, usedb=False, outdir='',
     # Now calculate AUC and PSM use flags
     usrdata.df = flag_AUC_PSM(usrdata.df, usrdata.filtervalues)
 
-    usrdata.df = gene_taxon_map(usrdata.df, gene_taxon_dict)
+    # usrdata.df = gene_taxon_map(usrdata.df, gene_taxon_dict)
     # Flag good quality peptides
         # ======================== Plugin for multiple taxons  ===================== #
     taxon_ids = get_all_taxons(usrdata.df['psm_TaxonIDList'].tolist())
@@ -598,6 +610,7 @@ def grouper(usrdata, usedb=False, outdir='',
     additional_labels = list()
 
     orig_area_col = area_col
+
     for label in labeltypes:  # increase the range to go through more label types
         labelix = labelflag.get(label, 0)
         area_col = orig_area_col
@@ -620,7 +633,7 @@ def grouper(usrdata, usedb=False, outdir='',
             # genes_df['_e2g_GeneID'] = Set(temp_df['_data_GeneID']) #only in 2.7
             genes_df = create_e2g_df(temp_df, label)
 
-            genes_df = get_gene_capacity(genes_df, gene_metadata)
+            genes_df = get_gene_capacity(genes_df, database)
             genes_df = get_peptides_for_gene(genes_df, temp_df)
             genes_df = get_psms_for_gene(genes_df, temp_df)
 
@@ -695,6 +708,14 @@ def grouper(usrdata, usedb=False, outdir='',
                                       # column anymore.
     #print('Length of usrdata before merge : ',len(usrdata))
     #print('Length of temp_df : ',len(temp_df))
+    pd.set_option(
+        "display.width", 150,
+        #"display.max_rows", max_rows,
+        "display.max_columns", 500,
+        # "display.max_colwidth", max_colwidth
+                )
+    # raise BaseException(usrdata.df.head())
+    # raise BaseException(temp_df.head())
     usrdata.df = pd.merge(usrdata.df, temp_df, how='left')
     usrdata.df = rank_peptides(usrdata.df, 'psm_PrecursorArea_dstrAdj')
     usrdata.df['psm_PeptRank'] = usrdata.df['psm_PeptRank'].fillna(0)  # anyone who
@@ -785,6 +806,66 @@ def grouper(usrdata, usedb=False, outdir='',
     print('Successful grouping of {} completed.\n' \
           .format(repr(usrdata)))
 
+def calculate_breakup_size(row_number):
+    return ceil(row_number/4)
+
+def set_modifications(usrdata):
+    usrdata['Sequence'], usrdata['psm_SequenceModi'],\
+        usrdata['psm_SequenceModiCount'],\
+        usrdata['psm_LabelFLAG'] = \
+                                      list(zip(*usrdata.apply(lambda x :
+                                                seq_modi(x['Sequence'],
+                                                         x['Modifications']),
+                                                axis=1)))
+    return usrdata
+
+def _match(usrdatas, refseq_file):
+    # print('Using peptidome {} '.format(refseq_file))
+    database = pd.read_table(refseq_file)
+    database['capacity'] = 1
+    breakup_size = calculate_breakup_size(len(database))
+    counter = 0
+    prot = defaultdict(list)
+    for ix, row in database.iterrows():
+        counter += 1
+        fragments, fraglen = protease(row.faa_FASTA, minlen=7,
+                                      cutsites=['K', 'R'],
+                                      exceptions=['P'])
+        database.loc[ix, 'capacity'] = fraglen
+        for fragment in fragments: # store location in the DataFrame for the peptide's parent
+            prot[fragment].append(ix)
+
+        if counter > breakup_size:
+            for usrdata in usrdatas:
+                usrdata.df  = peptidome_matcher(usrdata.df, prot)  # match peptides to peptidome
+            counter = 0
+            del prot # frees up memory, can get quite large otherwise
+            prot = defaultdict(list)
+
+    # now extract info based on index
+    for usrdata in usrdatas:
+        extract_peptideinfo(usrdata, database)
+
+    return database
+
+def match(usrdatas, refseqs):
+    """
+    Match psms with fasta database
+    Input is list of UserData objects and an optional dictionary of refseqs
+    """
+
+    inputdata_refseqs = set([usrdata.taxonid for usrdata in usrdatas])
+    databases = dict()
+    for organism in refseqs:
+        if any(x == int(organism) for x in inputdata_refseqs):
+                                        # check if we even need to read the
+                                        # peptidome for that organism
+            database = _match([usrdata for usrdata in usrdatas if usrdata.taxonid==organism],
+                              refseqs[organism])
+            databases[organism] = database
+
+    return usrdatas, databases
+
 def main(usrdatas=[], fullpeptread=False,
          usedb=False, inputdir='', outputdir='', refs=dict(), rawfilepath=None,
          column_aliases=dict(), gid_ignore_file='', labels=dict()):
@@ -792,27 +873,6 @@ def main(usrdatas=[], fullpeptread=False,
     usedb : Connect to the iSPEC database and update some record information.
             This does not currently import the results, but does import some metada.
     """
-    # ===================Configuration Setup / Loading==========================#
-    if usedb and bcmprot:  # try to connect to iSPEC first
-        conn = ispec.filedb_connect()
-        if isinstance(conn, str):
-            print(conn)
-            sys.exit(1)
-
-    pept_breakups = {}
-    breakup_size = 4
-    if refs:
-        for taxon in refs:
-            pept_breakups[taxon] = [(0, int(ceil(refs[taxon]['size'] / \
-                                                 breakup_size)))] * breakup_size
-    elif not refs:
-        for taxon, location in parser.items('refseq locations'):
-            refs[taxon] = {'loc': location,
-                           'size': parser.getfloat('refseq file sizes',
-                                                   taxon)}  # access and store preconfigured reference info
-            pept_breakups[taxon] = [(0, int(ceil(refs[taxon]['size'] / \
-                                                 breakup_size)))] * breakup_size
-
     # ====================Configuration Setup / Loading======================= #
 
     if imagetitle:
@@ -825,89 +885,23 @@ def main(usrdatas=[], fullpeptread=False,
     print('Python version ' + sys.version)
     print('Pandas version: ' + pd.__version__)
 
-
     startTime = datetime.now()
 
     print('\nStart at {}'.format(startTime))
-    logging.info('Start at {}'.format(startTime))
-    if fullpeptread: print('Running with fullpeptread option')
-    if not column_aliases:
-        column_aliases = dict(parser.items('column names'))
-        for key in column_aliases:  # find the right column name
-            if key.startswith('psm_') or key.startswith('e2g_'):
-                column_aliases[key] = list(filter(None,
-                                                  (x.strip() for
-                                                   x in column_aliases[key].splitlines())))[-1]
+    # logging.info('Start at {}'.format(startTime))
 
-            else:
-                column_aliases[key] = list(filter(None,
-                                                  (x.strip() for
-                                                   x in column_aliases[key].splitlines())))
+    # first set the modifications. Importantly fills in X with the predicted amino acid
     for usrdata in usrdatas:
-        usrdata.read_csv(sep='\t')
-        standard_names = column_identifier(usrdata.df, column_aliases)
-        usrdata.rawfiledir = rawfilepath
-        if usedb:
-            usrdata.usedb = True
-        usrdata.df.rename(columns={v: k
-                                for k,v in standard_names.items()},
-                       inplace=True)
-        usrdata.populate_base_data()
+        usrdata.df = set_modifications(usrdata.df)
 
-    # ============== Load refseq and start matching peptides ================ #
-    print('{}: Loading refseq database.'.format(datetime.now()))
-    #RefseqInfo = namedtuple('RefseqInfo',
-    #                    'taxonid, geneid, homologeneid,proteingi,genefraglen')
-    inputdata_refseqs = set([usrdata.taxonid for usrdata in usrdatas])
-    for organism in refs.keys():
-        if any(x == int(organism) for x in inputdata_refseqs):
-                                        # check if we even need to read the
-                                        # peptidome for that organism
-            ref_reader = csv_reader(refs[organism]['loc'])
-            searchdb = os.path.split(refs[organism]['loc'])[1]
-            print('Using peptidome {} '.format(searchdb))
-            for breakup in pept_breakups[organism]:  # Read refseq in chunks,
-                                                     #uses less memory
-                prot = defaultdict(list)
-                for k in range(*breakup):
-                    try:
-                        row = next(ref_reader)
-                        fragments, fraglen = protease(row.fasta, minlen=7,
-                                                      cutsites=['K', 'R'],
-                                                      exceptions=['P'])
-                        for fragment in fragments:
-                            prot[fragment].append(
-                                RefseqInfo._make([row.taxonid, row.geneid,
-                                                  row.homologeneid,row.proteingi,
-                                                  fraglen]))
+    usrdatas, databases = match(usrdatas, refs)
+    # raise BaseException(usrdatas[0].df.head())
 
-                    except StopIteration:  # breakups won't be exact since they
-                        #are rounded up to ensure full file coverage ##should
-                        #move this up and use else clause
-                        break
-
-                for usrdata in usrdatas:
-                    #print(usrdata.loc[0]['_data_TaxonID'])
-                    if usrdata.taxonid == int(organism):
-                        usrdata.searchdb = searchdb
-                        usrdata.df['Sequence'], usrdata.df['psm_SequenceModi'],\
-                        usrdata.df['psm_SequenceModiCount'],\
-                        usrdata.df['psm_LabelFLAG'] = \
-                        list(zip(*usrdata.df.apply(lambda x :
-                                                seq_modi(x['Sequence'],
-                                                         x['Modifications']),
-                                                axis=1)))
-
-                        usrdata.df  = peptidome_matcher(usrdata.df, prot)  # call matcher
-                del prot  # free up memory
-
-    print('{}: Finished matching peptides to genes.'.format(datetime.now()))
-    logging.info('{}: Finished matching peptides to'\
-                 'genes.'.format(datetime.now()))
     failed_exps = []
     for usrdata in usrdatas:
         try:
             grouper(usrdata,  usedb=usedb,
+                    database=databases[usrdata.taxonid],
                     gid_ignore_file=gid_ignore_file, labels=labels)
         except Exception as e:  # catch and store all exceptions, won't crash
                                 # the whole program at least
@@ -919,6 +913,9 @@ def main(usrdatas=[], fullpeptread=False,
             raise  # usually don't need to raise, will kill the script. Re-enable
                    #if need to debug and find where errors are
     print('Time taken : {}\n'.format(datetime.now() - startTime))
+    return 0
+
+    # ============== Load refseq and start matching peptides ================ #
     logging.info('Time taken : {}.\n\n'.format(datetime.now() - startTime))
     if not usedb:
         return failed_exps

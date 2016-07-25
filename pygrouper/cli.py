@@ -1,15 +1,18 @@
 import os
 import sys
 import re
-import getpass
+from itertools import zip_longest
+from getpass import getuser
 from pathlib import Path
 from datetime import datetime
 from configparser import ConfigParser
 import click
+
 from .manual_tests import test as manual_test
 from . import subfuncts, auto_grouper, pygrouper, _version
 from pygrouper import genericdata as gd
 from pygrouper.containers import UserData
+from pygrouper.subfuncts import column_identifier
 
 
 # from manual_tests import test as manual_test
@@ -28,6 +31,7 @@ __email__ = 'saltzman@bcm.edu'
 CONFIG_DIR = click.get_app_dir('pygrouper', roaming=False, force_posix=True)
 #PROFILE_DIR = os.path.join(HOMEDIR, '.pygrouper')
 CONTEXT_SETTINGS = dict(help_option_names=['-h', '--help'])
+CONFIG_NAME = './pygrouer_config.ini'
 
 class Config(object):
 
@@ -36,29 +40,32 @@ class Config(object):
         self.ispec_url = None
         self.database = None
         self.outfile = '-'
-        self.inputdir = CONFIG_DIR
         self.filtervalues = dict()
         self.column_aliases = dict()
-        self.CONFIG_DIR = CONFIG_DIR
-        self.inputdir = CONFIG_DIR
-        self.outputdir = CONFIG_DIR
-        self.rawfiledir = CONFIG_DIR
+        self.CONFIG_DIR = '.'
+        self.inputdir = '.'
+        self.outputdir = '.'
+        self.rawfiledir = '.'
         self.labels = dict()
         self.refseqs = dict()
+        self.fastadb = None
+        self.contaminants = None
+
 parser = ConfigParser(comment_prefixes=(';')) # allow number sign to be read in configfile
 parser.optionxform = str
 
 
-@click.group()
+@click.group(name='main')
 @click.version_option(__version__)
-@click.option('-p', '--profile', type=str, default=os.getlogin(),
+@click.option('-p', '--profile', type=str, default=getuser(),
               help='Name of the user.')
 @click.pass_context
 def cli(ctx, profile):
+    ctx.obj = Config(profile)
 
-    if ctx.invoked_subcommand is not None:
-        ctx.obj = Config(profile)
-        parse_configfile()
+    # if ctx.invoked_subcommand is not None:
+    #     ctx.obj = Config(profile)
+    #     parse_configfile()
 
 pass_config = click.make_pass_decorator(Config)
 
@@ -99,24 +106,35 @@ def write_configfile(CONFIG_FILE, parser):
     with open(CONFIG_FILE, 'w') as f:
         parser.write(f)
 
-@pass_config
-def get_configfile(config):
+def find_configfile(path='.'):
+    if os.path.isfile(CONFIG_NAME):
+        return CONFIG_NAME
+    else:
+        return None
+
+@click.pass_obj
+def get_configfile(config, config_file):
     """Get the config file for a given user"""
-    CONFIG_FILE = os.path.join(CONFIG_DIR, 'config.ini')
-    config.CONFIG_DIR = CONFIG_DIR
-    config.CONFIG_FILE = CONFIG_FILE
-    if not os.path.isfile(CONFIG_FILE):
-        make_configfile()
-    parser.read(CONFIG_FILE)
+    if config_file is None:
+        config_file = find_configfile(path='.')
+    if config_file is None:  # fail to find configfile
+        return None
+    config.CONFIG_FILE = config_file
+    parser.read(config_file)
     return parser
 
-@pass_config
-def parse_configfile(config):
-    """Parse the configfile and update the variables in a Config object"""
-    parser = get_configfile()
+@click.pass_obj
+def parse_configfile(config, config_file=None):
+    """Parse the configfile and update the variables in a Config object if
+    config_file exists"""
+    parser = get_configfile(config_file)
+    if parser is None:
+        return None
     config.inputdir = parser.get('directories', 'inputdir')
     config.outputdir = parser.get('directories', 'outputdir')
     config.rawfiledir = parser.get('directories', 'rawfiledir')
+    config.contaminants = parser.get('directories', 'contaminants')
+
     fv_section = parser['filter values']
     filtervalues = {'ion_score': fv_section.getfloat('ion score'),
                     'qvalue': fv_section.getfloat('q value'),
@@ -127,16 +145,18 @@ def parse_configfile(config):
                     'modi': fv_section.getint('max modis'),
                     }
     config.filtervalues = filtervalues
+
     column_aliases = dict()
     for column in parser['column names']:
         column_aliases[column] = [x.strip() for x in
                                parser.get('column names', column).splitlines() if x]
     config.column_aliases = column_aliases
+
     refseqs = dict()
     for taxon, location in parser.items('refseq locations'):
-        refseqs[int(taxon)] = {'loc': location,
-                          'size': parser.getfloat('refseq file sizes', taxon)}
+        refseqs[int(taxon)] = location
     config.refseqs = refseqs
+
     labels = dict()
     for label in parser['labels']:
         labels[label] = [x.strip() for x in
@@ -153,7 +173,7 @@ def openconfig(config):
 @click.option('-q', '--quick', is_flag=True, help='Run a single small file')
 @click.option('-p', '--profile', is_flag=True, help='Run a large profiling file with multiple taxons')
 @click.option('-t', '--tmt', is_flag=True, help='Run a large profiling file with multiple taxons')
-@pass_config
+@click.pass_obj
 def test(config, quick, profile, tmt):
     """Test pygrouper with some pre-existing data."""
     parse_configfile()
@@ -173,7 +193,7 @@ def test(config, quick, profile, tmt):
 @cli.command(context_settings=CONTEXT_SETTINGS)
 @click.argument('taxonid', type=int)
 @click.argument('taxonfile', type=click.Path(exists=True))
-@pass_config
+@click.pass_obj
 def add_taxon(config, taxonid, taxonfile):
     """Add a taxon to for use with pygrouper.
     Sets the taxonid -> taxonfile which is the file to use for the given taxonid."""
@@ -232,18 +252,6 @@ def view_taxons(config):
                                         datetime.fromtimestamp(filestat.st_mtime)))
 
 
-@cli.command(context_settings=CONTEXT_SETTINGS)
-@click.option('--path-type', type=click.Choice(['input', 'output', 'rawfile']),
-              default='outputdir')
-@click.argument('path', type=click.Path(exists=True))
-@pass_config
-def setpath(config, path_type, path):
-    """Set a path for pygrouper"""
-    parser = get_configfile()
-    category = path_type+'dir'
-    parser.set('directories', category, path)
-    write_configfile(config.CONFIG_FILE, parser)
-    click.echo('Updating {} to {}'.format(category, path))
 
 @cli.command(context_settings=CONTEXT_SETTINGS)
 @click.option('-a', '--autorun', is_flag=True,
@@ -252,12 +260,14 @@ def setpath(config, path_type, path):
               help='Contaminants file of IDs to ignore when calculating with multiple taxa.')
 @click.option('-d', '--database', type=click.Path(exists=True, dir_okay=False),
               help='Database file to use. Ignored with autorun.')
-@click.option('-e', '--enzyme', type=click.Choice(['trypsin', 'trypsin/p', 'chymotrypsin', 'LysC', 'LysN', 'GluC', 'ArgC'
+@click.option('-e', '--enzyme', type=click.Choice(['trypsin', 'trypsin/p', 'chymotrypsin',
+                                                   'LysC', 'LysN', 'GluC', 'ArgC'
                                                    'AspN',]),
               default='trypsin', show_default=True,
               help="Enzyme used for digestion. Ignored with autorun.")
 @click.option('-i', '--interval', type=int, default=3600,
-              help='(Autorun only) Interval in seconds to wait between automatic checks for new files to group. Default is 1 hour.')
+              help='''(Autorun only) Interval in seconds to wait between automatic
+              checks for new files to group. Default is 1 hour.''')
 @click.option('--ion-score', type=float, default=7.0, show_default=True,
               help='Ion score cutoff for a psm.')
 @click.option('-l', '--labeltype', type=click.Choice(['none', 'SILAC', 'iTRAQ', 'TMT']),
@@ -266,13 +276,14 @@ def setpath(config, path_type, path):
               help='(Autorun only) Maximum number of experiments to queue for autorun')
 @click.option('--max-modis', type=int, default=4, show_default=True,
               help='Maximum modifications to allow on one peptide')
-@click.option('-n', '--name', type=str, default=os.getlogin(), show_default=True,
+@click.option('-n', '--name', type=str, default=getuser(), show_default=True,
               help='Name associated with the search')
 @click.option('-ntr', '--no-taxa-redistrib', is_flag=True, show_default=True,
               help='Disable redistribution based on individual taxons')
 @click.option('-o', '--outdir', type=click.Path(file_okay=False), default=None,
               help='Output directory for files.')
 @click.option('-p', '--psms-file', type=click.Path(exists=True, dir_okay=False),
+              multiple=True,
               help='Tab deliminated file of psms to be grouped')
 @click.option('--psm-idg', type=int, default=9, show_default=True,
               help='PSM IDG cutoff value.')
@@ -282,29 +293,39 @@ def setpath(config, path_type, path):
               help='Cutoff q-value for a given psm.')
 @click.option('--quant_source', type=click.Choice(['AUC', 'Intensity']), default='AUC',
               show_default=True, help='Cutoff q-value for a given psm.')
+@click.option('-r', '--rawfiledir', type=click.Path(file_okay=False), default='.',
+              show_default=True,
+              help='''Directory to look for corresponding rawfiles for extra summary information.
+              Note the raw files are not required for successful analysis.''')
+@click.option('-s', '--configfile', type=click.Path(exists=True, dir_okay=False),
+              help=''''Points to a specific configfile for use in the analysis.
+              Note will automatically look for a `pygrouper_config.ini` in present directory if not specified''')
 @click.option('-t', '--taxonid', type=int,
               help='Taxon ID associated with the database file')
 @click.option('--zmin', type=int, default=2, show_default=True,
               help='Minimum charge')
 @click.option('--zmax', type=int, default=6, show_default=True,
               help='Maximum charge')
-@pass_config
-def run(config, autorun, contaminants, database, enzyme, interval, ion_score, labeltype, max_files, max_modis,
-        name, no_taxa_redistrib, outdir, psms_file, psm_idg, pep, q_value, quant_source, taxonid, zmin, zmax):
+@click.pass_obj
+def run(config, autorun, contaminants, database, enzyme, interval, ion_score, labeltype, max_files,
+        max_modis, name, no_taxa_redistrib, outdir, psms_file, psm_idg, pep, q_value, quant_source,
+        rawfiledir, configfile, taxonid, zmin, zmax):
     """Run PyGrouper"""
     if not all([database, psms_file]) and not autorun:
         click.echo('No database or psms file entered, showing help and exiting...')
         click.echo(click.get_current_context().get_help())
         sys.exit(0)
-    parse_configfile()
+
+    # sys.exit(0)
+    parse_configfile(configfile)  # will parse if config file is specified or pygrouper_config.ini exists in PD
     INPUT_DIR = config.inputdir
     OUTPUT_DIR = outdir or config.outputdir or '.'
-    RAWFILE_DIR = config.rawfiledir
+    RAWFILE_DIR = rawfiledir or config.rawfiledir
     LABELS = config.labels
     refseqs = config.refseqs
     filtervalues = config.filtervalues
     column_aliases = config.column_aliases
-    gid_ignore_file = os.path.join(config.CONFIG_DIR, 'geneignore.txt')
+    gid_ignore_file = contaminants or config.contaminants
     if autorun:
         auto_grouper.interval_check(interval, INPUT_DIR, OUTPUT_DIR,
                                     max_files, rawfilepath=RAWFILE_DIR,
@@ -313,31 +334,46 @@ def run(config, autorun, contaminants, database, enzyme, interval, ion_score, la
                                     gid_ignore_file=gid_ignore_file,
                                     labels=LABELS,)
     else:
-        usrdata = UserData(datafile=psms_file, indir=INPUT_DIR, outdir=OUTPUT_DIR, rawfiledir=RAWFILE_DIR,
-                           no_taxa_redistrib=no_taxa_redistrib, labeltype=labeltype, addedby=name)
-        try:
-            rec, run, search = find_rec_run_search(psms_file)
-            usrdata.recno, usrdata.runno, usrdata.search = int(rec), int(run), int(search)
-        except AttributeError:  # regex search failed, just use a default
-            usrdata.recno = 1
-        if taxonid is None:
+        usrdatas = list()
+        if not taxonid:
             taxonid = click.prompt('Enter taxon id', default=9606, type=int,)
-        usrdata.taxonid = taxonid
-        refseqs[taxonid] = {'loc': database,
-                          'size': subfuncts.bufcount(database)}
-        INPUT_DIR, usrfile = os.path.split(Path(psms_file).resolve().__str__())
-        usrdata.indir, usrdata.datafile = INPUT_DIR, usrfile
-        usrdata.outdir = Path(OUTPUT_DIR).resolve().__str__()
-        # later on expected that datafile is separated from path
-        usrdata.quant_source = quant_source
-        usrdata.filtervalues['ion_score'] = ion_score
-        usrdata.filtervalues['qvalue']    = q_value
-        usrdata.filtervalues['pep']       = pep
-        usrdata.filtervalues['idg']       = psm_idg
-        usrdata.filtervalues['zmin']      = zmin
-        usrdata.filtervalues['zmax']      = zmax
-        usrdata.filtervalues['modi']      = max_modis
-        pygrouper.main(usrdatas=[usrdata],
+        for ix, psmfile in enumerate(psms_file):
+            usrdata = UserData(datafile=psmfile, indir=INPUT_DIR, outdir=OUTPUT_DIR, rawfiledir=RAWFILE_DIR,
+                               no_taxa_redistrib=no_taxa_redistrib, labeltype=labeltype, addedby=name,
+                               searchdb=database)
+            try:
+                rec, run, search = find_rec_run_search(psmfile)
+                usrdata.recno, usrdata.runno, usrdata.search = int(rec), int(run), int(search)
+            except AttributeError:  # regex search failed, just use a default
+                usrdata.recno = ix+1  # default recno starts at 1
+            usrdata.taxonid = taxonid
+            refseqs[taxonid] = database
+            INPUT_DIR, usrfile = os.path.split(Path(psmfile).resolve().__str__())
+            usrdata.indir, usrdata.datafile = INPUT_DIR, usrfile
+            usrdata.outdir = Path(OUTPUT_DIR).resolve().__str__()
+            # later on expected that datafile is separated from path
+            usrdata.quant_source = quant_source
+            if filtervalues: # if defined earlier from passed config file
+                usrdata.filtervalues = filtervalues
+            else:
+                usrdata.filtervalues['ion_score'] = ion_score
+                usrdata.filtervalues['qvalue']    = q_value
+                usrdata.filtervalues['pep']       = pep
+                usrdata.filtervalues['idg']       = psm_idg
+                usrdata.filtervalues['zmin']      = zmin
+                usrdata.filtervalues['zmax']      = zmax
+                usrdata.filtervalues['modi']      = max_modis
+
+            usrdata.read_csv(sep='\t')  # read from the stored psms file
+            if column_aliases:
+                standard_names = column_identifier(usrdata.df, column_aliases)
+                usrdata.df.rename(columns={v: k
+                                           for k,v in standard_names.items()},
+                                  inplace=True
+                )
+            usrdata.populate_base_data()
+            usrdatas.append(usrdata)
+        pygrouper.main(usrdatas=usrdatas,
                        inputdir=INPUT_DIR, outputdir=OUTPUT_DIR, usedb=False,
                        refs=refseqs, column_aliases=column_aliases,
                        gid_ignore_file=contaminants,)
