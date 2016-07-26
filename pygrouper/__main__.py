@@ -11,6 +11,7 @@ from .pygrouper import *
 from .auto_grouper import file_checker, update_database
 from .cli import Config
 from .containers import UserData
+from . import _version
 
 
 CONFIG_NAME = 'pygrouper_config.ini'
@@ -109,11 +110,11 @@ def work(params):
     null = open(os.devnull,'w')
     _stderr = sys.stderr
     _stdout = sys.stdout
-    sys.stdout = sys.stderr = null
 
     current = mp.current_process()
     usrdata, databases, labels, test = params
     print('{!r} processing {!r}'.format(current, usrdata))
+    sys.stdout = sys.stderr = null
     grouper(usrdata,
             database=databases[usrdata.taxonid],
             gid_ignore_file=gid_ignore_file, labels=labels)
@@ -121,6 +122,7 @@ def work(params):
         update_database(usrdata)
     sys.stderr = _stderr
     sys.stdout = _stdout
+    print('{!r} finished'.format(current, usrdata))
     return 0
 
 if __name__ == '__main__':
@@ -154,6 +156,17 @@ if __name__ == '__main__':
         sys.exit(0)
 
     for usrdata in usrdatas:
+        print('Found {!r}'.format(usrdata))
+
+    print()
+    print('\nrelease date: {}'.format(_version.__copyright__))
+    print('Pygrouper v{}'.format(__version__))
+    print('Python version ' + sys.version)
+    print('Pandas version: ' + pd.__version__)
+    print('{} files found.'.format(len(usrdatas)))
+    print('Running on {} processes'.format(processes))
+
+    for usrdata in usrdatas:
         usrdata.read_csv(sep='\t')  # read from the stored psms file
         usrdata.df['metadatainfo'] = ''
         standard_names = column_identifier(usrdata.df, column_aliases)
@@ -166,7 +179,6 @@ if __name__ == '__main__':
 
     pool = mp.Pool(processes=processes)
     params = zip(usrdatas, repeat(databases), repeat(LABELS), repeat(test))
-    print('Running multiple processes')
 
     results = pool.map(work, params)
 
