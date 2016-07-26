@@ -108,11 +108,11 @@ def extract_metadata(metadatainfo):
             gene_metadata[data.geneid].append((data.taxonid, data.homologeneid,
                                                data.proteingi, data.genefraglen))
     return gene_metadata
-def gene_taxon_mapper(gene_metadata):
+def gene_taxon_mapper(df):
     """Returns a dictionary with mapping:
     gene -> taxon
     Input is the metadata extracted previously"""
-    return {gene: info[0][0] for gene, info in gene_metadata.items()}
+    return {x[1].faa_GeneID: x[1].faa_TaxonID for x in df.iterrows()}
 
 def extract_genelist(usrdata):
     """Calls genelist_extractor by row on input DataFrame which returns
@@ -215,8 +215,8 @@ def export_metadata(program_title='version',usrdata=None, matched_psms=0, unmatc
         version=program_title,
         searchdb=usrdata.searchdb,
         filterstamp=usrdata.filterstamp,
-        matched=matched_psms,
-        unmatched=unmatched_psms,
+        matched_psms=matched_psms,
+        unmatched_psms=unmatched_psms,
         inputname=usrdata.datafile,
         hu=taxon_totals.get('9606', 0),
         mou=taxon_totals.get('10090', 0),
@@ -503,7 +503,7 @@ def grouper(usrdata, outdir='', database=None,
         time.ctime(),program_title, usrfile))
     # ==================== Populate gene info ================================ #
     # gene_metadata = extract_metadata(usrdata.df.metadatainfo)
-    # gene_taxon_dict = gene_taxon_mapper(gene_metadata)
+    gene_taxon_dict = gene_taxon_mapper(database)
 
     # usrdata.df = extract_genelist(usrdata.df)
 
@@ -560,7 +560,7 @@ def grouper(usrdata, outdir='', database=None,
     # Now calculate AUC and PSM use flags
     usrdata.df = flag_AUC_PSM(usrdata.df, usrdata.filtervalues)
 
-    # usrdata.df = gene_taxon_map(usrdata.df, gene_taxon_dict)
+    usrdata.df = gene_taxon_map(usrdata.df, gene_taxon_dict)
     # Flag good quality peptides
         # ======================== Plugin for multiple taxons  ===================== #
     taxon_ids = get_all_taxons(usrdata.df['psm_TaxonIDList'].tolist())
@@ -824,6 +824,8 @@ def _match(usrdatas, refseq_file):
 
     # now extract info based on index
     for usrdata in usrdatas:
+        if usrdata.searchdb is None:
+            usrdata.searchdb = refseq_file
         extract_peptideinfo(usrdata, database)
 
     return database
@@ -869,8 +871,15 @@ def main(usrdatas=[], fullpeptread=False, inputdir='', outputdir='', refs=dict()
 
     # first set the modifications. Importantly fills in X with the predicted amino acid
     for usrdata in usrdatas:
-        usrdata.df = set_modifications(usrdata.df)
+        usrdata.read_csv(sep='\t')  # read from the stored psms file
         usrdata.df['metadatainfo'] = ''
+        if column_aliases:
+            standard_names = column_identifier(usrdata.df, column_aliases)
+            usrdata.df.rename(columns={v: k
+                                       for k,v in standard_names.items()},
+                              inplace=True
+            )
+        usrdata.df = set_modifications(usrdata.df)
 
     usrdatas, databases = match(usrdatas, refs)
     # raise BaseException(usrdatas[0].df.head())

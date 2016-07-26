@@ -31,7 +31,7 @@ __email__ = 'saltzman@bcm.edu'
 CONFIG_DIR = click.get_app_dir('pygrouper', roaming=False, force_posix=True)
 #PROFILE_DIR = os.path.join(HOMEDIR, '.pygrouper')
 CONTEXT_SETTINGS = dict(help_option_names=['-h', '--help'])
-CONFIG_NAME = './pygrouer_config.ini'
+CONFIG_NAME = 'pygrouper_config.ini'
 
 class Config(object):
 
@@ -107,8 +107,9 @@ def write_configfile(CONFIG_FILE, parser):
         parser.write(f)
 
 def find_configfile(path='.'):
-    if os.path.isfile(CONFIG_NAME):
-        return CONFIG_NAME
+    config_file = os.path.join(path, CONFIG_NAME)
+    if os.path.isfile(config_file):
+        return config_file
     else:
         return None
 
@@ -118,6 +119,7 @@ def get_configfile(config, config_file):
     if config_file is None:
         config_file = find_configfile(path='.')
     if config_file is None:  # fail to find configfile
+        print("No config file found")
         return None
     config.CONFIG_FILE = config_file
     parser.read(config_file)

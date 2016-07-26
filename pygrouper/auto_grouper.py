@@ -20,8 +20,7 @@ except ImportError:
     pass
 
 
-def _update_database(program_title='version',usrdata=None, matched_psms=0, unmatched_psms=0,
-                    usrfile='file', taxon_totals=dict(), **kwargs):
+def _update_database(d):
     """Update iSPEC database with some metadata information
     """
     print('{} | Updating experiment runs table in iSPEC.'.format(time.ctime()))
@@ -39,18 +38,18 @@ def _update_database(program_title='version',usrdata=None, matched_psms=0, unmat
            "exprun_Fraction_9031={gg} "
            "WHERE exprun_EXPRecNo={recno} "
            "AND exprun_EXPRunNo={runno} "
-           "AND exprun_EXPSearchNo={searchno}").format(version=program_title,
-                                                       searchdb=usrdata.searchdb,
-                                                       filterstamp=usrdata.filterstamp,
-                                                       matched=matched_psms,
-                                                       unmatched=unmatched_psms,
-                                                       inputname=usrdata.datafile,
-                                                       hu=taxon_totals.get('9606', 0),
-                                                       mou=taxon_totals.get('10090', 0),
-                                                       gg=taxon_totals.get('9031', 0),
-                                                       recno=usrdata.recno,
-                                                       runno=usrdata.runno,
-                                                       searchno=usrdata.searchno)
+           "AND exprun_EXPSearchNo={searchno}").format(version=d.get('version'),
+                                                       searchdb=d.get('searchdb'),
+                                                       filterstamp=d.get('filterstamp'),
+                                                       matched=d.get('matched_psms', 0),
+                                                       unmatched=d.get('unmatched_psms', 0),
+                                                       inputname=d.get('datafile'),
+                                                       hu=d.get('hu', 0),
+                                                       mou=d.get('mou', 0),
+                                                       gg=d.get('gg', 0),
+                                                       recno=d.get('recno'),
+                                                       runno=d.get('runno'),
+                                                       searchno=d.get('searchno'))
     #sys.exit(0)
     cursor = conn.execute(sql)
     cursor.commit()
@@ -59,8 +58,8 @@ def _update_database(program_title='version',usrdata=None, matched_psms=0, unmat
     WHERE exprun_EXPRecNo= ? AND
     exprun_EXPRunNo = ? AND
     exprun_EXPSearchNo = ?
-    """, 1, usrdata.recno,
-                   usrdata.runno, usrdata.searchno)
+    """, 1, d['recno'],
+                   d['runno'], d['searchno'])
     cursor.commit()
 
 def update_database(usrdata):
