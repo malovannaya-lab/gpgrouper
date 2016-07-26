@@ -853,6 +853,7 @@ def e2g_PSM_helper(gene_df_ID, data, EXPTechRepNo=1):
     return total, total_u2g, total_S, total_S_u2g
 
 def area_calculator(gene_df, usrdata, area_col, normalization, EXPTechRepNo=1):
+    """Area column is psm_SequenceArea"""
 
     matches  = usrdata[(usrdata['psm_GeneID'] == gene_df['e2g_GeneID']) &
                            (usrdata['psm_AUC_UseFLAG']==1)] [
@@ -900,6 +901,8 @@ def AUC_distributor(inputdata, genes_df, area_col, taxon_totals):
     #    print('{} : Error - EXPQuantSource is not defined correctly.'.format(
     #         datetime.now()))
     #    sys.exit(1)
+    if inputdata.psm_AUC_UseFLAG == 0:
+        return 0
     inputvalue = inputdata[area_col]
     u2gPept = genes_df[genes_df['e2g_GeneID']==inputdata['psm_GeneID']
     ]['e2g_nGPArea_Sum_u2g_all'].values

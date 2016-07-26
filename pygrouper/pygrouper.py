@@ -11,11 +11,14 @@ from . import _version
 from .subfuncts import *
 import json
 
+pd.set_option(
+    "display.width", 170,
+    "display.max_columns", 500,
+)
 __author__ = 'Alexander B. Saltzman'
 __copyright__ = _version.__copyright__
 __credits__ = ['Alexander B. Saltzman', 'Anna Malovannaya']
 __license__ = 'MIT'
-__version__ = '0.1.018'
 __version__ = _version.__version__
 __maintainer__ = 'Alexander B. Saltzman'
 __email__ = 'saltzman@bcm.edu'
@@ -154,11 +157,12 @@ def peptidome_matcher(usrdata, ref_dict):
                                                         ref_dict), axis=1)
     return usrdata
 
+
 def redundant_peaks(usrdata):
     """ Remove redundant, often ambiguous peaks by keeping the peak
     with the highest ion score"""
     peaks = usrdata.sort_values(by='IonScore', ascending=False).\
-            drop_duplicates(subset=['SpectrumFile','sequence_lower','PrecursorArea'])
+            drop_duplicates(subset=['SpectrumFile','psm_SequenceModi', 'Charge', 'PrecursorArea'])
     peaks.is_copy = False  # duplicate dataframe in memory
     peaks['psm_Peak_UseFLAG'] = 1
     usrdata = usrdata.join(peaks['psm_Peak_UseFLAG'])
@@ -168,16 +172,17 @@ def redundant_peaks(usrdata):
 
 def sum_area(usrdata, area_col):
     """Sum the area of similar peaks
+    New column psm_SequenceArea is created
     """
     usrdata['Sequence_set'] = usrdata['Sequence'].apply(lambda x: tuple(set(list(x))))
     summed_area = pd.DataFrame(usrdata[usrdata.psm_Peak_UseFLAG==1][
-        ['sequence_lower','Charge', 'Sequence_set',
-         area_col]].groupby(['sequence_lower', 'Sequence_set',
-                            'Charge'])[area_col].sum())
-#    usrdata['Sequence_set'] = usrdata['Sequence'].apply(lambda x: set(list(x)))
+        ['psm_SequenceModi', 'Charge',
+         'PrecursorArea']].groupby(['psm_SequenceModi', 'Charge'])["PrecursorArea"].sum())
+    # summed_area = usrdata[usrdata.psm_Peak_UseFLAG==1][area_col]
+
     summed_area.reset_index(inplace=True)
     summed_area.rename(columns={area_col: 'psm_SequenceArea'}, inplace=True)
-    usrdata = usrdata.merge(summed_area, how='left', on=['sequence_lower', 'Sequence_set', 'Charge'])
+    usrdata = usrdata.merge(summed_area, how='left', on=['psm_SequenceModi', 'Charge'])
     #usrdata = usrdata.join(summed_area['psm_SequenceArea'], how='left')
     return usrdata
 
@@ -535,7 +540,7 @@ def grouper(usrdata, outdir='', database=None,
                                       'q_value'], ascending=[0, 0, 1, 1, 1, 1, 0, 1, 1])
     usrdata.df = redundant_peaks(usrdata.df)
     # remove ambiguous peaks
-    usrdata.df = sum_area(usrdata.df, area_col)
+    usrdata.df = sum_area(usrdata.df, area_col) # area_col is PrecursorArea / Intensity
     # now remove duplicate sequence areas
     usrdata.df, area_col = auc_reflagger(usrdata.df, area_col)
     # area_col = 'psm_SequenceArea'  # this is equal to what is returned by auc_reflagger
@@ -911,7 +916,3 @@ def main(usrdatas=[], fullpeptread=False, inputdir='', outputdir='', refs=dict()
                 conn.commit()
                 failedlog.write('{} : failed grouping {},'\
                                 ' reason : {}\n'.format(datetime.now(), *failed))
-        # if usrfile and not usedb:
-        #     for usrfile in usrfiles:
-        #         explog.write('{} : grouped experiment file {}'\
-        #                      '\n'.format(datetime.now(), usrfile))
