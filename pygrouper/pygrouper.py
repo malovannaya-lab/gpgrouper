@@ -139,11 +139,11 @@ def spectra_summary(usrdata):
                                         usrdata.df),
                         axis=1)
 
-    msfdata['RTmin_min'], msfdata['RTmin_max'], msfdata['IonScore_min'],\
-        msfdata['IonScore_max'], msfdata['qValue_min'], msfdata['qValue_max'],\
-        msfdata['PEP_min'], msfdata['PEP_max'], msfdata['Area_min'],\
-        msfdata['Area_max'], msfdata['PSMCount'], \
-    msfdata['DeltaMassPPM_med']= list(zip(*summary_info))
+    (msfdata['RTmin_min'], msfdata['RTmin_max'], msfdata['IonScore_min'],
+     msfdata['IonScore_max'], msfdata['qValue_min'], msfdata['qValue_max'],
+     msfdata['PEP_min'], msfdata['PEP_max'], msfdata['Area_min'],
+     msfdata['Area_max'], msfdata['PSMCount'],
+     msfdata['DeltaMassPPM_med']) = list(zip(*summary_info))
 
     rawfile_info = msfdata.apply(lambda x:
                                     _get_rawfile_info(usrdata.rawfiledir,
@@ -197,12 +197,9 @@ def extract_peptideinfo(usrdata, database):
                                                                  database),
     axis=1)
 
-    usrdata.df['psm_GeneList'], usrdata.df['psm_GeneCount'], \
-        usrdata.df['psm_TaxonIDList'],\
-        usrdata.df['psm_TaxonCount'], usrdata.df['psm_ProteinList'], \
-        usrdata.df['psm_ProteinCount'], usrdata.df['psm_GeneCapacities'] = \
-                                list(zip((*peptide_info)
-                                ))
+    (usrdata.df['psm_GeneList'], usrdata.df['psm_GeneCount'], usrdata.df['psm_TaxonIDList'],
+     usrdata.df['psm_TaxonCount'], usrdata.df['psm_ProteinList'],
+     usrdata.df['psm_ProteinCount'], usrdata.df['psm_GeneCapacities']) = list(zip((*peptide_info)))
     return 0
 
 def gene_taxon_mapper(df):
@@ -429,7 +426,7 @@ def gene_taxon_map(usrdata, gene_taxon_dict):
     """make 'gene_taxon_map' column per row which displays taxon for given gene"""
 
     usrdata['gene_taxon_map'] = usrdata.apply(lambda x : _gene_taxon_map(
-        x['psm_GeneID'], gene_taxon_dict), axis=1)
+    x['psm_GeneID'], gene_taxon_dict), axis=1)
     return usrdata
 
 def get_all_taxons(taxonidlist):
@@ -521,29 +518,24 @@ def _get_peptides_for_gene(df,usrdata):
 def get_peptides_for_gene(genes_df, temp_df):
     """Get peptide sequence information for each gene"""
     peptides = genes_df.apply(_get_peptides_for_gene, args=(temp_df,), axis=1)
-    genes_df['e2g_PeptideSet'], genes_df['e2g_PeptidePrint'], \
-    genes_df['e2g_PeptideCount'], genes_df['e2g_PeptideCount_u2g'],\
-    genes_df['e2g_PeptideCount_S'],\
-    genes_df['e2g_PeptideCount_S_u2g'] = list(zip(*peptides))
+    (genes_df['e2g_PeptideSet'], genes_df['e2g_PeptidePrint'], genes_df['e2g_PeptideCount'],
+     genes_df['e2g_PeptideCount_u2g'], genes_df['e2g_PeptideCount_S'],
+     genes_df['e2g_PeptideCount_S_u2g']) = list(zip(*peptides))
     return genes_df
 
 
 def _get_psms_for_gene(gene_df_ID, data, EXPTechRepNo=1):
-    total = data[
-                data['psm_GeneID']==gene_df_ID]\
-                ['psm_PSM_UseFLAG'].sum()/EXPTechRepNo
-    total_u2g = data[(data['psm_GeneID']==gene_df_ID) &
-                         (data['psm_GeneCount' ] == 1) \
-                        ]['psm_PSM_UseFLAG'].sum()/EXPTechRepNo
+    total = data[data['psm_GeneID']==gene_df_ID]['psm_PSM_UseFLAG'].sum()/EXPTechRepNo
 
-    total_S = data[(data['psm_GeneID']==gene_df_ID) &
-                       (data['psm_PSM_IDG' ] < 4)
-                  ]['psm_PSM_UseFLAG'].sum()/EXPTechRepNo
+    total_u2g = (data[(data['psm_GeneID']==gene_df_ID) & (data['psm_GeneCount' ] == 1)]
+                 ['psm_PSM_UseFLAG']).sum()/EXPTechRepNo
 
-    total_S_u2g = data[(data['psm_GeneID']==gene_df_ID) &
-                           (data['psm_PSM_IDG' ] < 4) &
-                           (data['psm_GeneCount' ] == 1)
-                      ]['psm_PSM_UseFLAG'].sum()/EXPTechRepNo
+    total_S = (data[(data['psm_GeneID']==gene_df_ID) & (data['psm_PSM_IDG' ] < 4)]
+               ['psm_PSM_UseFLAG']).sum()/EXPTechRepNo
+
+    total_S_u2g = (data[(data['psm_GeneID']==gene_df_ID) & (data['psm_PSM_IDG' ] < 4) &
+                        (data['psm_GeneCount' ] == 1)]
+                   ['psm_PSM_UseFLAG']).sum()/EXPTechRepNo
     #for match in matches:
     return total, total_u2g, total_S, total_S_u2g
 
@@ -554,8 +546,8 @@ def get_psms_for_gene(genes_df, temp_df,):
                                                  temp_df,
                               ),
                               axis=1)
-    genes_df['e2g_PSMs'], genes_df['e2g_PSMs_u2g'],\
-        genes_df['e2g_PSMs_S'],genes_df['e2g_PSMs_S_u2g'] = list(zip(*psm_info))
+    (genes_df['e2g_PSMs'], genes_df['e2g_PSMs_u2g'],
+     genes_df['e2g_PSMs_S'],genes_df['e2g_PSMs_S_u2g']) = list(zip(*psm_info))
     return genes_df
 
 def _calculate_protein_area(gene_df, usrdata, area_col, normalization, EXPTechRepNo=1):
@@ -584,9 +576,8 @@ def calculate_protein_area(genes_df, temp_df, area_col, normalize):
                                     args=(temp_df,
                                            area_col, normalize),
                                      axis=1)
-    genes_df['e2g_nGPArea_Sum_max'],genes_df['e2g_nGPArea_Sum_cgpAdj'],\
-    genes_df['e2g_nGPArea_Sum_u2g'],\
-    genes_df['e2g_nGPArea_Sum_u2g_all']  = list(zip(*areas))
+    (genes_df['e2g_nGPArea_Sum_max'],genes_df['e2g_nGPArea_Sum_cgpAdj'],
+     genes_df['e2g_nGPArea_Sum_u2g'], genes_df['e2g_nGPArea_Sum_u2g_all']) = list(zip(*areas))
     return genes_df
 
 
@@ -599,8 +590,8 @@ def _distribute_psm_area(inputdata, genes_df, area_col, taxon_totals):
     if inputdata.psm_AUC_UseFLAG == 0:
         return 0
     inputvalue = inputdata[area_col]
-    u2gPept = genes_df[genes_df['e2g_GeneID']==inputdata['psm_GeneID']
-    ]['e2g_nGPArea_Sum_u2g_all'].values
+    u2gPept = (genes_df[genes_df['e2g_GeneID']==inputdata['psm_GeneID']]
+               ['e2g_nGPArea_Sum_u2g_all']).values
 
     if len(u2gPept) == 1: u2gPept = u2gPept[0] # grab u2g info, should always be
     #of length 1
@@ -667,8 +658,8 @@ def _assign_gene_sets(genes_df,genes_df_all, temp_df ):
 def assign_gene_sets(genes_df, temp_df):
     """Assign IDSet and IDGroup"""
     genesets = genes_df.apply(_assign_gene_sets, args=(genes_df, temp_df,), axis=1)
-    genes_df['e2g_IDSet'], genes_df['e2g_IDGroup'],\
-        genes_df['e2g_IDGroup_u2g'] = list(zip(*genesets))
+    (genes_df['e2g_IDSet'], genes_df['e2g_IDGroup'],
+     genes_df['e2g_IDGroup_u2g']) = list(zip(*genesets))
 
     return genes_df
 
@@ -676,9 +667,9 @@ def assign_gene_sets(genes_df, temp_df):
 def _calculate_gene_dstrarea(genes_df, temp_df, normalization):
     gene = genes_df['e2g_GeneID']
     if genes_df['e2g_IDSet'] in [1,2]:
-        return temp_df[(temp_df['psm_GeneID'] == gene) &
-                       (temp_df['psm_AUC_UseFLAG'] == 1)
-        ].psm_PrecursorArea_dstrAdj.sum()/normalization
+        return (temp_df[(temp_df['psm_GeneID'] == gene) &
+                       (temp_df['psm_AUC_UseFLAG'] == 1)]
+                .psm_PrecursorArea_dstrAdj).sum()/normalization
     elif genes_df['e2g_IDSet'] == 3:
         return 0
 
@@ -1080,13 +1071,13 @@ def calculate_breakup_size(row_number):
     return ceil(row_number/4)
 
 def set_modifications(usrdata):
-    usrdata['Sequence'], usrdata['psm_SequenceModi'],\
-        usrdata['psm_SequenceModiCount'],\
-        usrdata['psm_LabelFLAG'] = \
-                                      list(zip(*usrdata.apply(lambda x :
-                                                seq_modi(x['Sequence'],
-                                                         x['Modifications']),
-                                                axis=1)))
+    modifications = usrdata.apply(lambda x :
+                                  seq_modi(x['Sequence'],
+                                           x['Modifications']),
+                                  axis=1
+    )
+    (usrdata['Sequence'], usrdata['psm_SequenceModi'],
+     usrdata['psm_SequenceModiCount'], usrdata['psm_LabelFLAG']) = list(zip(*modifications))
     return usrdata
 
 def _match(usrdatas, refseq_file):
