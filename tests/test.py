@@ -6,6 +6,7 @@ import traceback
 from unittest import mock
 from io import StringIO
 from click.testing import CliRunner
+import pandas as pd
 
 from pygrouper import pygrouper, auto_grouper
 from pygrouper import cli
@@ -46,6 +47,7 @@ class InputTest(unittest.TestCase):
         response = runner.invoke(cli.cli, ['run', '--database', REFSEQ_FILE,
                                            '--psms-file', PSMS_FILE,
                                            '--outdir', INPUT_DIR,
+                                           '--configfile', CONFIG_FILE,
                                            '--taxonid', 9606])
         self.assertTrue(main.called, msg=response.output)
 
@@ -56,6 +58,7 @@ class InputTest(unittest.TestCase):
         response = runner.invoke(cli.cli, ['run', '--database', REFSEQ_FILE,
                                            '--psms-file', PSMS_FILE,
                                            '--psms-file', PSMS_FILE,
+                                           '--configfile', CONFIG_FILE,
                                            '--taxonid', 9606,
         ])
         self.assertEqual(len(main.call_args[-1]['usrdatas']), 2,
@@ -67,7 +70,8 @@ def get_sample_data():
             response = runner.invoke(cli.cli, ['run', '--database', REFSEQ_FILE,
                                                '--psms-file', PSMS_FILE,
                                                '--taxonid', 9606,
-                                               '--configfile', CONFIG_FILE
+                                               '--outdir', INPUT_DIR,
+                                               '--configfile', CONFIG_FILE,
             ]
                                      )
             # response = runner.invoke(cli.cli, ['run', '--database', REFSEQ_FILE,
@@ -102,7 +106,8 @@ class MatchTest(unittest.TestCase):
         """Test functionality of matcher,
         does not validate any data, just if it dones't fail """
         sample = get_sample_data()
-        usrdatas, _ = pygrouper.match(sample['usrdatas'], sample['refs'])
+        usrdatas = pygrouper.set_up(sample['usrdatas'], sample['column_aliases'])
+        usrdatas, _ = pygrouper.match(usrdatas, sample['refs'])
         usrdata = usrdatas[-1]
         outcols = ['GeneList', 'GeneCount', 'TaxonIDList', 'TaxonCount',
                    'ProteinList', 'ProteinCount']
@@ -127,13 +132,47 @@ class TestFull(unittest.TestCase):
                                            '--psms-file', PSMS_FILE,
                                            '--taxonid', 9606,
                                            '--outdir', INPUT_DIR,
-                                           # '--configfile', CONFIG_FILE
+                                           '--configfile', CONFIG_FILE,
                                            ])
         # print full traceback if there is a failure
         self.assertEqual(0, response.exit_code,
                          msg='\n{}\n{!r}'.format(''.join(traceback.format_tb(response.exc_info[-1])),
                                                                              response.exc_info[1])
                          )
+    def test_proper_columns_e2g(self):
+        data_cols = ['psm_EXPRecNo', 'psm_EXPRunNo', 'psm_EXPSearchNo',
+                     'psm_EXPTechRepNo', 'Sequence',
+                     'PSMAmbiguity', 'Modifications', 'ActivationType',
+                     'DeltaScore', 'DeltaCn', 'Rank', 'SearchEngineRank',
+                     'PrecursorArea', 'q_value', 'PEP',
+                     'IonScore', 'MissedCleavages',
+                     'IsolationInterference', 'IonInjectTime',
+                     'Charge', 'mzDa', 'MHDa',
+                     'DeltaMassDa', 'DeltaMassPPM', 'RTmin',
+                     'FirstScan', 'MSOrder', 'MatchedIons',
+                     'SpectrumFile', 'psm_AddedBy', 'psm_oriFLAG',
+                     'psm_CreationTS', 'psm_ModificationTS', 'psm_GeneID',
+                     'psm_GeneList', 'psm_GeneCount', 'psm_ProteinGI',
+                     'psm_ProteinList', 'psm_ProteinCount',
+                     'psm_HID', 'psm_HIDList', 'psm_HIDCount',
+                     'psm_TaxonID', 'psm_TaxonIDList', 'psm_TaxonCount',
+                     'psm_PSM_IDG', 'psm_SequenceModi',
+                     'psm_SequenceModiCount', 'psm_LabelFLAG',
+                     'psm_PeptRank', 'psm_AUC_UseFLAG', 'psm_PSM_UseFLAG',
+                     'psm_Peak_UseFLAG', 'psm_SequenceArea', 'psm_PrecursorArea_dstrAdj']
+        runner = CliRunner()
+        response = runner.invoke(cli.cli, ['run', '--database', REFSEQ_FILE,
+                                           '--psms-file', PSMS_FILE,
+                                           '--taxonid', 9606,
+                                           '--outdir', INPUT_DIR,
+                                           '--configfile', CONFIG_FILE,
+                                           ])
+        # output = pd.read_table(os.path.join(INPUT_DIR, '1_1_1_none_0_e2g.tab'))
+        output = pd.read_table(os.path.join(INPUT_DIR, '1_1_1_none_psms.tab'))
+        print(output.columns)
+        for col in data_cols:
+            self.assertTrue(col in output.columns, msg='{} not found in e2g file'.format(col))
+
 
     @mock.patch('pygrouper.auto_grouper._update_database')
     def test_update_db(self, func):

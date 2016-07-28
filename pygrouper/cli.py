@@ -12,7 +12,7 @@ from .manual_tests import test as manual_test
 from . import subfuncts, auto_grouper, pygrouper, _version
 from pygrouper import genericdata as gd
 from pygrouper.containers import UserData
-from pygrouper.subfuncts import column_identifier
+from .parse_config import parse_configfile, find_configfile, Config
 
 
 # from manual_tests import test as manual_test
@@ -61,28 +61,12 @@ parser.optionxform = str
               help='Name of the user.')
 @click.pass_context
 def cli(ctx, profile):
-    ctx.obj = Config(profile)
-
-    # if ctx.invoked_subcommand is not None:
-    #     ctx.obj = Config(profile)
-    #     parse_configfile()
-
-pass_config = click.make_pass_decorator(Config)
-
-# @cli.command(context_settings=CONTEXT_SETTINGS)
-# @click.argument('profile', type=str)
-# @pass_config
-# def makeuser(config, profile):
-#     """Make a new profile with new config file.
-#     Note this happens automatically when chaining the
-#     --profile option with any subcommand."""
-#     config.user = profile
-#     #click.echo('making user')
-#     parse_configfile()
+    pass
 
 
-@pass_config
-def make_configfile(config):
+@cli.command(context_settings=CONTEXT_SETTINGS)
+@click.option('-p', '--path', type=click.Path(exists=True), default='.')
+def make_configfile(path):
     """Generate a new config file
     (and also parent directory if necessary)"""
     if not os.path.isdir(CONFIG_DIR):
@@ -95,9 +79,9 @@ def make_configfile(config):
                                'base_config.ini')
     parser.read(BASE_CONFIG)
     parser.set('profile', 'user', config.user)
-    CONFIG_FILE = os.path.join(CONFIG_DIR, 'config.ini')
-    #click.echo(CONFIG_FILE)
-    write_configfile(CONFIG_FILE, parser)
+    CONFIG_FILE = os.path.join(CONFIG_DIR, 'pygrouper_config.ini')
+
+    write_configfile(os.path.join(path, 'pygrouper_config.ini'), parser)
     click.echo('Creating new config file.')
 
 def write_configfile(CONFIG_FILE, parser):
@@ -106,69 +90,13 @@ def write_configfile(CONFIG_FILE, parser):
     with open(CONFIG_FILE, 'w') as f:
         parser.write(f)
 
-def find_configfile(path='.'):
-    config_file = os.path.join(path, CONFIG_NAME)
-    if os.path.isfile(config_file):
-        return config_file
-    else:
-        return None
-
-@click.pass_obj
-def get_configfile(config, config_file):
-    """Get the config file for a given user"""
-    if config_file is None:
-        config_file = find_configfile(path='.')
-    if config_file is None:  # fail to find configfile
-        print("No config file found")
-        return None
-    config.CONFIG_FILE = config_file
-    parser.read(config_file)
-    return parser
-
-@click.pass_obj
-def parse_configfile(config, config_file=None):
-    """Parse the configfile and update the variables in a Config object if
-    config_file exists"""
-    parser = get_configfile(config_file)
-    if parser is None:
-        return None
-    config.inputdir = parser.get('directories', 'inputdir')
-    config.outputdir = parser.get('directories', 'outputdir')
-    config.rawfiledir = parser.get('directories', 'rawfiledir')
-    config.contaminants = parser.get('directories', 'contaminants')
-
-    fv_section = parser['filter values']
-    filtervalues = {'ion_score': fv_section.getfloat('ion score'),
-                    'qvalue': fv_section.getfloat('q value'),
-                    'pep': fv_section.getfloat('PEP'),
-                    'idg': fv_section.getfloat('IDG'),
-                    'zmin': fv_section.getint('charge_min'),
-                    'zmax': fv_section.getint('charge_max'),
-                    'modi': fv_section.getint('max modis'),
-                    }
-    config.filtervalues = filtervalues
-
-    column_aliases = dict()
-    for column in parser['column names']:
-        column_aliases[column] = [x.strip() for x in
-                               parser.get('column names', column).splitlines() if x]
-    config.column_aliases = column_aliases
-
-    refseqs = dict()
-    for taxon, location in parser.items('refseq locations'):
-        refseqs[int(taxon)] = location
-    config.refseqs = refseqs
-
-    labels = dict()
-    for label in parser['labels']:
-        labels[label] = [x.strip() for x in
-                         parser.get('labels', label).splitlines() if x]
-    config.labels = labels
-
 @cli.command(context_settings=CONTEXT_SETTINGS)
-@pass_config
-def openconfig(config):
-    CONFIG_FILE = os.path.join(CONFIG_DIR, 'config.ini')
+@click.option('-p', '--path', type=click.Path(exists=True), default='.')
+def openconfig(path):
+    config_file = find_configfile(path=path)
+    if config_file is None:
+        click.echo("Could not find config file in {}".format(path))
+        return
     click.launch(CONFIG_FILE)
 
 @cli.command(context_settings=CONTEXT_SETTINGS)
@@ -192,26 +120,11 @@ def test(config, quick, profile, tmt):
                         column_aliases=column_aliases, gid_ignore_file=gid_ignore_file,
                         labels=LABELS,)
 
-@cli.command(context_settings=CONTEXT_SETTINGS)
-@click.argument('taxonid', type=int)
-@click.argument('taxonfile', type=click.Path(exists=True))
-@click.pass_obj
-def add_taxon(config, taxonid, taxonfile):
-    """Add a taxon to for use with pygrouper.
-    Sets the taxonid -> taxonfile which is the file to use for the given taxonid."""
-
-    filesize = str(subfuncts.bufcount(taxonfile))
-    parser = get_configfile()
-    parser.set('refseq locations', str(taxonid), taxonfile)
-    parser.set('refseq file sizes', str(taxonid), filesize)
-    write_configfile(config.CONFIG_FILE, parser)
-    click.echo('Updating taxon id {} to path {}'.format(taxonid, taxonfile))
 
 @cli.command(context_settings=CONTEXT_SETTINGS)
 @click.option('-p', '--path', type=click.Path(exists=True), default='.')
 @click.argument('taxon', type=int, nargs=-1)
-@pass_config
-def download_taxon(config, path, taxon):
+def download_taxon(path, taxon):
     """Downloads a new taxon"""
     if any(x not in (10090, 9606) for x in taxon):
         raise NotImplementedError('No support for updating taxon {} yet.'.format(*(x for x in taxon
@@ -244,10 +157,10 @@ def download_taxon(config, path, taxon):
         gd.refseq_formatter_4_mascot(taxon, path=path)
 
 @cli.command(context_settings=CONTEXT_SETTINGS)
-@pass_config
-def view_taxons(config):
+@click.option('-p', '--path', type=click.Path(exists=True), default='.')
+def view_taxons(path):
     """List current taxa and their locations based on the config file"""
-    parser = get_configfile()
+    parser = get_configfile(path)
     for taxon, file in parser.items('refseq locations'):
         filestat = os.stat(file)
         click.echo('{} : {}\t{}'.format(taxon, file,
@@ -308,8 +221,7 @@ def view_taxons(config):
               help='Minimum charge')
 @click.option('--zmax', type=int, default=6, show_default=True,
               help='Maximum charge')
-@click.pass_obj
-def run(config, autorun, contaminants, database, enzyme, interval, ion_score, labeltype, max_files,
+def run(autorun, contaminants, database, enzyme, interval, ion_score, labeltype, max_files,
         max_modis, name, no_taxa_redistrib, outdir, psms_file, psm_idg, pep, q_value, quant_source,
         rawfiledir, configfile, taxonid, zmin, zmax):
     """Run PyGrouper"""
@@ -319,7 +231,9 @@ def run(config, autorun, contaminants, database, enzyme, interval, ion_score, la
         sys.exit(0)
 
     # sys.exit(0)
-    parse_configfile(configfile)  # will parse if config file is specified or pygrouper_config.ini exists in PD
+    config = parse_configfile(configfile)  # will parse if config file is specified or pygrouper_config.ini exists in PD
+    if config is None:
+        config = Config(name)
     INPUT_DIR = config.inputdir
     OUTPUT_DIR = outdir or config.outputdir or '.'
     RAWFILE_DIR = rawfiledir or config.rawfiledir
@@ -352,7 +266,7 @@ def run(config, autorun, contaminants, database, enzyme, interval, ion_score, la
             refseqs[taxonid] = database
             INPUT_DIR, usrfile = os.path.split(Path(psmfile).resolve().__str__())
             usrdata.indir, usrdata.datafile = INPUT_DIR, usrfile
-            usrdata.outdir = Path(OUTPUT_DIR).resolve().__str__()
+            usrdata.outdir = OUTPUT_DIR or Path(OUTPUT_DIR).resolve().__str__()
             # later on expected that datafile is separated from path
             usrdata.quant_source = quant_source
             if filtervalues: # if defined earlier from passed config file
@@ -366,15 +280,6 @@ def run(config, autorun, contaminants, database, enzyme, interval, ion_score, la
                 usrdata.filtervalues['zmax']      = zmax
                 usrdata.filtervalues['modi']      = max_modis
 
-            usrdata.read_csv(sep='\t')  # read from the stored psms file
-            usrdata.df['metadatainfo'] = ''
-            if column_aliases:
-                standard_names = column_identifier(usrdata.df, column_aliases)
-                usrdata.df.rename(columns={v: k
-                                           for k,v in standard_names.items()},
-                                  inplace=True
-                )
-            usrdata.populate_base_data()
             usrdatas.append(usrdata)
         pygrouper.main(usrdatas=usrdatas,
                        inputdir=INPUT_DIR, outputdir=OUTPUT_DIR,

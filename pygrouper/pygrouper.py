@@ -4,6 +4,7 @@ import re, os, sys, time
 import logging
 from collections import defaultdict
 from math import ceil
+from warnings import warn
 from configparser import ConfigParser
 from itertools import repeat
 import pandas as pd
@@ -60,15 +61,100 @@ def quick_save(df,name='df_snapshot.p', path=None, q=False):
         print('Exiting prematurely')
         sys.exit(0)
 
+def _get_rawfile_info(path, spectraf):
+    if path is None:
+        path = '.'
+    if not os.path.isdir(path):
+        return ('not found, check rawfile path', 'not found')
+    for f in os.listdir(path):
+        if f == spectraf:
+            rawfile = os.path.abspath(path,f)
+            break
+    else:
+        return ('not found', 'not found')
 
-# def get_protease_dict(reader, )
+    fstats   = os.stat(rawfile)
+    mod_date = datetime.fromtimestamp(fstats.st_mtime).strftime("%m/%d/%Y %H:%M:%S")
+    size     = byte_formatter(fstats.st_size)
+    return (size, mod_date)
 
-def _psm_to_gene_product(organism, usrdatas, usrfiles, exp_setups, refs, pept_breakups):
-    """Map psms to gene products"""
-    ref_reader = csv_reader(refs[organism]['loc'])
-    searchdb = os.path.split(refs[organism]['loc'])[1]
-    print('Using peptidome {} '.format(searchdb))
+def _spectra_summary(spectraf, data):
+    """ Calculates metadata per spectra file.
+    The return order is as follows:
 
+    -minimum RT_min
+    -maximum RT_min
+    -min IonScore
+    -max IonScore
+    -min q_value
+    -max q_value
+    -min PEP
+    -max PEP
+    -min Area (precursor, exculding zeros)
+    -max Area
+    -PSM Count
+    -median DeltaMassPPM
+    """
+    data      = data[data.SpectrumFile==spectraf]
+
+    RT_min       = data.RTmin.min()
+    RT_max       = data.RTmin.max()
+    IonScore_min = data.IonScore.min()
+    IonScore_max = data.IonScore.max()
+    q_min        = data.q_value.min()
+    q_max        = data.q_value.max()
+    PEP_min      = data.PEP.min()
+    PEP_max      = data.PEP.max()
+    area_min     = data[data.PrecursorArea!=0].PrecursorArea.min()
+    area_max     = data.PrecursorArea.max()
+    PSM_count    = len(data[data.psm_PSM_UseFLAG==1])
+    dmass_median = data.DeltaMassPPM.median()
+    return(RT_min, RT_max, IonScore_min, IonScore_max, q_min, q_max,
+           PEP_min, PEP_max, area_min, area_max, PSM_count, dmass_median)
+
+def spectra_summary(usrdata):
+    """Summaries the spectral files included in an analysis.
+
+    Args:
+        usrdata: a UserData instance with the data loaded
+
+
+    Returns:
+        A pandas DataFrame with relevant columns, ready for export
+
+        if the raw files cannot be found at usrdata.rawfiledir,
+        then 'not found' is returned for those columns
+    """
+    msfdata = pd.DataFrame()
+    msfdata['RawFileName']       = list(set(usrdata.df.SpectrumFile.tolist()))
+    msfdata['EXPRecNo']       = usrdata.recno
+    msfdata['EXPRunNo']       = usrdata.runno
+    msfdata['EXPSearchNo']    = usrdata.searchno
+    msfdata['AddedBy']        = usrdata.added_by
+    msfdata['CreationTS']     = datetime.now().strftime("%m/%d/%Y %H:%M:%S")
+    msfdata['ModificationTS'] = datetime.now().strftime("%m/%d/%Y %H:%M:%S")
+
+    summary_info = msfdata.apply(lambda x:
+                        _spectra_summary(x['RawFileName'],
+                                        usrdata.df),
+                        axis=1)
+
+    msfdata['RTmin_min'], msfdata['RTmin_max'], msfdata['IonScore_min'],\
+        msfdata['IonScore_max'], msfdata['qValue_min'], msfdata['qValue_max'],\
+        msfdata['PEP_min'], msfdata['PEP_max'], msfdata['Area_min'],\
+        msfdata['Area_max'], msfdata['PSMCount'], \
+    msfdata['DeltaMassPPM_med']= list(zip(*summary_info))
+
+    rawfile_info = msfdata.apply(lambda x:
+                                    _get_rawfile_info(usrdata.rawfiledir,
+                                                      x['RawFileName']),
+                                 axis=1)
+
+    msfdata['RawFileSize'], msfdata['RawFileTS'] = list(zip(*rawfile_info))
+
+    msfdata.rename(columns={c: 'msf_'+c for c in msfdata.columns}, inplace=True)
+
+    return msfdata
 
 def get_gid_ignore_list(inputfile):
     """Input a file with a list of geneids to ignore when normalizing across taxa
@@ -81,64 +167,70 @@ def get_gid_ignore_list(inputfile):
     return [x.strip() for x in open(inputfile, 'r') if
             not x.strip().startswith('#')]
 
+def _extract_peptideinfo(ixs, database):
+
+     taxonids = set()
+     homologeneids = set()
+     proteingis = set()
+     genefraglens = []
+     genelist = set()
+     capacity = list()
+
+     database_matches = database.ix[ixs]
+
+     for ix, row in database_matches.iterrows():
+         genelist.add(row.faa_GeneID)
+         taxonids.add(row.faa_TaxonID)
+         homologeneids.add(row.faa_HomologeneID)
+         proteingis.add(row.faa_ProteinGI)
+         capacity.append(row.capacity)
+     return (','.join(str(x) for x in genelist),
+             len(genelist),
+             ','.join(str(x) for x in taxonids),
+             len(taxonids),
+             ','.join(str(x) for x in proteingis),
+             len(proteingis),
+             tuple(capacity))
+
 def extract_peptideinfo(usrdata, database):
+    peptide_info = usrdata.df.apply(lambda x: _extract_peptideinfo(x['metadatainfo'],
+                                                                 database),
+    axis=1)
+
     usrdata.df['psm_GeneList'], usrdata.df['psm_GeneCount'], \
         usrdata.df['psm_TaxonIDList'],\
         usrdata.df['psm_TaxonCount'], usrdata.df['psm_ProteinList'], \
         usrdata.df['psm_ProteinCount'], usrdata.df['psm_GeneCapacities'] = \
-                                list(zip(*usrdata.df.apply(lambda x: genelist_extractor(x['metadatainfo'],
-                                                                                    database),
-                                                       axis=1)
+                                list(zip((*peptide_info)
                                 ))
     return 0
 
-def extract_metadata(metadatainfo):
-    """Extract metadata into a dictionary
-    Input is a
-    Returned dictionary structure:
-        geneid -> [(taxonid, homologeneid, proteingi, genefraglen)]
-    with 1 or more entries
-
-    """
-    if not hasattr(metadatainfo, '__iter__'):
-        raise TypeError('Input is not iterable')
-    gene_metadata = defaultdict(list)
-    for metadata in metadatainfo:
-        for data in metadata:
-            gene_metadata[data.geneid].append((data.taxonid, data.homologeneid,
-                                               data.proteingi, data.genefraglen))
-    return gene_metadata
 def gene_taxon_mapper(df):
     """Returns a dictionary with mapping:
     gene -> taxon
     Input is the metadata extracted previously"""
     return {x[1].faa_GeneID: x[1].faa_TaxonID for x in df.iterrows()}
 
-def extract_genelist(usrdata):
-    """Calls genelist_extractor by row on input DataFrame which returns
-    list of genes (string),
-    number of genes
-    list of taxonids (string),
-    number of taxonids,
-    list of proteingis (string),
-    number of proteingis
-    """
 
-    usrdata['psm_GeneList'], usrdata['psm_GeneCount'], \
-        usrdata['psm_TaxonIDList'],\
-        usrdata['psm_TaxonCount'], usrdata['psm_ProteinList'], \
-        usrdata['psm_ProteinCount'] = list(zip(
-            *usrdata.apply(lambda x : genelist_extractor(x['metadatainfo'],
-            ),
-                           axis=1)))
-    return usrdata
+def _assign_IDG(ionscore, qvalue):
+
+    if (ionscore>= 30 and qvalue <= .01): IDGout = 1
+    elif (ionscore >= 30 and qvalue <= .05): IDGout = 2
+    elif (ionscore >= 20 and qvalue <= .01): IDGout = 3
+    elif (ionscore >= 20 and qvalue <= .05): IDGout = 4
+    elif (ionscore >= 10 and qvalue <= .01): IDGout = 5
+    elif (ionscore >= 10 and qvalue <= .05): IDGout = 6
+    elif (ionscore >= 0 and qvalue <= .01): IDGout = 7
+    elif (ionscore >= 0 and qvalue <= .05): IDGout = 8
+    else: IDGout  = 9
+    return IDGout
 
 def assign_IDG(usrdata):
     """Assign IDG bsaed on combination of
     IonScore and q_value"""
 
     usrdata['psm_PSM_IDG'] = usrdata.apply(lambda x:
-                                           IDG_picker(x['IonScore'],
+                                           _assign_IDG(x['IonScore'],
                                                       x['q_value']), axis=1)
     return usrdata
 
@@ -147,12 +239,20 @@ def make_seqlower(usrdata, col='Sequence'):
     usrdata['sequence_lower'] = usrdata.apply(lambda x: x[col].lower(), axis=1)
     return usrdata
 
+def _peptidome_matcher(seq, metadata, prot):
+    seq = seq.upper()
+    if not isinstance(metadata, set):
+        metadata = set()
+    if seq in prot:
+        metadata = metadata.union(prot[seq])
+    return metadata
+
 def peptidome_matcher(usrdata, ref_dict):
     """Matches Sequence column with refseq dictionary
     returns an empty list if there is no match.
     returns input DataFrame with a metadata column with a list of named tuples"""
     usrdata['metadatainfo'] = usrdata.apply(lambda x:
-                                            genematcher(x['Sequence'],
+                                            _peptidome_matcher(x['Sequence'],
                                                         x['metadatainfo'],
                                                         ref_dict), axis=1)
     return usrdata
@@ -228,9 +328,6 @@ def export_metadata(program_title='version',usrdata=None, matched_psms=0, unmatc
     with open(os.path.join(outpath, outname), 'w') as f:
         json.dump(d, f)
 
-def determine_if_split(df):
-    print(df)
-
 def split_on_geneid(usrdata):
     """Duplicate psms based on geneids. Areas of each psm is recalculated based on
 unique peptides unique for its particular geneid later.
@@ -265,10 +362,6 @@ def rank_peptides(usrdata, area_col):
     usrdata[area_col].fillna(0, inplace=True)  # must do this to compare
     #nans
 
-
-#    grouped = usrdata.drop_duplicates(subset=['psm_GeneID',
-#                                              area_col]).groupby(
-#                                                  ['psm_GeneID', 'psm_LabelFLAG'])  # each group
     grouped = usrdata[ (usrdata.psm_AUC_UseFLAG == 1) & \
                        (usrdata.psm_PSM_UseFLAG == 1) & \
                        (usrdata.psm_Peak_UseFLAG == 1)    ].groupby(['psm_GeneID', 'psm_LabelFLAG'])
@@ -279,18 +372,63 @@ def rank_peptides(usrdata, area_col):
 
     return usrdata
 
+def _flag_AUC_PSM(df, d):
+    if d['pep'] =='all' : d['pep'] = float('inf')
+    if d['idg'] =='all' : d['idg'] = float('inf')
+    #if df['IonScore'] == '' and df['q-Value'] == '':
+    if df['Charge'] < d['zmin'] or df['Charge'] > d['zmax'] :
+         # if charge is empty (nan), this will not be true
+        AUC_flag = 0
+        PSM_flag = 0
+    elif df['psm_SequenceModiCount'] > d['modi'] :
+        AUC_flag = 0
+        PSM_flag = 0
+    elif np.isnan(df['IonScore']) and np.isnan(df['q_value']):
+        AUC_flag = 1 #retains WLs Q2up assignments
+        PSM_flag = 0
+    elif df['IonScore'] < d['ion_score'] :
+        AUC_flag = 0
+        PSM_flag = 0
+    elif df['q_value'] > d['qvalue'] :
+        AUC_flag = 0
+        PSM_flag = 0
+    elif df['PEP'] > d['pep'] :
+        AUC_flag = 0
+        PSM_flag = 0
+    elif df['psm_PSM_IDG'] > d['idg'] :
+        AUC_flag = 0
+        PSM_flag = 0
+    elif df['psm_Peak_UseFLAG'] == 0 :
+        AUC_flag = 0
+        #if 'PSMAmbiguity' in df.columns:  # will not work like this
+        if df['PSMAmbiguity'].lower() == 'unambiguous':
+            PSM_flag = 1
+        else:
+            PSM_flag = 0
+    else:
+        AUC_flag = 1
+        PSM_flag = 1
+
+    if df['AUC_reflagger'] == 0:
+        AUC_flag = 0
+
+    return AUC_flag, PSM_flag
+
 def flag_AUC_PSM(usrdata, filtervalues):
     """Apply AUC and PSM flags per row"""
-
-    usrdata['psm_AUC_UseFLAG'], usrdata['psm_PSM_UseFLAG'] = \
-    list(zip(*usrdata.apply(AUC_PSM_flagger, args=(filtervalues,), axis=1)))
+    flags = usrdata.apply(_flag_AUC_PSM, args=(filtervalues,), axis=1)
+    usrdata['psm_AUC_UseFLAG'], usrdata['psm_PSM_UseFLAG'] = list(zip(*flags))
     return usrdata
 
+def _gene_taxon_map(gene, d):
+     if gene:
+          gene = str(int(gene))  # just in case
+     return d.get(gene)
 
 def gene_taxon_map(usrdata, gene_taxon_dict):
     """make 'gene_taxon_map' column per row which displays taxon for given gene"""
 
-    usrdata['gene_taxon_map'] = usrdata.apply(lambda x : gene_to_taxon(
+    usrdata['gene_taxon_map'] = usrdata.apply(lambda x : _gene_taxon_map(
         x['psm_GeneID'], gene_taxon_dict), axis=1)
     return usrdata
 
@@ -340,78 +478,264 @@ def select_good_peptides(usrdata, labelix):
                       (usrdata['psm_GeneCount'] > 0)].copy()  # should keep WL's
     return temp_df
 
+
+def _get_gene_capacity(geneid, database):
+    return database[database.faa_GeneID == int(geneid)].capacity.mean()
+
 def get_gene_capacity(genes_df, database, col='e2g_GeneID'):
     """Get gene capcaity from the stored metadata"""
     genes_df['e2g_GeneCapacity'] = genes_df.apply(lambda x:
-                                                  capacity_grabber(
+                                                  _get_gene_capacity(
                                                       x[col],
                                                       database),
                                                   axis=1)
-    # genes_df['e2g_GeneCapacity'] = genes_df.apply(lambda x:
-    #                                                capacity_grabber(
-    #                                                    x[col],
-    #                                                    gene_metadata),
-    #                                                axis=1).astype('float')
     return genes_df
+
+def _get_peptides_for_gene(df,usrdata):
+    '''
+    Lookup info from userdata. Also sorts based on alphabet.
+    '''
+    IDquery = df['e2g_GeneID']
+    #print(IDquery)  # for debugging
+    try :
+        matches = usrdata[usrdata.psm_GeneID == IDquery].copy()
+        matches = matches.sort_values(by=['psm_PSM_IDG'], ascending=True).drop_duplicates(subset='sequence_lower',
+                                                                                keep='first',)
+        protcount = matches.Sequence.count() # counting peptides (not proteins)
+        protcount_S = matches[matches['psm_PSM_IDG' ] < 4].Sequence.count()
+        uniques = matches[matches.psm_GeneCount == 1].Sequence.count()
+        uniques_S = matches[(matches.psm_GeneCount == 1) &
+                            (matches['psm_PSM_IDG' ] < 4)].Sequence.count()
+        pepts_str = '_'.join(sorted(matches.Sequence))
+    except AttributeError as e: #have never had this happen. Shouldn't occur
+         #since the df is derived from usrdata in the first place
+        print(e)
+        pepts_str = ''
+        protcount = 0
+        uniques = 0
+    return (set(sorted(matches.Sequence)), pepts_str, protcount, uniques,
+         protcount_S, uniques_S)
 
 def get_peptides_for_gene(genes_df, temp_df):
     """Get peptide sequence information for each gene"""
-
+    peptides = genes_df.apply(_get_peptides_for_gene, args=(temp_df,), axis=1)
     genes_df['e2g_PeptideSet'], genes_df['e2g_PeptidePrint'], \
     genes_df['e2g_PeptideCount'], genes_df['e2g_PeptideCount_u2g'],\
     genes_df['e2g_PeptideCount_S'],\
-    genes_df['e2g_PeptideCount_S_u2g'] =\
-            list(zip(*genes_df.apply(pept_print, args=(temp_df,), axis=1)))
+    genes_df['e2g_PeptideCount_S_u2g'] = list(zip(*peptides))
     return genes_df
+
+
+def _get_psms_for_gene(gene_df_ID, data, EXPTechRepNo=1):
+    total = data[
+                data['psm_GeneID']==gene_df_ID]\
+                ['psm_PSM_UseFLAG'].sum()/EXPTechRepNo
+    total_u2g = data[(data['psm_GeneID']==gene_df_ID) &
+                         (data['psm_GeneCount' ] == 1) \
+                        ]['psm_PSM_UseFLAG'].sum()/EXPTechRepNo
+
+    total_S = data[(data['psm_GeneID']==gene_df_ID) &
+                       (data['psm_PSM_IDG' ] < 4)
+                  ]['psm_PSM_UseFLAG'].sum()/EXPTechRepNo
+
+    total_S_u2g = data[(data['psm_GeneID']==gene_df_ID) &
+                           (data['psm_PSM_IDG' ] < 4) &
+                           (data['psm_GeneCount' ] == 1)
+                      ]['psm_PSM_UseFLAG'].sum()/EXPTechRepNo
+    #for match in matches:
+    return total, total_u2g, total_S, total_S_u2g
 
 def get_psms_for_gene(genes_df, temp_df,):
     """Get PSMs information for each gene"""
-
+    psm_info = genes_df.apply(lambda x:
+                              _get_psms_for_gene(x['e2g_GeneID'],
+                                                 temp_df,
+                              ),
+                              axis=1)
     genes_df['e2g_PSMs'], genes_df['e2g_PSMs_u2g'],\
-    genes_df['e2g_PSMs_S'],genes_df['e2g_PSMs_S_u2g'] = \
-            list(zip(*genes_df.apply(lambda x:
-                                     e2g_PSM_helper(x['e2g_GeneID'],
-                                                    temp_df,
-                                                    ),
-                                     axis=1)))
+        genes_df['e2g_PSMs_S'],genes_df['e2g_PSMs_S_u2g'] = list(zip(*psm_info))
     return genes_df
+
+def _calculate_protein_area(gene_df, usrdata, area_col, normalization, EXPTechRepNo=1):
+    """Area column is psm_SequenceArea"""
+
+    matches  = usrdata[(usrdata['psm_GeneID'] == gene_df['e2g_GeneID']) &
+                           (usrdata['psm_AUC_UseFLAG']==1)] [
+                                [area_col, 'psm_GeneCount',
+                                 'psm_PSM_IDG', 'MissedCleavages']]
+
+    uniq_matches = matches[matches['psm_GeneCount']==1]
+    uniq_matches_0 = uniq_matches[uniq_matches['MissedCleavages']==0]
+    matches_strict = matches[matches['psm_PSM_IDG'] < 4]
+    values_max = matches[area_col].sum()
+    values_adj = (matches[area_col]/matches['psm_GeneCount']).sum()
+    uniq_values_adj = (uniq_matches[area_col]/matches['psm_GeneCount']).sum()
+    uniq_values_adj_0 = (uniq_matches_0[area_col]/matches['psm_GeneCount']).sum()
+    result = (values_max/normalization, values_adj/normalization,
+              uniq_values_adj_0/normalization, uniq_values_adj/normalization)
+    return result
+
 
 def calculate_protein_area(genes_df, temp_df, area_col, normalize):
     """Calculate the area of each protein"""
-    genes_df['e2g_nGPArea_Sum_max'],genes_df['e2g_nGPArea_Sum_cgpAdj'],\
-    genes_df['e2g_nGPArea_Sum_u2g'],\
-    genes_df['e2g_nGPArea_Sum_u2g_all']  = \
-                list(zip(*genes_df.apply(area_calculator,
+    areas = genes_df.apply(_calculate_protein_area,
                                     args=(temp_df,
                                            area_col, normalize),
-                                     axis=1)))
+                                     axis=1)
+    genes_df['e2g_nGPArea_Sum_max'],genes_df['e2g_nGPArea_Sum_cgpAdj'],\
+    genes_df['e2g_nGPArea_Sum_u2g'],\
+    genes_df['e2g_nGPArea_Sum_u2g_all']  = list(zip(*areas))
     return genes_df
+
+
+def _distribute_psm_area(inputdata, genes_df, area_col, taxon_totals):
+    """Row based normalization of PSM area (mapped to a specific gene).
+    Normalization is based on the ratio of the area of unique peptides for the
+    specific gene to the sum of the areas of the unique peptides for all other genes
+    that this particular peptide also maps to.
+    """
+    if inputdata.psm_AUC_UseFLAG == 0:
+        return 0
+    inputvalue = inputdata[area_col]
+    u2gPept = genes_df[genes_df['e2g_GeneID']==inputdata['psm_GeneID']
+    ]['e2g_nGPArea_Sum_u2g_all'].values
+
+    if len(u2gPept) == 1: u2gPept = u2gPept[0] # grab u2g info, should always be
+    #of length 1
+    elif len(u2gPept) > 1 :
+        print('{} Error - distArea is not singular at GeneID : {}'.format(
+             datetime.now(),inputdata['psm_GeneID']))
+        # this should never happen (and never has)
+    else :
+        distArea = 0
+        print('No distArea for GeneID : {}'.format(inputdata['psm_GeneID']))
+    taxon_ratio = taxon_totals.get(inputdata.gene_taxon_map, 1)
+    # print('\n', '*'*30)
+    # print(taxon_ratio)
+    # print(inputdata.gene_taxon_map)
+    # print('\n', '*'*30)
+    if u2gPept != 0 :
+        totArea = 0
+        gene_list = inputdata.psm_GeneList.split(',')
+        totArea = genes_df[
+             genes_df['e2g_GeneID'].isin(gene_list)
+                              ].e2g_nGPArea_Sum_u2g_all.sum()
+        distArea = (u2gPept/totArea) * inputvalue
+        #ratio of u2g peptides over total area
+
+    elif u2gPept == 0:  # no uniques, normalize by genecount
+        taxon_ratio = taxon_totals.get(inputdata.gene_taxon_map, 1)
+        print('\n', '*'*30)
+        print(taxon_ratio)
+        print('\n', '*'*30)
+        try: # still needs work
+            if taxon_ratio < 1:
+                distArea = inputvalue * taxon_ratio
+            else:
+                distArea = inputvalue/inputdata.psm_GeneCount
+        except ZeroDivisionError: distArea = inputvalue
+
+    return distArea
 
 def distribute_psm_area(temp_df, genes_df, area_col, taxon_totals):
    """Distribute psm area based on unique gene product area"""
 
    temp_df['psm_PrecursorArea_dstrAdj'] = temp_df.apply(
-       AUC_distributor,args=(genes_df,
+       _distribute_psm_area,args=(genes_df,
                              area_col,
                              taxon_totals),
        axis=1)
    return temp_df
 
-def set_gene_sets(genes_df, temp_df):
+
+def _assign_gene_sets(genes_df,genes_df_all, temp_df ):
+    IDquery, Pquery = genes_df[['e2g_GeneID','e2g_PeptideSet']]
+
+    if any(temp_df[temp_df.psm_GeneID==IDquery]['psm_GeneCount']==1):
+        idset = 1
+    elif not any(genes_df_all.e2g_PeptideSet.values > Pquery):
+        idset = 2
+    elif any(genes_df_all.e2g_PeptideSet.values > Pquery):
+        idset = 3
+    try:
+        idgroup = min(temp_df[temp_df.psm_GeneID == IDquery].psm_PSM_IDG)
+    except ValueError:
+        idgroup = 0
+    try :
+        idgroup_u2g  = min(temp_df[(temp_df.psm_GeneID == IDquery) & (temp_df.psm_GeneCount == 1)].psm_PSM_IDG)
+    except ValueError :
+        idgroup_u2g = 0
+
+    return idset, idgroup, idgroup_u2g
+
+def assign_gene_sets(genes_df, temp_df):
     """Assign IDSet and IDGroup"""
+    genesets = genes_df.apply(_assign_gene_sets, args=(genes_df, temp_df,), axis=1)
     genes_df['e2g_IDSet'], genes_df['e2g_IDGroup'],\
-        genes_df['e2g_IDGroup_u2g'] = list(
-            zip(*genes_df.apply(gene_setter, args=(
-                genes_df, temp_df,), axis=1)))
+        genes_df['e2g_IDGroup_u2g'] = list(zip(*genesets))
+
     return genes_df
+
+
+def _calculate_gene_dstrarea(genes_df, temp_df, normalization):
+    gene = genes_df['e2g_GeneID']
+    if genes_df['e2g_IDSet'] in [1,2]:
+        return temp_df[(temp_df['psm_GeneID'] == gene) &
+                       (temp_df['psm_AUC_UseFLAG'] == 1)
+        ].psm_PrecursorArea_dstrAdj.sum()/normalization
+    elif genes_df['e2g_IDSet'] == 3:
+        return 0
 
 def calculate_gene_dstrarea(genes_df, temp_df, normalize):
     """Calculate distributed area for each gene product"""
-    genes_df['e2g_nGPArea_Sum_dstrAdj'] = genes_df.apply(gene_AUC_sum,
+    genes_df['e2g_nGPArea_Sum_dstrAdj'] = genes_df.apply(_calculate_gene_dstrarea,
                                                       args=(temp_df,
                                                             normalize,),
                                                       axis=1)
     return genes_df
+
+
+def _GPG_helper(idset,peptideset, df_all,last):
+    if idset == 3:
+        gpg =  ''
+    else:
+        if idset == 1:
+            gpg =  last + 1
+        elif idset == 2:
+            selection = df_all[df_all.e2g_PeptideSet.values == peptideset].e2g_GPGroup
+            selection = selection[selection != '']
+            if len(selection) == 1:
+                gpg =  selection.values[0]
+            elif len(selection) == 0:
+                gpg =  last + 1
+            elif len(selection) > 1:
+                uniq_sel = []
+                for k in range(len(selection)):
+                    if selection.iloc[k] not in uniq_sel:
+                        uniq_sel.append(selection.iloc[k])
+                    if len(uniq_sel) == 1:
+                        gpg =  uniq_sel[0]
+                    elif len(uniq_sel) > 1:
+                        warn('Warning, more than one IDSet type 2 genes '
+                              'already has assignment')
+                        gpg =  genes_df['e2g_GPGroup']
+
+    return gpg, True if gpg < last else False
+
+def _GPG_all_helper(genes_df,df_all):
+
+    GPGall = set()
+    for pept in genes_df.e2g_PeptideSet:
+        shared_values = [value for value in
+                         df_all[df_all['e2g_PeptidePrint'].str.contains(
+                              pept, regex=False)].e2g_GPGroup.values]
+        # regex=False since we don't need regex, and is faster.
+        for s in shared_values:
+            if s !='':
+                GPGall.add(s)
+
+    return str(k for k in GPGall).strip('{').strip('}')
+
 
 def set_gene_gpgroups(genes_df):
     """Assign GPGroups"""
@@ -424,15 +748,15 @@ def set_gene_gpgroups(genes_df):
         #but the implementation is weird.
         # print(last)  # for debugging
         if genes_df.loc[i]['e2g_IDSet'] != 3:
-            genes_df.loc[i,'e2g_GPGroup'], lessthan = \
-                    GPG_helper(genes_df.at[i,'e2g_IDSet'],
-                               genes_df.at[i,'e2g_PeptideSet'], \
-                               genes_df, last)
+            genes_df.loc[i,'e2g_GPGroup'], lessthan = _GPG_helper(genes_df.at[i,'e2g_IDSet'],
+                                                                  genes_df.at[i,'e2g_PeptideSet'],
+                                                                  genes_df, last
+            )
 
         if isinstance(genes_df.loc[i]['e2g_GPGroup'],int) and not lessthan:
             last = genes_df.loc[i, 'e2g_GPGroup']
 
-    genes_df['e2g_GPGroups_All'] = genes_df.apply(GPG_all_helper,
+    genes_df['e2g_GPGroups_All'] = genes_df.apply(_GPG_all_helper,
                                                   args=(genes_df,),
                                                   axis=1)
     genes_df['e2g_GPGroup'].replace(to_replace='', value=float('NaN'),
@@ -637,6 +961,9 @@ def grouper(usrdata, outdir='', database=None,
                 datetime.now(), usrdata.datafile))
             logfile.write('{} | Calculating distributed area ratio.\n'.format(
                 time.ctime()))
+            # print('\n', '*'*30)
+            # print(taxon_totals)
+            # print('\n', '*'*30)
             temp_df = distribute_psm_area(temp_df, genes_df, area_col, taxon_totals)
 
             print('{}: Assigning gene sets and groups for {}.'.format(
@@ -646,7 +973,7 @@ def grouper(usrdata, outdir='', database=None,
             logfile.write('{} | Assigning gene sets and groups.\n'.format(
                 time.ctime()))
 
-            genes_df = set_gene_sets(genes_df, temp_df)
+            genes_df = assign_gene_sets(genes_df, temp_df)
 
             #genes_df['e2g_GeneCapacity'] = genes_df.e2g_GeneCapacity.astype('float')
             #genes_df._e2g_GeneCapacity.dtype)  # for debugging
@@ -736,44 +1063,18 @@ def grouper(usrdata, outdir='', database=None,
         data_cols = [x for x in data_cols if x in usrdata.df.columns.values]
         # will still export successfully
 
-
-    msfdata = pd.DataFrame()
-    msfdata['RawFileName']       = list(set(usrdata.df.SpectrumFile.tolist()))
-    msfdata['EXPRecNo']       = usrdata.recno
-    msfdata['EXPRunNo']       = usrdata.runno
-    msfdata['EXPSearchNo']    = usrdata.searchno
-    msfdata['AddedBy']        = usrdata.added_by
-    msfdata['CreationTS']     = datetime.now().strftime("%m/%d/%Y %H:%M:%S")
-    msfdata['ModificationTS'] = datetime.now().strftime("%m/%d/%Y %H:%M:%S")
-    msfdata['RTmin_min'], msfdata['RTmin_max'], msfdata['IonScore_min'],\
-        msfdata['IonScore_max'], msfdata['qValue_min'], msfdata['qValue_max'],\
-        msfdata['PEP_min'], msfdata['PEP_max'], msfdata['Area_min'],\
-        msfdata['Area_max'], msfdata['PSMCount'], msfdata['DeltaMassPPM_med']= \
-            list(zip(*msfdata.apply(lambda x:
-                                    spectra_summary(x['RawFileName'],
-                                                    usrdata.df),
-                                    axis=1)))
-
-    msfdata['RawFileSize'], msfdata['RawFileTS'] = \
-        list(zip(*msfdata.apply(lambda x:
-                                get_rawfile_info(usrdata.rawfiledir,
-                                                 x['RawFileName']),
-                                axis=1)))
-    msfdata.rename(columns={c: 'msf_'+c for c in msfdata.columns}, inplace=True)
-
     export_metadata(program_title=program_title, usrdata=usrdata, matched_psms=matched_psms,
                     unmatched_psms=unmatched_psms, usrfile=usrfile, taxon_totals=taxon_totals,
                     outname=usrdata.output_name('metadata', ext='json'), outpath=usrdata.outdir)
-    msfname = usrdata.output_name('msf', ext='tab')
 
-    #renamed_datacols = [exp_setup.get(datacol, datacol) if datacol.startswith('psm_') else datacol
-                        #for datacol in data_cols]
-    #usrdata.rename(columns={k:v for k, v in exp_setup.items() if k.startswith('psm_')},
-                   #inplace=True)
+    msfname = usrdata.output_name('msf', ext='tab')
+    msfdata = spectra_summary(usrdata)
+    msfdata.to_csv(os.path.join(usrdata.outdir, msfname), index=False, sep='\t')
+
+    print(usrdata.outdir, usrdata_out)
     usrdata.df.to_csv(os.path.join(usrdata.outdir, usrdata_out), columns=data_cols,
                    index=False, encoding='utf-8', sep='\t')
 
-    msfdata.to_csv(os.path.join(usrdata.outdir, msfname), index=False, sep='\t')
 
     logfile.write('{} | Export of datatable completed.\n'.format(time.ctime()))
     logfile.write('Successful grouping of file completed.')
@@ -848,6 +1149,33 @@ def match(usrdatas, refseqs):
 
     return usrdatas, databases
 
+def column_identifier(df, aliases):
+    column_names = dict()
+    for col in aliases:
+        for alias in aliases[col]:
+            name = [dfcolumn for dfcolumn in df.columns if dfcolumn==alias]
+            if len(name)==1:
+                column_names[col] = name[0]
+                break
+    return column_names
+
+def set_up(usrdatas, column_aliases):
+    """Set up the usrdata class for analysis
+
+    Read data, rename columns (if appropriate), populate base data"""
+    for usrdata in usrdatas:
+        usrdata.read_csv(sep='\t')  # read from the stored psms file
+        if column_aliases:
+            standard_names = column_identifier(usrdata.df, column_aliases)
+            usrdata.df.rename(columns={v: k
+                                       for k,v in standard_names.items()},
+                              inplace=True
+            )
+        # usrdata.df = usrdata.populate_base_data()
+        usrdata.populate_base_data()
+        usrdata.df = set_modifications(usrdata.df)
+    return usrdatas
+
 def main(usrdatas=[], fullpeptread=False, inputdir='', outputdir='', refs=dict(),
          rawfilepath=None, column_aliases=dict(), gid_ignore_file='', labels=dict()):
     """
@@ -870,16 +1198,7 @@ def main(usrdatas=[], fullpeptread=False, inputdir='', outputdir='', refs=dict()
     # logging.info('Start at {}'.format(startTime))
 
     # first set the modifications. Importantly fills in X with the predicted amino acid
-    for usrdata in usrdatas:
-        usrdata.read_csv(sep='\t')  # read from the stored psms file
-        usrdata.df['metadatainfo'] = ''
-        if column_aliases:
-            standard_names = column_identifier(usrdata.df, column_aliases)
-            usrdata.df.rename(columns={v: k
-                                       for k,v in standard_names.items()},
-                              inplace=True
-            )
-        usrdata.df = set_modifications(usrdata.df)
+    usrdatas = set_up(usrdatas, column_aliases)
 
     usrdatas, databases = match(usrdatas, refs)
     # raise BaseException(usrdatas[0].df.head())
