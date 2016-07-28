@@ -422,7 +422,7 @@ def flag_AUC_PSM(usrdata, filtervalues):
 
 def _gene_taxon_map(gene, d):
      if gene:
-          gene = str(int(gene))  # just in case
+          gene = int(gene)  # just in case
      return d.get(gene)
 
 def gene_taxon_map(usrdata, gene_taxon_dict):
@@ -445,11 +445,12 @@ def multi_taxon_splitter(taxon_ids, usrdata, gid_ignore_list, area_col):
     Returns a dictionary with the totals for each detected taxon"""
     taxon_totals = dict()
     for taxon in taxon_ids:
+        taxon = int(taxon)
         #all_others = [x for x in taxon_ids if x != taxon]
         uniq_taxon = usrdata[
             #(usrdata._data_tTaxonIDList.str.contains(taxon)) &
             #(~usrdata._data_tTaxonIDList.str.contains('|'.join(all_others)))&
-            (usrdata['psm_TaxonIDList'] == taxon) &
+            (usrdata['psm_TaxonIDList'] == str(taxon)) &
             #(usrdata['psm_PSM_IDG']<9) &  # this is redunant with AUC_UseFLAG
             (~usrdata['psm_GeneID'].isin(gid_ignore_list)) &
             (usrdata['psm_AUC_UseFLAG'] == 1)
@@ -458,6 +459,7 @@ def multi_taxon_splitter(taxon_ids, usrdata, gid_ignore_list, area_col):
         tot_unique = sum(taxon_totals.values())  #sum of unique
         # now compute ratio:
     for taxon in taxon_ids:
+        taxon = int(taxon)
         taxon_totals[taxon] = taxon_totals[taxon] / tot_unique
         print(taxon, ' ratio : ', taxon_totals[taxon])
         #logfile.write('{} ratio : {}\n'.format(taxon, taxon_totals[taxon]))
@@ -603,17 +605,14 @@ def _distribute_psm_area(inputdata, genes_df, area_col, taxon_totals):
     if len(u2gPept) == 1: u2gPept = u2gPept[0] # grab u2g info, should always be
     #of length 1
     elif len(u2gPept) > 1 :
-        print('{} Error - distArea is not singular at GeneID : {}'.format(
+        warn('DistArea is not singular at GeneID : {}'.format(
              datetime.now(),inputdata['psm_GeneID']))
+        distArea = 0
         # this should never happen (and never has)
     else :
         distArea = 0
         print('No distArea for GeneID : {}'.format(inputdata['psm_GeneID']))
     taxon_ratio = taxon_totals.get(inputdata.gene_taxon_map, 1)
-    # print('\n', '*'*30)
-    # print(taxon_ratio)
-    # print(inputdata.gene_taxon_map)
-    # print('\n', '*'*30)
     if u2gPept != 0 :
         totArea = 0
         gene_list = inputdata.psm_GeneList.split(',')
@@ -625,9 +624,6 @@ def _distribute_psm_area(inputdata, genes_df, area_col, taxon_totals):
 
     elif u2gPept == 0:  # no uniques, normalize by genecount
         taxon_ratio = taxon_totals.get(inputdata.gene_taxon_map, 1)
-        print('\n', '*'*30)
-        print(taxon_ratio)
-        print('\n', '*'*30)
         try: # still needs work
             if taxon_ratio < 1:
                 distArea = inputvalue * taxon_ratio
@@ -961,9 +957,6 @@ def grouper(usrdata, outdir='', database=None,
                 datetime.now(), usrdata.datafile))
             logfile.write('{} | Calculating distributed area ratio.\n'.format(
                 time.ctime()))
-            # print('\n', '*'*30)
-            # print(taxon_totals)
-            # print('\n', '*'*30)
             temp_df = distribute_psm_area(temp_df, genes_df, area_col, taxon_totals)
 
             print('{}: Assigning gene sets and groups for {}.'.format(
