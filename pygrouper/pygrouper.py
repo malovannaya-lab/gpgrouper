@@ -716,7 +716,7 @@ def _GPG_helper(idset,peptideset, df_all,last):
                     if len(uniq_sel) == 1:
                         gpg =  uniq_sel[0]
                     elif len(uniq_sel) > 1:
-                        warn('Warning, more than one IDSet type 2 genes '
+                        warn('More than one IDSet type 2 genes '
                               'already has assignment')
                         gpg =  genes_df['e2g_GPGroup']
 
@@ -734,7 +734,7 @@ def _GPG_all_helper(genes_df,df_all):
             if s !='':
                 GPGall.add(s)
 
-    return str(k for k in GPGall).strip('{').strip('}')
+    return str([k for k in GPGall]).strip('[').strip(']')
 
 
 def set_gene_gpgroups(genes_df):

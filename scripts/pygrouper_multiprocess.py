@@ -13,6 +13,7 @@ from pygrouper.pygrouper import *
 from pygrouper.auto_grouper import file_checker, update_database
 from pygrouper.cli import Config
 from pygrouper.containers import UserData
+from pygrouper.parse_config import parse_configfile
 from pygrouper import _version
 
 
