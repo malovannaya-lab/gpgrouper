@@ -318,9 +318,9 @@ def export_metadata(program_title='version',usrdata=None, matched_psms=0, unmatc
         matched_psms=matched_psms,
         unmatched_psms=unmatched_psms,
         inputname=usrdata.datafile,
-        hu=taxon_totals.get('9606', 0),
-        mou=taxon_totals.get('10090', 0),
-        gg=taxon_totals.get('9031', 0),
+        hu=taxon_totals.get(9606, 0),
+        mou=taxon_totals.get(10090, 0),
+        gg=taxon_totals.get(9031, 0),
         recno=usrdata.recno,
         runno=usrdata.runno,
         searchno=usrdata.searchno
@@ -887,7 +887,7 @@ def grouper(usrdata, outdir='', database=None,
     #area_col_new = 'psm_Area_taxonAdj'
     taxon_totals = dict()
     if len(taxon_ids) == 1 or usrdata.no_taxa_redistrib:  # just 1 taxon id present
-        taxon_totals[list(taxon_ids)[0]] = 1  # taxon_ids is a set
+        taxon_totals[int(list(taxon_ids)[0])] = 1  # taxon_ids is a set
     #    usrdata[area_col_new] = usrdata[area_col]
     elif len(taxon_ids) > 1:  # more than 1 taxon id
         taxon_totals = multi_taxon_splitter(taxon_ids, usrdata.df, gid_ignore_list, area_col)
