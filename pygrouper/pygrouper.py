@@ -418,9 +418,9 @@ def flag_AUC_PSM(usrdata, filtervalues):
     return usrdata
 
 def _gene_taxon_map(gene, d):
-     if gene:
-          gene = int(gene)  # just in case
-     return d.get(gene)
+    if gene:
+        gene = int(float(gene))  # just in case
+    return d.get(gene)
 
 def gene_taxon_map(usrdata, gene_taxon_dict):
     """make 'gene_taxon_map' column per row which displays taxon for given gene"""
@@ -479,7 +479,7 @@ def select_good_peptides(usrdata, labelix):
 
 
 def _get_gene_capacity(geneid, database):
-    return database[database.faa_GeneID == int(geneid)].capacity.mean()
+    return database[database.faa_GeneID == int(float(geneid))].capacity.mean()
 
 def get_gene_capacity(genes_df, database, col='e2g_GeneID'):
     """Get gene capcaity from the stored metadata"""

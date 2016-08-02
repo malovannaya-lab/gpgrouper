@@ -73,7 +73,6 @@ class UserData:
         self.df['psm_GeneCount'],self.df['psm_ProteinCount'],\
         self.df['psm_HomologeneID'], self.df['psm_ProteinCapacity'], \
         self.df['metadatainfo'] = '', '', 0, 0, '', '', ''
-        print('populating base data')
         return self
 
     @property
