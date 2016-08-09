@@ -1,16 +1,19 @@
 #===============================================================================#
 # PyGrouper - Alex Saltzman
 import re, os, sys, time
+import json
 import logging
 from collections import defaultdict
 from math import ceil
 from warnings import warn
 from configparser import ConfigParser
 from itertools import repeat
+
+import numpy as np
 import pandas as pd
+
 from . import _version
 from .subfuncts import *
-import json
 
 pd.set_option(
     "display.width", 170,
@@ -419,7 +422,7 @@ def flag_AUC_PSM(usrdata, filtervalues):
 
 def _gene_taxon_map(gene, d):
     if gene:
-        gene = int(float(gene))  # just in case
+        gene = float(gene)  # just in case
     return d.get(gene)
 
 def gene_taxon_map(usrdata, gene_taxon_dict):
@@ -479,7 +482,7 @@ def select_good_peptides(usrdata, labelix):
 
 
 def _get_gene_capacity(geneid, database):
-    return database[database.faa_GeneID == int(float(geneid))].capacity.mean()
+    return database[database.faa_GeneID == float(geneid)].capacity.mean()
 
 def get_gene_capacity(genes_df, database, col='e2g_GeneID'):
     """Get gene capcaity from the stored metadata"""
