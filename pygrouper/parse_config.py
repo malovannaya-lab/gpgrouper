@@ -51,7 +51,7 @@ def parse_configfile(config_file=None, user=None):
     config = Config(getuser())
     parser = get_configfile(config, config_file)
     if parser is None:
-        return None
+        return config
     config.inputdir = parser.get('directories', 'inputdir')
     config.outputdir = parser.get('directories', 'outputdir')
     config.rawfiledir = parser.get('directories', 'rawfiledir')

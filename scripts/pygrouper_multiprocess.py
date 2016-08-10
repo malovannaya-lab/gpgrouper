@@ -7,9 +7,12 @@ import sys
 import argparse
 from datetime import datetime
 from itertools import repeat
+from configparser import ConfigParser
 import multiprocessing as mp
+
 import pandas as pd
-from pygrouper.pygrouper import *
+
+from pygrouper import pygrouper
 from pygrouper.auto_grouper import file_checker, update_database
 from pygrouper.cli import Config
 from pygrouper.containers import UserData
@@ -17,16 +20,21 @@ from pygrouper.parse_config import parse_configfile
 from pygrouper import _version
 
 
-BASEDIR, _ = os.path.split(os.path.abspath(__file__))
+# BASEDIR, _ = os.path.join(os.path.dirname(__file__), '..', 'manual_tests')
+BASEDIR = os.path.join(os.path.abspath(os.path.dirname(__file__)), '..', 'pygrouper/manual_tests')
+BASEDIR = os.path.abspath(BASEDIR)
 
 parser = ConfigParser(comment_prefixes=(';')) # allow number sign to be read in configfile
 parser.optionxform = str
 
 
 def get_test_data():
-    files = ['30259_1_rand_sample.txt', '30404_1_QEP_ML262_75min_020_RPall.txt',
-             '30490_1_1_EQP_6KiP_all.txt', '30595_1_2_3T3_LM2_5_5_PROF_75MIN_all.txt']
-    fdir = os.path.join(BASEDIR, 'manual_tests')
+    files = ['30259_1_rand_sample.txt',
+             # '30404_1_QEP_ML262_75min_020_RPall.txt',
+             # '30490_1_1_EQP_6KiP_all.txt', '30595_1_2_3T3_LM2_5_5_PROF_75MIN_all.txt'
+    ]
+    # fdir = os.path.join(BASEDIR, 'manual_tests')
+    fdir = BASEDIR
     if not os.path.exists(os.path.join(fdir, 'out')):
         os.mkdir(os.path.join(fdir, 'out'))
 
@@ -62,9 +70,9 @@ def work(params):
     sys.stdout = sys.stderr = null
     error = 0
     try:
-        grouper(usrdata,
-                database=databases[usrdata.taxonid],
-                gid_ignore_file=gid_ignore_file, labels=labels)
+        pygrouper.grouper(usrdata,
+                          database=databases[usrdata.taxonid],
+                          gid_ignore_file=gid_ignore_file, labels=labels)
     except Exception as e:
         error = e
 
@@ -96,7 +104,7 @@ if __name__ == '__main__':
 
     if test:
         usrdatas = get_test_data()
-        refseqs = {9606: os.path.join(BASEDIR, 'manual_tests/human_refseq.tab')}
+        refseqs = {9606: os.path.join(BASEDIR, 'human_refseq.tab')}
     else:
         usrdatas = file_checker(INPUT_DIR, OUTPUT_DIR, maxfiles, )
     if usrdatas is None:
@@ -116,16 +124,9 @@ if __name__ == '__main__':
     print('Running on {} processes'.format(processes))
     print('\nStart at {}'.format(startTime))
 
-    for usrdata in usrdatas:
-        usrdata.read_csv(sep='\t')  # read from the stored psms file
-        usrdata.df['metadatainfo'] = ''
-        standard_names = column_identifier(usrdata.df, column_aliases)
-        usrdata.df.rename(columns={v: k
-                                   for k,v in standard_names.items()},
-                          inplace=True)
-        usrdata.df = set_modifications(usrdata.df)
+    usrdatas = pygrouper.set_up(usrdatas, column_aliases)
 
-    usrdatas, databases = match(usrdatas, refseqs)
+    usrdatas, databases = pygrouper.match(usrdatas, refseqs)
 
     pool = mp.Pool(processes=processes)
     params = zip(usrdatas, repeat(databases), repeat(LABELS), repeat(gid_ignore_file), repeat(test))
@@ -133,6 +134,9 @@ if __name__ == '__main__':
 
     results = pool.map(work, params)
     errors = dict()
+    if test:
+        sys.exit(0)
+
     for d in results:
         errors.update(d)
     for usrdata in usrdatas:
