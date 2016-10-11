@@ -421,8 +421,6 @@ def flag_AUC_PSM(usrdata, filtervalues):
     return usrdata
 
 def _gene_taxon_map(gene, d):
-    if gene:
-        gene = float(gene)  # just in case
     return d.get(gene)
 
 def gene_taxon_map(usrdata, gene_taxon_dict):
@@ -482,7 +480,7 @@ def select_good_peptides(usrdata, labelix):
 
 
 def _get_gene_capacity(geneid, database):
-    return database[database.faa_GeneID == float(geneid)].capacity.mean()
+    return database[database.faa_GeneID == geneid].capacity.mean()
 
 def get_gene_capacity(genes_df, database, col='e2g_GeneID'):
     """Get gene capcaity from the stored metadata"""
@@ -1085,7 +1083,7 @@ def set_modifications(usrdata):
 
 def _match(usrdatas, refseq_file):
     print('Using peptidome {} '.format(refseq_file))
-    database = pd.read_table(refseq_file)
+    database = pd.read_table(refseq_file, dtype=str)
     database['capacity'] = 1
     breakup_size = calculate_breakup_size(len(database))
     counter = 0
@@ -1123,7 +1121,6 @@ def match(usrdatas, refseqs):
     Match psms with fasta database
     Input is list of UserData objects and an optional dictionary of refseqs
     """
-
     inputdata_refseqs = set([usrdata.taxonid for usrdata in usrdatas])
     databases = dict()
     for organism in refseqs:
