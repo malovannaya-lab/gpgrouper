@@ -71,7 +71,7 @@ def _get_rawfile_info(path, spectraf):
         return ('not found, check rawfile path', 'not found')
     for f in os.listdir(path):
         if f == spectraf:
-            rawfile = os.path.abspath(path,f)
+            rawfile = os.path.abspath(os.path.join(path,f))
             break
     else:
         return ('not found', 'not found')
@@ -764,7 +764,6 @@ def get_labels(usrdata, labels, labeltype='none'):
 
 def redistribute_area_tmt(temp_df, label, labeltypes, area_col):
     """for tmt"""
-
     with_reporter = temp_df[temp_df['QuanUsage'] == 'Use']
     reporter_area = with_reporter[label] * with_reporter[area_col] / with_reporter[labeltypes].sum(1)
     new_area_col = area_col + '_reporter'
@@ -779,6 +778,9 @@ def concat_tmt_e2gs(rec, run, search, outdir, cols=None):
     for entry in os.scandir(outdir):
         if entry.is_file() and pat.search(entry.name):
             files.append(os.path.join(outdir, entry.name))
+    if len(files) == 0:
+        warn('No output for {}_{}_{}'.format(rec, run, search))
+        return
     df = pd.concat([pd.read_table(f) for f in files])
     outf = '{}_{}_{}_TMT_all_e2g.tab'.format(rec, run, search)
     df.to_csv(os.path.join(outdir, outf), columns=cols,
@@ -889,7 +891,7 @@ def grouper(usrdata, outdir='', database=None,
     pd.options.mode.chained_assignment = None  # default='warn'
 
     # none/SILAC loop
-    labeltypes = ['nolabel', 'heavy']  # right now only using nolabel, but in
+    # labeltypes = ['nolabel', 'heavy']  # right now only using nolabel, but in
                                        # future this can grow
     gpgcount, genecount, ibaqtot, = 0, 0, 0
     e2g_cols = ['e2g_EXPRecNo', 'e2g_EXPRunNo', 'e2g_EXPSearchNo',
@@ -908,7 +910,6 @@ def grouper(usrdata, outdir='', database=None,
     additional_labels = list()
 
     orig_area_col = area_col
-
     for label in labeltypes:  # increase the range to go through more label types
         labelix = labelflag.get(label, 0)
         area_col = orig_area_col
@@ -917,7 +918,10 @@ def grouper(usrdata, outdir='', database=None,
         # ==========Select only peptides flagged  with good quality=========== #
         mylabelix = labelix
         if usrdata.labeltype == 'TMT':
-            mylabelix = 0 # should be 1 but not today
+            mylabelix = 0 # originally would be the label type as indicated
+                          # by the modification, but Proteome Discoverer changed how they
+                          # mark the label.
+                          # Really no need for marking the label (but maybe for SILAC)
         temp_df = select_good_peptides(usrdata.df, mylabelix)
         if usrdata.labeltype == 'TMT':
             temp_df, area_col = redistribute_area_tmt(temp_df, label, labeltypes, area_col)
@@ -1005,6 +1009,11 @@ def grouper(usrdata, outdir='', database=None,
     usrdata.df.drop('metadatainfo', axis=1, inplace=True)  # Don't need this
                                       # column anymore.
     usrdata.df = pd.merge(usrdata.df, temp_df, how='left')
+    if len(usrdata.df) == 0:
+        print('No protein information for {}.\n'.format(repr(usrdata)))
+        logfile.write('No protein information for {}.\n'.format(repr(usrdata)))
+        logfile.close()
+        return
     usrdata.df = rank_peptides(usrdata.df, 'psm_PrecursorArea_dstrAdj')
     usrdata.df['psm_PeptRank'] = usrdata.df['psm_PeptRank'].fillna(0)  # anyone who
                               # didn't get a rank gets a rank of 0
@@ -1165,7 +1174,6 @@ def main(usrdatas=[], fullpeptread=False, inputdir='', outputdir='', refs=dict()
     """
     """
     # ====================Configuration Setup / Loading======================= #
-
     if imagetitle:
         fancyprint(program_title, 12)  # ascii rt
         #  fancyprint('Malovannaya lab',10)  #
@@ -1200,7 +1208,7 @@ def main(usrdatas=[], fullpeptread=False, inputdir='', outputdir='', refs=dict()
                   'The reason is : {}'.format(repr(usrdata), e))
             logging.warn('Failure for file of experiment {}.\n'\
                          'The reason is : {}'.format(repr(usrdata), e))
-            raise  # usually don't need to raise, will kill the script. Re-enable
+            # raise  # usually don't need to raise, will kill the script. Re-enable
                    #if need to debug and find where errors are
     print('Time taken : {}\n'.format(datetime.now() - startTime))
     return 0

@@ -6,6 +6,7 @@ import threading
 import argparse
 #from collections import defaultdict
 from configparser import ConfigParser
+from warnings import warn
 #from datetime import datetime
 import pandas as pd
 #import database_config as db
@@ -65,7 +66,11 @@ def _update_database(d):
 def update_database(usrdata):
     """Update the database with an exported json file of data"""
     outname = usrdata.output_name('metadata', ext='json')
-    with open(os.path.join(usrdata.outdir, outname), 'r') as f:
+    outfile = os.path.join(usrdata.outdir, outname)
+    if not os.path.exists(outfile):
+        warn("Unable to update {!r}, metadata file does not exist.".format(usrdata))
+        return
+    with open(outfile, 'r') as f:
         metadata = json.load(f)
     _update_database(metadata)
 

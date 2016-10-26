@@ -166,7 +166,10 @@ def view_taxons(path):
         click.echo('{} : {}\t{}'.format(taxon, file,
                                         datetime.fromtimestamp(filestat.st_mtime)))
 
-
+DEFAULTS = {'max_files': 99, 'pep': 1.0, 'enzyme': 'trypsin', 'configfile': None, 'interval': 3600, 'rawfiledir': '.',
+            'taxonid': None, 'contaminants': None, 'quant_source': 'AUC', 'outdir': None, 'zmax': 6, 'ion_score': 7.0,
+            'qvalue': 0.05, 'idg': 9, 'autorun': False, 'name': 'shiro', 'modi': 4, 'zmin': 2,
+            'no_taxa_redistrib': False, 'labeltype': 'none'}
 
 @cli.command(context_settings=CONTEXT_SETTINGS)
 @click.option('-a', '--autorun', is_flag=True,
@@ -178,18 +181,18 @@ def view_taxons(path):
 @click.option('-e', '--enzyme', type=click.Choice(['trypsin', 'trypsin/p', 'chymotrypsin',
                                                    'LysC', 'LysN', 'GluC', 'ArgC'
                                                    'AspN',]),
-              default='trypsin', show_default=True,
+              default=DEFAULTS['enzyme'], show_default=True,
               help="Enzyme used for digestion. Ignored with autorun.")
-@click.option('-i', '--interval', type=int, default=3600,
+@click.option('-i', '--interval', type=int, default=DEFAULTS['interval'],
               help='''(Autorun only) Interval in seconds to wait between automatic
               checks for new files to group. Default is 1 hour.''')
-@click.option('--ion-score', type=float, default=7.0, show_default=True,
+@click.option('--ion-score', type=float, default=DEFAULTS['ion_score'], show_default=True,
               help='Ion score cutoff for a psm.')
 @click.option('-l', '--labeltype', type=click.Choice(['none', 'SILAC', 'iTRAQ', 'TMT']),
-              default='none', show_default=True, help='Type of label for this experiment.')
-@click.option('-m', '--max-files', type=int, default=99,
+              default=DEFAULTS['labeltype'], show_default=True, help='Type of label for this experiment.')
+@click.option('-m', '--max-files', type=int, default=DEFAULTS['max_files'],
               help='(Autorun only) Maximum number of experiments to queue for autorun')
-@click.option('--max-modis', type=int, default=4, show_default=True,
+@click.option('--modi', type=int, default=DEFAULTS['modi'], show_default=True,
               help='Maximum modifications to allow on one peptide')
 @click.option('-n', '--name', type=str, default=getuser(), show_default=True,
               help='Name associated with the search')
@@ -200,15 +203,15 @@ def view_taxons(path):
 @click.option('-p', '--psms-file', type=click.Path(exists=True, dir_okay=False),
               multiple=True,
               help='Tab deliminated file of psms to be grouped')
-@click.option('--psm-idg', type=int, default=9, show_default=True,
+@click.option('--idg', type=int, default=DEFAULTS['idg'], show_default=True,
               help='PSM IDG cutoff value.')
-@click.option('--pep', type=float, default=1.0, show_default=True,
+@click.option('--pep', type=float, default=DEFAULTS['pep'], show_default=True,
               help='Posterior error probability cutoff')
-@click.option('--q-value', type=float, default=0.05, show_default=True,
+@click.option('--qvalue', type=float, default=DEFAULTS['qvalue'], show_default=True,
               help='Cutoff q-value for a given psm.')
-@click.option('--quant_source', type=click.Choice(['AUC', 'Intensity']), default='AUC',
+@click.option('--quant_source', type=click.Choice(['AUC', 'Intensity']), default=DEFAULTS['quant_source'],
               show_default=True, help='Cutoff q-value for a given psm.')
-@click.option('-r', '--rawfiledir', type=click.Path(file_okay=False), default='.',
+@click.option('-r', '--rawfiledir', type=click.Path(file_okay=False), default=DEFAULTS['rawfiledir'],
               show_default=True,
               help='''Directory to look for corresponding rawfiles for extra summary information.
               Note the raw files are not required for successful analysis.''')
@@ -217,12 +220,12 @@ def view_taxons(path):
               Note will automatically look for a `pygrouper_config.ini` in present directory if not specified''')
 @click.option('-t', '--taxonid', type=int,
               help='Taxon ID associated with the database file')
-@click.option('--zmin', type=int, default=2, show_default=True,
+@click.option('--zmin', type=int, default=DEFAULTS['zmin'], show_default=True,
               help='Minimum charge')
-@click.option('--zmax', type=int, default=6, show_default=True,
+@click.option('--zmax', type=int, default=DEFAULTS['zmax'], show_default=True,
               help='Maximum charge')
 def run(autorun, contaminants, database, enzyme, interval, ion_score, labeltype, max_files,
-        max_modis, name, no_taxa_redistrib, outdir, psms_file, psm_idg, pep, q_value, quant_source,
+        modi, name, no_taxa_redistrib, outdir, psms_file, idg, pep, qvalue, quant_source,
         rawfiledir, configfile, taxonid, zmin, zmax):
     """Run PyGrouper"""
     if not all([database, psms_file]) and not autorun:
@@ -240,6 +243,8 @@ def run(autorun, contaminants, database, enzyme, interval, ion_score, labeltype,
     LABELS = config.labels
     refseqs = config.refseqs
     filtervalues = config.filtervalues
+    if filtervalues:
+        click.echo('Using predefined config file')
     column_aliases = config.column_aliases
     gid_ignore_file = contaminants or config.contaminants
     if autorun:
@@ -259,7 +264,7 @@ def run(autorun, contaminants, database, enzyme, interval, ion_score, labeltype,
                                searchdb=database)
             try:
                 rec, run, search = find_rec_run_search(psmfile)
-                usrdata.recno, usrdata.runno, usrdata.search = int(rec), int(run), int(search)
+                usrdata.recno, usrdata.runno, usrdata.searchno = int(rec), int(run), int(search)
             except AttributeError:  # regex search failed, just use a default
                 usrdata.recno = ix+1  # default recno starts at 1
             usrdata.taxonid = taxonid
@@ -271,20 +276,26 @@ def run(autorun, contaminants, database, enzyme, interval, ion_score, labeltype,
             usrdata.quant_source = quant_source
             if filtervalues: # if defined earlier from passed config file
                 usrdata.filtervalues = filtervalues
+                params = click.get_current_context().params
+                for param in ('ion_score', 'qvalue', 'pep', 'idg', 'zmin', 'zmax', 'modi'):  # need to check for explictly passed options
+                    if params[param] != DEFAULTS[param]:  # Explicitly over-write
+                        usrdata.filtervalues[param] = params[param]
             else:
                 usrdata.filtervalues['ion_score'] = ion_score
-                usrdata.filtervalues['qvalue']    = q_value
+                usrdata.filtervalues['qvalue']    = qvalue
                 usrdata.filtervalues['pep']       = pep
-                usrdata.filtervalues['idg']       = psm_idg
+                usrdata.filtervalues['idg']       = idg
                 usrdata.filtervalues['zmin']      = zmin
                 usrdata.filtervalues['zmax']      = zmax
-                usrdata.filtervalues['modi']      = max_modis
+                usrdata.filtervalues['modi']      = modi
+
+
 
             usrdatas.append(usrdata)
         pygrouper.main(usrdatas=usrdatas,
                        inputdir=INPUT_DIR, outputdir=OUTPUT_DIR,
                        refs=refseqs, column_aliases=column_aliases,
-                       gid_ignore_file=contaminants,)
+                       gid_ignore_file=contaminants, labels=LABELS)
 
 def find_rec_run_search(target):
     "Try to get record, run, and search numbers with regex of a target string with pattern \d+_\d+_\d+"
