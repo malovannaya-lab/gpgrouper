@@ -160,7 +160,7 @@ if __name__ == '__main__':
 
     print()
     print('\nrelease date: {}'.format(_version.__copyright__))
-    print('Pygrouper v{}'.format(__version__))
+    print('Pygrouper v{}'.format(_version.__version__))
     print('Python version ' + sys.version)
     print('Pandas version: ' + pd.__version__)
     print('{} files found.'.format(len(usrdatas)))
@@ -178,10 +178,10 @@ if __name__ == '__main__':
     usrdatas, databases = match(usrdatas, refseqs)
 
     pool = mp.Pool(processes=processes)
-    params = zip(usrdatas, repeat(databases), repeat(LABELS), repeat(test))
+    params = zip(usrdatas, repeat(databases), repeat(labels), repeat(gid_ignore_file), repeat(test))
 
     results = pool.map(work, params)
 
 
-    sys.stderr = _stderr
-    sys.stdout = _stdout
+    # sys.stderr = _stderr
+    # sys.stdout = _stdout
