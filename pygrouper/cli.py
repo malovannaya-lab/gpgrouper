@@ -168,8 +168,9 @@ def view_taxons(path):
 
 DEFAULTS = {'max_files': 99, 'pep': 1.0, 'enzyme': 'trypsin', 'configfile': None, 'interval': 3600, 'rawfiledir': '.',
             'taxonid': None, 'contaminants': None, 'quant_source': 'AUC', 'outdir': None, 'zmax': 6, 'ion_score': 7.0,
+            'ion_score_bins': (10.0, 20.0, 30.0),
             'qvalue': 0.05, 'idg': 9, 'autorun': False, 'name': 'shiro', 'modi': 4, 'zmin': 2,
-            'no_taxa_redistrib': False, 'labeltype': 'none'}
+            'no_taxa_redistrib': False, 'labeltype': 'none', 'pipeline': 'PD'}
 
 @cli.command(context_settings=CONTEXT_SETTINGS)
 @click.option('-a', '--autorun', is_flag=True,
@@ -188,6 +189,8 @@ DEFAULTS = {'max_files': 99, 'pep': 1.0, 'enzyme': 'trypsin', 'configfile': None
               checks for new files to group. Default is 1 hour.''')
 @click.option('--ion-score', type=float, default=DEFAULTS['ion_score'], show_default=True,
               help='Ion score cutoff for a psm.')
+@click.option('--ion-score-bins', nargs=3, type=float, default=DEFAULTS['ion_score_bins'], show_default=True,
+              help='The three (ascending) IonScore cutoffs used to place PSMs in quality bins.')
 @click.option('-l', '--labeltype', type=click.Choice(['none', 'SILAC', 'iTRAQ', 'TMT']),
               default=DEFAULTS['labeltype'], show_default=True, help='Type of label for this experiment.')
 @click.option('-m', '--max-files', type=int, default=DEFAULTS['max_files'],
@@ -203,6 +206,8 @@ DEFAULTS = {'max_files': 99, 'pep': 1.0, 'enzyme': 'trypsin', 'configfile': None
 @click.option('-p', '--psms-file', type=click.Path(exists=True, dir_okay=False),
               multiple=True,
               help='Tab deliminated file of psms to be grouped')
+@click.option('--pipeline', type=click.Choice(['PD', 'MQ']), show_default=True,
+              help='Pipeline used for generating PSM file.')
 @click.option('--idg', type=int, default=DEFAULTS['idg'], show_default=True,
               help='PSM IDG cutoff value.')
 @click.option('--pep', type=float, default=DEFAULTS['pep'], show_default=True,
@@ -224,8 +229,8 @@ DEFAULTS = {'max_files': 99, 'pep': 1.0, 'enzyme': 'trypsin', 'configfile': None
               help='Minimum charge')
 @click.option('--zmax', type=int, default=DEFAULTS['zmax'], show_default=True,
               help='Maximum charge')
-def run(autorun, contaminants, database, enzyme, interval, ion_score, labeltype, max_files,
-        modi, name, no_taxa_redistrib, outdir, psms_file, idg, pep, qvalue, quant_source,
+def run(autorun, contaminants, database, enzyme, interval, ion_score, ion_score_bins, labeltype, max_files,
+        modi, name, no_taxa_redistrib, outdir, psms_file, pipeline, idg, pep, qvalue, quant_source,
         rawfiledir, configfile, taxonid, zmin, zmax):
     """Run PyGrouper"""
     if not all([database, psms_file]) and not autorun:
@@ -274,20 +279,22 @@ def run(autorun, contaminants, database, enzyme, interval, ion_score, labeltype,
             usrdata.outdir = OUTPUT_DIR or Path(OUTPUT_DIR).resolve().__str__()
             # later on expected that datafile is separated from path
             usrdata.quant_source = quant_source
+            usrdata.pipeline = pipeline
             if filtervalues: # if defined earlier from passed config file
                 usrdata.filtervalues = filtervalues
                 params = click.get_current_context().params
-                for param in ('ion_score', 'qvalue', 'pep', 'idg', 'zmin', 'zmax', 'modi'):  # need to check for explictly passed options
+                for param in ('ion_score', 'ion_score_bins', 'qvalue', 'pep', 'idg', 'zmin', 'zmax', 'modi'):  # need to check for explictly passed options
                     if params[param] != DEFAULTS[param]:  # Explicitly over-write
                         usrdata.filtervalues[param] = params[param]
             else:
-                usrdata.filtervalues['ion_score'] = ion_score
-                usrdata.filtervalues['qvalue']    = qvalue
-                usrdata.filtervalues['pep']       = pep
-                usrdata.filtervalues['idg']       = idg
-                usrdata.filtervalues['zmin']      = zmin
-                usrdata.filtervalues['zmax']      = zmax
-                usrdata.filtervalues['modi']      = modi
+                usrdata.filtervalues['ion_score']      = ion_score
+                usrdata.filtervalues['ion_score_bins'] = ion_score
+                usrdata.filtervalues['qvalue']         = qvalue
+                usrdata.filtervalues['pep']            = pep
+                usrdata.filtervalues['idg']            = idg
+                usrdata.filtervalues['zmin']           = zmin
+                usrdata.filtervalues['zmax']           = zmax
+                usrdata.filtervalues['modi']           = modi
 
 
 

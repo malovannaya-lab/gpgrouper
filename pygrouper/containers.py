@@ -25,6 +25,8 @@ class UserData:
         self.searchdb = searchdb # file name for refseq
         self.datafile = datafile
         self.df = pd.DataFrame()
+        self.pipeline = None
+
 
     def __repr__(self):
         return '{}_{}_{}'.format(self.recno, self.runno, self.searchno)
@@ -73,8 +75,10 @@ class UserData:
         self.df['psm_GeneCount'],self.df['psm_ProteinCount'],\
         self.df['psm_HomologeneID'], self.df['psm_ProteinCapacity'], \
         self.df['metadatainfo'] = '', '', 0, 0, '', '', ''
+        if not 'ion_score_bins' in self.filtervalues:
+            self.filtervalues['ion_score_bins'] = (10, 20, 30)
         return self
 
     @property
     def filterstamp(self):
-        return 'is{ion_score}_qv{qvalue}_pep{pep}_idg{idg}_z{zmin}to{zmax}_mo{modi}'.format(**self.filtervalues)
+        return 'is{ion_score}_qv{qvalue}_pep{pep}_idg{idg}_z{zmin}to{zmax}_mo{modi}_is_bins{ion_score_bins}'.format(**self.filtervalues)

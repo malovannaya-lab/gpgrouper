@@ -212,14 +212,15 @@ def gene_taxon_mapper(df):
     return {x[1].faa_GeneID: x[1].faa_TaxonID for x in df.iterrows()}
 
 
-def _assign_IDG(ionscore, qvalue):
+def _assign_IDG(ionscore, qvalue, ion_score_bins):
 
-    if (ionscore>= 30 and qvalue <= .01): IDGout = 1
-    elif (ionscore >= 30 and qvalue <= .05): IDGout = 2
-    elif (ionscore >= 20 and qvalue <= .01): IDGout = 3
-    elif (ionscore >= 20 and qvalue <= .05): IDGout = 4
-    elif (ionscore >= 10 and qvalue <= .01): IDGout = 5
-    elif (ionscore >= 10 and qvalue <= .05): IDGout = 6
+    low, med, high = ion_score_bins  # default should be 10, 20, 30
+    if (ionscore>= high and qvalue <= .01): IDGout = 1
+    elif (ionscore >= high and qvalue <= .05): IDGout = 2
+    elif (ionscore >= med and qvalue <= .01): IDGout = 3
+    elif (ionscore >= med and qvalue <= .05): IDGout = 4
+    elif (ionscore >= low and qvalue <= .01): IDGout = 5
+    elif (ionscore >= low and qvalue <= .05): IDGout = 6
     elif (ionscore >= 0 and qvalue <= .01): IDGout = 7
     elif (ionscore >= 0 and qvalue <= .05): IDGout = 8
     else: IDGout  = 9
@@ -228,10 +229,11 @@ def _assign_IDG(ionscore, qvalue):
 def assign_IDG(usrdata):
     """Assign IDG bsaed on combination of
     IonScore and q_value"""
-
-    usrdata['psm_PSM_IDG'] = usrdata.apply(lambda x:
-                                           _assign_IDG(x['IonScore'],
-                                                      x['q_value']), axis=1)
+    ion_score_bins = usrdata.filtervalues.get('ion_score_bins', (10, 20, 30))
+    usrdata.df['psm_PSM_IDG'] = usrdata.df.apply(lambda x:
+                                                 _assign_IDG(x['IonScore'],
+                                                             x['q_value'],
+                                                             ion_score_bins), axis=1)
     return usrdata
 
 def make_seqlower(usrdata, col='Sequence'):
@@ -846,7 +848,7 @@ def grouper(usrdata, outdir='', database=None,
                                                                 usrfile))
         # Store all of these sequences in the big log file, not per experiment.
     logfile.write('{} | Starting grouper.\n'.format(time.ctime()))
-    usrdata.df = assign_IDG(usrdata.df)
+    usrdata = assign_IDG(usrdata)
     usrdata.df = make_seqlower(usrdata.df)
     usrdata.df = usrdata.df.sort_values(by=['SpectrumFile', area_col,
                                       'Sequence', 'Modifications',
@@ -1164,9 +1166,29 @@ def set_up(usrdatas, column_aliases):
                                        for k,v in standard_names.items()},
                               inplace=True
             )
+        if usrdata.quant_source == 'AUC' and 'Intensity' in usrdata.df.columns:
+            # explicitly rename as MaxQuant referrs to the PSM area as Intensity
+            usrdata.df.rename(columns={'Intensity': 'PrecursorArea'}, inplace=True)
         # usrdata.df = usrdata.populate_base_data()
         usrdata.populate_base_data()
-        usrdata.df = set_modifications(usrdata.df)
+        if 'MissedCleavages' not in usrdata.df.columns:
+            usrdata.df['MissedCleavages'] =\
+                                        usrdata.df.apply(lambda x:\
+                                                         calculate_miscuts(x['Sequence'],
+                                                                           targets=('K', 'R')),
+                                                         axis=1)
+        if not 'q_value' in usrdata.df.columns:
+            usrdata.df['q_value'] = usrdata.df['PEP'] / 10  # rough approximation
+        if not 'PSMAmbiguity' in usrdata.df.columns:
+            usrdata.df['PSMAmbiguity'] = 'Unambiguous'
+        if not usrdata.pipeline == 'MQ':  # MaxQuant already has modifications
+            usrdata.df = set_modifications(usrdata.df)
+        else:
+            # usrdata.df['psm_SequenceModi'] = usrdata.df['Modified sequence']
+            usrdata.df.rename(columns={'Modified sequence': 'psm_SequenceModi'},
+                              inplace=True)
+            usrdata.df['psm_SequenceModiCount'] = count_modis_maxquant(usrdata.df)
+            usrdata.df['psm_LabelFLAG'] = 0  #TODO: handle this properly
     return usrdatas
 
 def main(usrdatas=[], fullpeptread=False, inputdir='', outputdir='', refs=dict(),
@@ -1193,7 +1215,6 @@ def main(usrdatas=[], fullpeptread=False, inputdir='', outputdir='', refs=dict()
     usrdatas = set_up(usrdatas, column_aliases)
 
     usrdatas, databases = match(usrdatas, refs)
-    # raise BaseException(usrdatas[0].df.head())
 
     failed_exps = []
     for usrdata in usrdatas:
@@ -1208,7 +1229,7 @@ def main(usrdatas=[], fullpeptread=False, inputdir='', outputdir='', refs=dict()
                   'The reason is : {}'.format(repr(usrdata), e))
             logging.warn('Failure for file of experiment {}.\n'\
                          'The reason is : {}'.format(repr(usrdata), e))
-            # raise  # usually don't need to raise, will kill the script. Re-enable
+            raise  # usually don't need to raise, will kill the script. Re-enable
                    #if need to debug and find where errors are
     print('Time taken : {}\n'.format(datetime.now() - startTime))
     return 0

@@ -230,3 +230,21 @@ def seq_modi(sequence, modifications, keeplog=True):
     if not seqmodi:
         seqmodi = sequence
     return sequence, seqmodi, modi_len, label
+
+def _count_modis_maxquant(modi):
+    if modi == 'Unmodified':
+        return 0
+    return modi.count(',') + 1  # multiple modis are separated by a comma
+
+def count_modis_maxquant(df):
+    return df.apply(lambda x: _count_modis_maxquant(x['Modifications']), axis=1)
+
+def calculate_miscuts(seq, targets=None):
+    """Calculates number of miscuts for a given sequence
+    using amino acids given in targets"""
+    # TODO: implement support for cases such as trypsin/P that don't count miscuts with next aa
+    # a Proline, for example
+    miscuts = sum(seq.count(x) for x in targets)
+    if not any(seq[-1] == x for x in 'KR'):  # then at the C terminal
+        return miscuts
+    return miscuts -1
