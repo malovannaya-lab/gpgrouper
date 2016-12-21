@@ -124,11 +124,82 @@ def fancyprint(ShowText,string_size=12):
                 else: line.append('#'),
             print(''.join(line))
 
+label_pos = re.compile(
+    """(\d+|N-Term)      # Match numbers,
+    (?!       # only if it's not followed by..."
+     [^(]*    #   any number of characters except opening parens" +
+     \\)      #   followed by a closing parens" +
+    )         # End of lookahead""",
+    re.VERBOSE
+)
+
+inside_paren = re.compile(r"\((\S+)\)")
+amino_acids = list('ACDEFGHIKLMNPQRSTVWY')
+
+def seq_modi(sequence, modifications, to_count):
+    '''
+    function to output a modified string of sequence that includes all modifications at the appropriate place.
+    Modified amino acids are indicated in the input 'sequence' by a lowercase letter.
+    A dictionary of potential modification keys and their corresponding substitutions in the primary sequence is provided;
+    all other modifications should be ignored.
+    Sometimes N-terminal modifications are present, this should be considered the same as a modification at the first amino acid.
+    '''
+    #TODO : have separate collections for labeled and non-labeled modifications
+    seqmodi = ''
+    seqlist = list(sequence)
+    modi_len = 0  # default length is zero, can change
+    label = 0  # default label = 0, can change
+    if not any(c for c in sequence if (c.islower() or c == 'X')): # check if any modifications to deal with
+        return sequence, '', 0, label
+    modkeys = inside_paren.findall(modifications)
+    modi_len = len([x for x in modkeys if any(mod in x for mod in to_count)])
+    # modkeys = re.findall(r'(\([^\)]+\))',modifications)  #get all modifications
+    # modpos = re.findall(r'[A-Z]([0-9]+)',modifications)  # get all modification positions
+    modpos = label_pos.findall(modifications)
+    modpos = [0 if x.lower() == 'n-term' else int(x)-1 for x in modpos] # n terminal is at first position
+    mod_dict = defaultdict(list)
+    for (key,value) in zip(modpos, modkeys):
+        mod_dict[key].append(value)
+    for key, values in mod_dict.items():
+        mod_dict[key] = sorted(values)
+    for ix, s in enumerate(sequence.upper()):
+        # print(ix, seqmodi)
+        if ix in mod_dict:
+            if s == 'X':  # deal with the X first
+                to_replace = [x for x in mod_dict[ix] if x in amino_acids]
+                if len(to_replace) == 1:
+                    if seqlist[ix].islower():
+                        replaced_aa = to_replace[0].lower()
+                    else:
+                        replaced_aa = to_replace[0]
+                    seqmodi += replaced_aa.upper()  # all seqmodi AAs are upper case
+                    seqlist[ix] = replaced_aa
+                    mod_dict[ix].remove(replaced_aa.upper())
+                elif len(to_replace) == 0:
+                    pass  # not an amino acid (listed above at least)
+                    #Probably an unidentified mass of the form X10(110.0)
+                else:
+                    print('Error parsing sequence {} with modifications {}'.format(sequence, modifications))
+                    seqmodi += s
+            else:
+                seqmodi += s
+        else:
+            seqmodi += s
+        if ix not in mod_dict:
+            continue
+        for modi in mod_dict[ix]:
+            if sequence[ix].islower() and modi not in amino_acids:
+                modi_ = modi.lower()
+            else:
+                modi_ = modi
+            # seqmodi += modi
+            seqmodi += '({})'.format(modi_)
+    sequence = ''.join(seqlist)
+    return sequence, seqmodi, modi_len, label
+    # return sequence, seqmodi, modi_len
 
 
-
-
-def seq_modi(sequence, modifications, keeplog=True):
+def _seq_modi_old(sequence, modifications, keeplog=True):
 
     '''
     function to output a modified string of sequence that includes all

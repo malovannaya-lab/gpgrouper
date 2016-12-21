@@ -460,7 +460,14 @@ def multi_taxon_splitter(taxon_ids, usrdata, gid_ignore_list, area_col):
         # now compute ratio:
     for taxon in taxon_ids:
         taxon = int(taxon)
-        taxon_totals[taxon] = taxon_totals[taxon] / tot_unique
+        try:
+            percentage = taxon_totals[taxon] / tot_unique
+        except ZeroDivisionError:
+            warn("""This file has multiple taxa but no unique to taxa peptides.
+            Please check this experiment
+            """)
+            percentage = 1
+        taxon_totals[taxon] = percentage
         print(taxon, ' ratio : ', taxon_totals[taxon])
         #logfile.write('{} ratio : {}\n'.format(taxon, taxon_totals[taxon]))
     return taxon_totals
@@ -766,7 +773,8 @@ def get_labels(usrdata, labels, labeltype='none'):
 
 def redistribute_area_tmt(temp_df, label, labeltypes, area_col):
     """for tmt"""
-    with_reporter = temp_df[temp_df['QuanUsage'] == 'Use']
+    # with_reporter = temp_df[temp_df['QuanUsage'] == 'Use']
+    with_reporter = temp_df[ temp_df['psm_SequenceModi'].str.contains('.*tmt.*')]
     reporter_area = with_reporter[label] * with_reporter[area_col] / with_reporter[labeltypes].sum(1)
     new_area_col = area_col + '_reporter'
     reporter_area.name = new_area_col
@@ -928,7 +936,7 @@ def grouper(usrdata, outdir='', database=None,
         if usrdata.labeltype == 'TMT':
             temp_df, area_col = redistribute_area_tmt(temp_df, label, labeltypes, area_col)
         elif usrdata.labeltype == 'SILAC':
-            pass
+            raise NotImplementedError('No support for SILAC experiments yet.')
         # ==================================================================== #
         if len(temp_df) > 0:  # only do if we actually have peptides selected
             genedata_out = usrdata.output_name(labelix, 'e2g', ext='tab')
@@ -1083,9 +1091,19 @@ def calculate_breakup_size(row_number):
     return ceil(row_number/4)
 
 def set_modifications(usrdata):
+
+    to_replace = {'DeStreak' : 'des', 'Deamidated' : 'dam', 'Carbamidomethyl' : 'car',
+                  'Oxidation' : 'oxi', 'Phospho' : 'pho',
+                  'Acetyl': 'ace', 'GlyGly' : 'gg', 'Label:13C(6)' : 'lab', 'Label:13C(6)+GlyGly' : 'labgg',
+                  '\)\(': ':'}
+    modis_abbrev = usrdata.Modifications.replace(regex=to_replace)
+    modis_abbrev.name = 'Modifications_abbrev'
+    usrdata = usrdata.join(modis_abbrev)
     modifications = usrdata.apply(lambda x :
                                   seq_modi(x['Sequence'],
-                                           x['Modifications']),
+                                           x['Modifications_abbrev'],
+                                           to_replace.values()
+                                  ),
                                   axis=1
     )
     (usrdata['Sequence'], usrdata['psm_SequenceModi'],
@@ -1229,7 +1247,7 @@ def main(usrdatas=[], fullpeptread=False, inputdir='', outputdir='', refs=dict()
                   'The reason is : {}'.format(repr(usrdata), e))
             logging.warn('Failure for file of experiment {}.\n'\
                          'The reason is : {}'.format(repr(usrdata), e))
-            raise  # usually don't need to raise, will kill the script. Re-enable
+            # raise  # usually don't need to raise, will kill the script. Re-enable
                    #if need to debug and find where errors are
     print('Time taken : {}\n'.format(datetime.now() - startTime))
     return 0
