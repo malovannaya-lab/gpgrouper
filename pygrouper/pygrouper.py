@@ -182,10 +182,10 @@ def _extract_peptideinfo(ixs, database):
      database_matches = database.ix[ixs]
 
      for ix, row in database_matches.iterrows():
-         genelist.add(row.faa_GeneID)
-         taxonids.add(row.faa_TaxonID)
-         homologeneids.add(row.faa_HomologeneID)
-         proteingis.add(row.faa_ProteinGI)
+         genelist.add(row.GeneID)
+         taxonids.add(row.TaxonID)
+         homologeneids.add(row.HomologeneID)
+         proteingis.add(row.ProteinGI)
          capacity.append(row.capacity)
      return (','.join(str(x) for x in genelist),
              len(genelist),
@@ -209,7 +209,7 @@ def gene_taxon_mapper(df):
     """Returns a dictionary with mapping:
     gene -> taxon
     Input is the metadata extracted previously"""
-    return {x[1].faa_GeneID: x[1].faa_TaxonID for x in df.iterrows()}
+    return {x[1].GeneID: x[1].TaxonID for x in df.iterrows()}
 
 
 def _assign_IDG(ionscore, qvalue, ion_score_bins):
@@ -304,8 +304,8 @@ def auc_reflagger(usrdata, area_col):
     no_dups['AUC_reflagger'] = 1
     usrdata = usrdata.join(no_dups[['AUC_reflagger']])
     usrdata['AUC_reflagger'] = usrdata['AUC_reflagger'].fillna(0)
-    area_col = 'psm_SequenceArea'
-    return usrdata, area_col
+    # area_col = 'psm_SequenceArea'
+    return usrdata
 
 def export_metadata(program_title='version',usrdata=None, matched_psms=0, unmatched_psms=0,
                     usrfile='file', taxon_totals=dict(), outname=None, outpath='.', **kwargs):
@@ -489,7 +489,7 @@ def select_good_peptides(usrdata, labelix):
 
 
 def _get_gene_capacity(geneid, database):
-    return database[database.faa_GeneID == geneid].capacity.mean()
+    return database[database.GeneID == geneid].capacity.mean()
 
 def get_gene_capacity(genes_df, database, col='e2g_GeneID'):
     """Get gene capcaity from the stored metadata"""
@@ -866,7 +866,7 @@ def grouper(usrdata, outdir='', database=None,
     # remove ambiguous peaks
     usrdata.df = sum_area(usrdata.df, area_col) # area_col is PrecursorArea / Intensity
     # now remove duplicate sequence areas
-    usrdata.df, area_col = auc_reflagger(usrdata.df, area_col)
+    usrdata.df = auc_reflagger(usrdata.df, area_col)
     # area_col = 'psm_SequenceArea'  # this is equal to what is returned by auc_reflagger
     #usrdata.to_csv(os.path.join(outdir, usrdata_out),index=False, sep='\t')
     #print('exiting...')
@@ -919,7 +919,8 @@ def grouper(usrdata, outdir='', database=None,
     labeltypes = get_labels(usrdata.df, labels, usrdata.labeltype)
     additional_labels = list()
 
-    orig_area_col = area_col
+    orig_area_col = 'psm_SequenceArea' if usrdata.labeltype == 'None' else area_col
+    # Don't use the aggregated SequenceArea for TMT experiments
     for label in labeltypes:  # increase the range to go through more label types
         labelix = labelflag.get(label, 0)
         area_col = orig_area_col
@@ -938,77 +939,79 @@ def grouper(usrdata, outdir='', database=None,
         elif usrdata.labeltype == 'SILAC':
             raise NotImplementedError('No support for SILAC experiments yet.')
         # ==================================================================== #
-        if len(temp_df) > 0:  # only do if we actually have peptides selected
-            genedata_out = usrdata.output_name(labelix, 'e2g', ext='tab')
-            print('{}: Populating gene table for {}.'.format(datetime.now(),
-                                                             usrdata.datafile))
-            # genes_df['_e2g_GeneID'] = Set(temp_df['_data_GeneID']) #only in 2.7
-            genes_df = create_e2g_df(temp_df, label)
+        if len(temp_df) == 0:  # only do if we actually have peptides selected
+            continue
 
-            genes_df = get_gene_capacity(genes_df, database)
-            genes_df = get_peptides_for_gene(genes_df, temp_df)
-            genes_df = get_psms_for_gene(genes_df, temp_df)
+        genedata_out = usrdata.output_name(labelix, 'e2g', ext='tab')
+        print('{}: Populating gene table for {}.'.format(datetime.now(),
+                                                            usrdata.datafile))
+        # genes_df['_e2g_GeneID'] = Set(temp_df['_data_GeneID']) #only in 2.7
+        genes_df = create_e2g_df(temp_df, label)
 
-            print('{}: Calculating peak areas for {}.'.format(
-                datetime.now(), usrdata.datafile))
-            logging.info('{}: Calculating peak areas for {}.'.format(
-                datetime.now(), usrdata.datafile))
-            logfile.write('{} | Calculating peak areas.\n'.format(time.ctime()))
+        genes_df = get_gene_capacity(genes_df, database)
+        genes_df = get_peptides_for_gene(genes_df, temp_df)
+        genes_df = get_psms_for_gene(genes_df, temp_df)
 
-            genes_df = calculate_protein_area(genes_df, temp_df, area_col, normalize)
-            # pandas may give a warning from this though it is fine
-            print('{}: Calculating distributed area ratio for {}.'.format(
-                datetime.now(), usrdata.datafile))
-            logging.info('{}: Calculating distributed area ratio for {}.'.format(
-                datetime.now(), usrdata.datafile))
-            logfile.write('{} | Calculating distributed area ratio.\n'.format(
-                time.ctime()))
-            temp_df = distribute_psm_area(temp_df, genes_df, area_col, taxon_totals)
+        print('{}: Calculating peak areas for {}.'.format(
+            datetime.now(), usrdata.datafile))
+        logging.info('{}: Calculating peak areas for {}.'.format(
+            datetime.now(), usrdata.datafile))
+        logfile.write('{} | Calculating peak areas.\n'.format(time.ctime()))
 
-            print('{}: Assigning gene sets and groups for {}.'.format(
-                datetime.now(), usrfile))
-            logging.info('{}: Assigning gene sets and groups for {}.'.format(
-                datetime.now(), usrfile))
-            logfile.write('{} | Assigning gene sets and groups.\n'.format(
-                time.ctime()))
+        genes_df = calculate_protein_area(genes_df, temp_df, area_col, normalize)
+        # pandas may give a warning from this though it is fine
+        print('{}: Calculating distributed area ratio for {}.'.format(
+            datetime.now(), usrdata.datafile))
+        logging.info('{}: Calculating distributed area ratio for {}.'.format(
+            datetime.now(), usrdata.datafile))
+        logfile.write('{} | Calculating distributed area ratio.\n'.format(
+            time.ctime()))
+        temp_df = distribute_psm_area(temp_df, genes_df, area_col, taxon_totals)
 
-            genes_df = assign_gene_sets(genes_df, temp_df)
+        print('{}: Assigning gene sets and groups for {}.'.format(
+            datetime.now(), usrfile))
+        logging.info('{}: Assigning gene sets and groups for {}.'.format(
+            datetime.now(), usrfile))
+        logfile.write('{} | Assigning gene sets and groups.\n'.format(
+            time.ctime()))
 
-            #genes_df['e2g_GeneCapacity'] = genes_df.e2g_GeneCapacity.astype('float')
-            #genes_df._e2g_GeneCapacity.dtype)  # for debugging
-            genes_df = calculate_gene_dstrarea(genes_df, temp_df, normalize)
-            genes_df['e2g_n_iBAQ_dstrAdj'] = \
-                genes_df.e2g_nGPArea_Sum_dstrAdj / genes_df.e2g_GeneCapacity
-            genes_df = set_gene_gpgroups(genes_df)
+        genes_df = assign_gene_sets(genes_df, temp_df)
 
-            genes_df.sort_values(by=['e2g_GPGroup'], ascending=True, inplace=True)
-            genes_df.index = list(range(0, len(genes_df)))  # reset the index
-            gpgcount += genes_df.e2g_GPGroup.max()  # do this before filling na
-            genes_df['e2g_GPGroup'].fillna('', inplace=True)  # convert all NaN
-                                                           #back to empty string
-            # =============================================================#
-            genes_df['e2g_EXPRecNo'] = usrdata.recno
-            genes_df['e2g_EXPRunNo'] = usrdata.runno
-            genes_df['e2g_EXPSearchNo'] = usrdata.searchno
-            genes_df['e2g_EXPTechRepNo'] = usrdata.techrepno
-            genes_df['e2g_AddedBy'] = usrdata.added_by
-            genes_df['e2g_CreationTS'] = datetime.now().strftime("%m/%d/%Y %H:%M:%S")
-            genes_df['e2g_ModificationTS'] = datetime.now().strftime("%m/%d/%Y %H:%M:%S")
-            #renamed_genecols = [exp_setup.get(genecol, genecol) for genecol in e2g_cols]
-            #torename = {k:v for k, v in exp_setup.items() if k.startswith('e2g_')}
-            # get a log of gene info
-            genecount += len(genes_df)
-            ibaqtot += genes_df[~genes_df.e2g_GeneID.isin(
-                gid_ignore_list)].e2g_n_iBAQ_dstrAdj.sum()
+        #genes_df['e2g_GeneCapacity'] = genes_df.e2g_GeneCapacity.astype('float')
+        #genes_df._e2g_GeneCapacity.dtype)  # for debugging
+        genes_df = calculate_gene_dstrarea(genes_df, temp_df, normalize)
+        genes_df['e2g_n_iBAQ_dstrAdj'] = \
+            genes_df.e2g_nGPArea_Sum_dstrAdj / genes_df.e2g_GeneCapacity
+        genes_df = set_gene_gpgroups(genes_df)
 
-            #genes_df.rename(columns=torename, inplace=True)
-            # print(os.path.join(outdir, genedata_out))
-            genes_df.to_csv(os.path.join(usrdata.outdir, genedata_out), columns=e2g_cols,
-                            index=False, encoding='utf-8', sep='\t')
-            logfile.write('{} | Export of genetable for labeltype {}'\
-                          'completed.\n'.format(
-                              time.ctime(),
-                              label))
+        genes_df.sort_values(by=['e2g_GPGroup'], ascending=True, inplace=True)
+        genes_df.index = list(range(0, len(genes_df)))  # reset the index
+        gpgcount += genes_df.e2g_GPGroup.max()  # do this before filling na
+        genes_df['e2g_GPGroup'].fillna('', inplace=True)  # convert all NaN
+                                                        #back to empty string
+        # =============================================================#
+        genes_df['e2g_EXPRecNo'] = usrdata.recno
+        genes_df['e2g_EXPRunNo'] = usrdata.runno
+        genes_df['e2g_EXPSearchNo'] = usrdata.searchno
+        genes_df['e2g_EXPTechRepNo'] = usrdata.techrepno
+        genes_df['e2g_AddedBy'] = usrdata.added_by
+        genes_df['e2g_CreationTS'] = datetime.now().strftime("%m/%d/%Y %H:%M:%S")
+        genes_df['e2g_ModificationTS'] = datetime.now().strftime("%m/%d/%Y %H:%M:%S")
+        #renamed_genecols = [exp_setup.get(genecol, genecol) for genecol in e2g_cols]
+        #torename = {k:v for k, v in exp_setup.items() if k.startswith('e2g_')}
+        # get a log of gene info
+        genecount += len(genes_df)
+        ibaqtot += genes_df[~genes_df.e2g_GeneID.isin(
+            gid_ignore_list)].e2g_n_iBAQ_dstrAdj.sum()
+
+        #genes_df.rename(columns=torename, inplace=True)
+        # print(os.path.join(outdir, genedata_out))
+        genes_df.to_csv(os.path.join(usrdata.outdir, genedata_out), columns=e2g_cols,
+                        index=False, encoding='utf-8', sep='\t')
+        logfile.write('{} | Export of genetable for labeltype {}'\
+                        'completed.\n'.format(
+                            time.ctime(),
+                            label))
 
             # ========================================================================= #
 
@@ -1036,15 +1039,15 @@ def grouper(usrdata, outdir='', database=None,
                  'psm_EXPTechRepNo', 'Sequence',
                  'PSMAmbiguity', 'Modifications', 'ActivationType',
                  'DeltaScore', 'DeltaCn', 'Rank', 'SearchEngineRank',
-                 'PrecursorArea', 'QuanResultID', 'q_value', 'PEP',
-                 'Decoy Peptides Matched', 'Exp Value', 'Homology Threshold',
-                 'Identity High', 'Identity Middle', 'IonScore',
+                 'PrecursorArea', 'q_value', 'PEP',
+                 'Decoy Peptides Matched',
+                 'IonScore',
                  'Peptides Matched', 'MissedCleavages',
                  'IsolationInterference', 'IonInjectTime',
                  'Intensity', 'Charge', 'mzDa', 'MHDa',
                  'DeltaMassDa', 'DeltaMassPPM', 'RTmin',
                  'FirstScan', 'LastScan', 'MSOrder', 'MatchedIons',
-                 'TotalIons', 'SpectrumFile', 'Annotation', 'psm_AddedBy',
+                 'SpectrumFile', 'psm_AddedBy',
                  'psm_oriFLAG',
                  'psm_CreationTS', 'psm_ModificationTS', 'psm_GeneID',
                  'psm_GeneList', 'psm_GeneCount', 'psm_ProteinGI',
@@ -1065,7 +1068,7 @@ def grouper(usrdata, outdir='', database=None,
         print('Potential error, not all columns filled.')
         print([x for x in data_cols if x not in usrdata.df.columns.values])
         data_cols = [x for x in data_cols if x in usrdata.df.columns.values]
-        # will still export successfully
+    data_cols += [x for x in usrdata.df.columns if x not in data_cols]  # add in anything else
 
     export_metadata(program_title=program_title, usrdata=usrdata, matched_psms=matched_psms,
                     unmatched_psms=unmatched_psms, usrfile=usrfile, taxon_totals=taxon_totals,
@@ -1113,13 +1116,14 @@ def set_modifications(usrdata):
 def _match(usrdatas, refseq_file):
     print('Using peptidome {} '.format(refseq_file))
     database = pd.read_table(refseq_file, dtype=str)
+    rename_refseq_cols(database, refseq_file)
     database['capacity'] = 1
     breakup_size = calculate_breakup_size(len(database))
     counter = 0
     prot = defaultdict(list)
     for ix, row in database.iterrows():
         counter += 1
-        fragments, fraglen = protease(row.faa_FASTA, minlen=7,
+        fragments, fraglen = protease(row.FASTA, minlen=7,
                                       cutsites=['K', 'R'],
                                       exceptions=['P'])
         database.loc[ix, 'capacity'] = fraglen
@@ -1209,9 +1213,25 @@ def set_up(usrdatas, column_aliases):
             usrdata.df['psm_LabelFLAG'] = 0  #TODO: handle this properly
     return usrdatas
 
+def rename_refseq_cols(df, filename):
+    fasta_h = ['TaxonID', 'HomologeneID', 'GeneID', 'ProteinGI', 'FASTA']
+    # regxs = {x: re.compile(x) for x in _fasta_h}
+    to_rename = dict()
+    for header in fasta_h:
+        matched_col = [col for col in df.columns
+                       if header in col]
+        if len(matched_col) != 1:
+            raise ValueError("""Could not identify the correct
+            column in the reference sequence database for '{}'
+            for file : {}""".format(header, filename))
+        to_rename[matched_col[0]] = header
+    df.rename(columns=to_rename, inplace=True)
+
+
 def main(usrdatas=[], fullpeptread=False, inputdir='', outputdir='', refs=dict(),
          rawfilepath=None, column_aliases=dict(), gid_ignore_file='', labels=dict()):
     """
+    refs :: dict of taxonIDs -> refseq file names
     """
     # ====================Configuration Setup / Loading======================= #
     if imagetitle:

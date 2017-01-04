@@ -1,0 +1,24 @@
+* Requirements
+
+** Input File
+   The input file should be a resulting PSM (peptide-spectrum match) output file
+   from a database search such as Mascot or Andromeda in tab delimited format.
+   The minimum required columns are :
+   - Sequence :: The amino acid sequence of a PSM
+   - Modifications :: A column that describes the modifications of the sequence.
+   (Note for MaxQuant this information is already provided in =Modified Sequence=)
+   - PrecursorArea :: (or Intensity) the AUC (or SPCs) for each PSM
+   - IonScore :: Mascot (or search engine equivalent) score for each PSM
+   - q_value :: Percolator (or search engine equivalent) score for each PSM
+       Note that PEP can be used in place of q_value with the rough observational
+       approximation that PEP / 10 = q_value
+
+** FASTA Database File
+   The database file should be a pre-constructed tab delimited file for matching
+   PSMs to their respective GeneIDs.
+   The required columns are =TaxonID=, =HomologeneID=, =GeneID=,
+   =ProteinGI=, =FASTA=.
+   Note that PyGrouper uses =GeneID= to group PSMs, so if a GeneID is lacking for
+   a desired grouping another identifier can be substituted in such as =ProteinGI=.
+   =HomologeneID= can be an empty column if this information is not available
+   or desired.

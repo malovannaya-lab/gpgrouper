@@ -1,5 +1,6 @@
 import os
 import sys
+import re
 import unittest
 import copy
 import traceback
@@ -30,6 +31,7 @@ devnull = open(os.devnull, 'w')
 
 class InputTest(unittest.TestCase):
     """Test ability to call `pygrouper run`"""
+
 
     @mock.patch('sys.stdout', devnull)
     @mock.patch('pygrouper.pygrouper.main')
@@ -63,6 +65,7 @@ class InputTest(unittest.TestCase):
         ])
         self.assertEqual(len(main.call_args[-1]['usrdatas']), 2,
                          msg=response.exception)
+
 
 def get_sample_data():
         runner = CliRunner()
@@ -115,15 +118,109 @@ class MatchTest(unittest.TestCase):
             self.assertIn('psm_' + outcol, usrdata.df.columns,
                           msg='Matcher not returning correct columns')
 
+_logfile = re.compile('Pygrouper_v.*.log')
+
+class TestMin(unittest.TestCase):
+    """Test with the minimum required data"""
+
+    _dirname = os.path.dirname(os.path.realpath(__file__))
+
+    MIN_FASTA = os.path.join(_dirname, './testdata/minfasta.tab')
+    MIN_FILE  = os.path.join(_dirname, './testdata/minfile.tab')
+
+    def setUp(self):
+        fasta_h = '\t'.join(['TaxonID', 'HomologeneID', 'GeneID', 'ProteinGI', 'FASTA'])
+        fasta_values = '\t'.join(['9606', '', '1234', '12345678', 'AAAAAAA'])
+        fasta_file = '\n'.join([fasta_h, fasta_values])
+
+        headers = '\t'.join(['Sequence', 'Modifications', 'PrecursorArea',
+                             'IonScore', 'q_value', ])
+        values = '\t'.join(['AAAAAAA', ' ', '12345', '50', '0.00'])
+        small_file = '\n'.join([headers, values])
+
+        with open(self.MIN_FASTA, 'w') as fasta, open(self.MIN_FILE, 'w') as file_:
+            fasta.write(fasta_file)
+            file_.write(small_file)
+
+    def tearDown(self):
+        os.remove(self.MIN_FASTA)
+        os.remove(self.MIN_FILE)
+        for f in os.listdir('.'):
+            if f.startswith('1_1_1'):
+                os.remove(f)
+
+    def test_minimum_cols(self):
+        runner = CliRunner()
+        response = runner.invoke(cli.cli, ['run', '--database', self.MIN_FASTA,
+                                           '--psms-file', self.MIN_FILE,
+                                           '--taxonid', 9606,
+                                           '--outdir', '.',
+                                           '--configfile', CONFIG_FILE,
+                                           ])
+        # print full traceback if there is a failure
+        self.assertEqual(0, response.exit_code,
+                         msg='\n{}\n{!r}'.format(''.join(traceback.format_tb(response.exc_info[-1])),
+                                                                             response.exc_info[1])
+                         )
+
+# class TestAreaTMT(unittest.TestCase):
+#     _dirname = os.path.dirname(os.path.realpath(__file__))
+
+#     MIN_FASTA = os.path.join(_dirname, './testdata/tmt.tab')
+#     MIN_FILE  = os.path.join(_dirname, './testdata/tmt_fa.tab')
+
+#     def setUp(self):
+#         fasta_h = '\t'.join(['TaxonID', 'HomologeneID', 'GeneID', 'ProteinGI', 'FASTA'])
+#         fasta_values = '\t'.join(['9606', '', '1234', '12345678', 'AAAAAAA'])
+#         fasta_file = '\n'.join([fasta_h, fasta_values])
+
+#         headers = '\t'.join(['Sequence', 'Modifications', 'PrecursorArea',
+#                              'IonScore', 'q_value', ])
+#         values = '\t'.join(['AAAAAAA', ' ', '12345', '50', '0.00'])
+#         small_file = '\n'.join([headers, values])
+
+#         with open(self.MIN_FASTA, 'w') as fasta, open(self.MIN_FILE, 'w') as file_:
+#             fasta.write(fasta_file)
+#             file_.write(small_file)
+
+#     def tearDown(self):
+#         os.remove(self.MIN_FASTA)
+#         os.remove(self.MIN_FILE)
+#         for f in os.listdir('.'):
+#             if f.startswith('1_1_1'):
+#                 os.remove(f)
+
+#     def test_labelfree(self):
+#         runner = CliRunner()
+#         response = runner.invoke(cli.cli, ['run', '--database', self.MIN_FASTA,
+#                                            '--psms-file', self.MIN_FILE,
+#                                            '--taxonid', 9606,
+#                                            '--outdir', '.',
+#                                            '--configfile', CONFIG_FILE,
+#                                            '--labeltype',
+#                                            ])
+
+#         # print full traceback if there is a failure
+#         self.assertEqual(0, response.exit_code,
+#                          msg='\n{}\n{!r}'.format(''.join(traceback.format_tb(response.exc_info[-1])),
+#                                                                              response.exc_info[1])
+
+
+
+
 
 @mock.patch('sys.stdout', devnull)
 class TestFull(unittest.TestCase):
     """Test a full runthrough to make sure we can go from start to finish"""
 
     def tearDown(self):
+        for f in os.listdir('.'):
+            if _logfile.match(f):
+                os.remove(f)
         for f in os.listdir(INPUT_DIR):
             if f.startswith('1_1_1'):
                 os.remove(os.path.join(INPUT_DIR, f))
+
 
     def test_runthrough(self):
         # self.longMessage = True
@@ -169,7 +266,7 @@ class TestFull(unittest.TestCase):
                                            ])
         # output = pd.read_table(os.path.join(INPUT_DIR, '1_1_1_none_0_e2g.tab'))
         output = pd.read_table(os.path.join(INPUT_DIR, '1_1_1_none_psms.tab'))
-        print(output.columns)
+        # print(output.columns)
         for col in data_cols:
             self.assertTrue(col in output.columns, msg='{} not found in e2g file'.format(col))
 

@@ -14,3 +14,10 @@ venv/
 .DS_Store
 *.egg-info/
 testresults/
+.coverage
+.coveragerc
+htmlcov/
+*.pyc
+.fuse*
+manual_tests/
+human_refseq*
