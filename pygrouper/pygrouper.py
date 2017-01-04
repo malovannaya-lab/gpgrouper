@@ -179,7 +179,7 @@ def _extract_peptideinfo(ixs, database):
      genelist = set()
      capacity = list()
 
-     database_matches = database.ix[ixs]
+     database_matches = database.loc[set(ixs)]
 
      for ix, row in database_matches.iterrows():
          genelist.add(row.GeneID)
@@ -197,7 +197,7 @@ def _extract_peptideinfo(ixs, database):
 
 def extract_peptideinfo(usrdata, database):
     peptide_info = usrdata.df.apply(lambda x: _extract_peptideinfo(x['metadatainfo'],
-                                                                 database),
+                                                                   database),
     axis=1)
 
     (usrdata.df['psm_GeneList'], usrdata.df['psm_GeneCount'], usrdata.df['psm_TaxonIDList'],
@@ -243,11 +243,11 @@ def make_seqlower(usrdata, col='Sequence'):
 
 def _peptidome_matcher(seq, metadata, prot):
     seq = seq.upper()
-    if not isinstance(metadata, set):
-        metadata = set()
+    if not isinstance(metadata, tuple):
+        metadata = tuple()
     if seq in prot:
-        metadata = metadata.union(prot[seq])
-    return metadata
+        metadata = set(metadata).union(prot[seq])
+    return tuple(metadata)
 
 def peptidome_matcher(usrdata, ref_dict):
     """Matches Sequence column with refseq dictionary
@@ -255,8 +255,9 @@ def peptidome_matcher(usrdata, ref_dict):
     returns input DataFrame with a metadata column with a list of named tuples"""
     usrdata['metadatainfo'] = usrdata.apply(lambda x:
                                             _peptidome_matcher(x['Sequence'],
-                                                        x['metadatainfo'],
-                                                        ref_dict), axis=1)
+                                                               x['metadatainfo'],
+                                                               ref_dict),
+                                            axis=1)
     return usrdata
 
 
@@ -522,7 +523,7 @@ def _get_peptides_for_gene(df,usrdata):
         pepts_str = ''
         protcount = 0
         uniques = 0
-    return (set(sorted(matches.Sequence)), pepts_str, protcount, uniques,
+    return (set(sorted(matches.sequence_lower)), pepts_str, protcount, uniques,
          protcount_S, uniques_S)
 
 def get_peptides_for_gene(genes_df, temp_df):
@@ -1188,7 +1189,7 @@ def set_up(usrdatas, column_aliases):
                                        for k,v in standard_names.items()},
                               inplace=True
             )
-        if usrdata.quant_source == 'AUC' and 'Intensity' in usrdata.df.columns:
+        if 'PrecursorArea' not in usrdata.df.columns and usrdata.quant_source == 'AUC' and 'Intensity' in usrdata.df.columns:
             # explicitly rename as MaxQuant referrs to the PSM area as Intensity
             usrdata.df.rename(columns={'Intensity': 'PrecursorArea'}, inplace=True)
         # usrdata.df = usrdata.populate_base_data()
@@ -1267,7 +1268,7 @@ def main(usrdatas=[], fullpeptread=False, inputdir='', outputdir='', refs=dict()
                   'The reason is : {}'.format(repr(usrdata), e))
             logging.warn('Failure for file of experiment {}.\n'\
                          'The reason is : {}'.format(repr(usrdata), e))
-            # raise  # usually don't need to raise, will kill the script. Re-enable
+            raise  # usually don't need to raise, will kill the script. Re-enable
                    #if need to debug and find where errors are
     print('Time taken : {}\n'.format(datetime.now() - startTime))
     return 0
