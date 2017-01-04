@@ -71,10 +71,13 @@ class UserData:
         self.df['psm_CreationTS'] = datetime.now().strftime("%m/%d/%Y %H:%M:%S")
         self.df['psm_AddedBy'] = self.added_by
         self.df['psm_TaxonID'] = self.taxonid
-        self.df['psm_GeneList'], self.df['psm_ProteinList'],\
-        self.df['psm_GeneCount'],self.df['psm_ProteinCount'],\
-        self.df['psm_HomologeneID'], self.df['psm_ProteinCapacity'], \
-        self.df['metadatainfo'] = '', '', 0, 0, '', '', ''
+        self.df['psm_GeneList'] = ''
+        self.df['psm_ProteinList'] = ''
+        self.df['psm_GeneCount'] = 0
+        self.df['psm_ProteinCount'] = 0
+        self.df['psm_HomologeneID'] = ''
+        self.df['psm_ProteinCapacity'] = ''
+        self.df['metadatainfo'] = [tuple()] * len(self.df)
         if not 'ion_score_bins' in self.filtervalues:
             self.filtervalues['ion_score_bins'] = (10, 20, 30)
         return self

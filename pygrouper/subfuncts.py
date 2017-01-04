@@ -150,7 +150,7 @@ def seq_modi(sequence, modifications, to_count):
     modi_len = 0  # default length is zero, can change
     label = 0  # default label = 0, can change
     if not any(c for c in sequence if (c.islower() or c == 'X')): # check if any modifications to deal with
-        return sequence, '', 0, label
+        return sequence, sequence, 0, label
     modkeys = inside_paren.findall(modifications)
     modi_len = len([x for x in modkeys if any(mod in x for mod in to_count)])
     # modkeys = re.findall(r'(\([^\)]+\))',modifications)  #get all modifications

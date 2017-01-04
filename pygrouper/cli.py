@@ -8,7 +8,7 @@ from datetime import datetime
 from configparser import ConfigParser
 import click
 
-from .manual_tests import test as manual_test
+# from .manual_tests import test as manual_test
 from . import subfuncts, auto_grouper, pygrouper, _version
 from pygrouper import genericdata as gd
 from pygrouper.containers import UserData
