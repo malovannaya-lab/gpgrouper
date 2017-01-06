@@ -428,8 +428,7 @@ def _gene_taxon_map(gene, d):
 
 def gene_taxon_map(usrdata, gene_taxon_dict):
     """make 'gene_taxon_map' column per row which displays taxon for given gene"""
-
-    usrdata['gene_taxon_map'] = usrdata.apply(lambda x : _gene_taxon_map(
+    usrdata['psm_TaxonID'] = usrdata.apply(lambda x : _gene_taxon_map(
     x['psm_GeneID'], gene_taxon_dict), axis=1)
     return usrdata
 
@@ -627,7 +626,7 @@ def _distribute_psm_area(inputdata, genes_df, area_col, taxon_totals=None):
     elif all(gene_inputdata.e2g_IDSet == 3):
         distArea = 0
     elif u2gPept == 0:  # no uniques, normalize by genecount
-        taxon_percentage = taxon_totals.get(inputdata.gene_taxon_map, 1)
+        taxon_percentage = taxon_totals.get(inputdata.psm_TaxonID, 1)
         distArea = inputvalue
         if taxon_percentage < 1:
             distArea *=  taxon_percentage

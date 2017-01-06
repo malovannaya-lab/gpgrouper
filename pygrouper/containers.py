@@ -72,7 +72,7 @@ class UserData:
         self.df['psm_EXPTechRepNo'] = self.techrepno
         self.df['psm_CreationTS'] = datetime.now().strftime("%m/%d/%Y %H:%M:%S")
         self.df['psm_AddedBy'] = self.added_by
-        self.df['psm_TaxonID'] = self.taxonid
+        # self.df['psm_TaxonID'] = self.taxonid
         self.df['psm_GeneList'] = ''
         self.df['psm_ProteinList'] = ''
         self.df['psm_GeneCount'] = 0
