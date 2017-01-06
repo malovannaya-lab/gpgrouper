@@ -350,9 +350,10 @@ unique peptides unique for its particular geneid later.
     usrdata.reset_index(inplace=True, drop=True)  # drop=True ?
     return usrdata
 
-def rank_peptides(usrdata, area_col):
+def rank_peptides(usrdata, area_col, ranks_only=False):
     """Rank peptides here
     area_col is sequence area_calculator
+    ranks_only returns just the ranks column. This does not reset the original index
     """
 
     usrdata = usrdata.sort_values(by=['psm_GeneID', area_col,
@@ -360,7 +361,8 @@ def rank_peptides(usrdata, area_col):
                                       'Charge', 'psm_PSM_IDG', 'IonScore', 'PEP',
                                       'q_value'],
                                   ascending=[1, 0, 0, 1, 1, 0, 1, 1])
-    usrdata.reset_index(inplace=True)  # drop=True ?
+    if not ranks_only:  # don't reset index for just the ranks
+        usrdata.reset_index(inplace=True)  # drop=True ?
     usrdata.Modifications.fillna('', inplace=True)  # must do this to compare nans
     usrdata[area_col].fillna(0, inplace=True)  # must do this to compare
     #nans
@@ -370,6 +372,8 @@ def rank_peptides(usrdata, area_col):
                        (usrdata.psm_Peak_UseFLAG == 1)    ].groupby(['psm_GeneID', 'psm_LabelFLAG'])
     ranks = grouped.cumcount() + 1  # add 1 to start the peptide rank at 1, not 0
     ranks.name = 'psm_PeptRank'
+    if ranks_only:
+        return ranks
 
     usrdata = usrdata.join(ranks)
 
@@ -1054,13 +1058,6 @@ def grouper(usrdata, outdir='', database=None,
         logfile.close()
         return
 
-    dstr_area = 'psm_PrecursorArea_dstrAdj'
-    area_col_to_use = dstr_area if dstr_area in usrdata.df.columns else orig_area_col
-    # rare case where no PSMs pass into the temp_df of quantified PSMs
-    usrdata.df = rank_peptides(usrdata.df, area_col=area_col_to_use)
-    usrdata.df['psm_PeptRank'] = usrdata.df['psm_PeptRank'].fillna(0)  # anyone who
-                              # didn't get a rank gets a rank of 0
-    #print('Length of usrdata after merge : ',len(usrdata))
 
     usrdata.df['psm_ModificationTS'] = datetime.now().strftime("%m/%d/%Y %H:%M:%S")
     usrdata.df['psm_HIDList'] = ''  # will be populated later
@@ -1093,6 +1090,32 @@ def grouper(usrdata, outdir='', database=None,
         data_cols = data_cols + ['TMT_126', 'TMT_127_N', 'TMT_127_C', 'TMT_128_N',
                                  'TMT_128_C', 'TMT_129_N', 'TMT_129_C', 'TMT_130_N',
                                  'TMT_130_C', 'TMT_131', 'QuanInfo', 'QuanUsage']
+        psm_tmtoutput.reset_index(inplace=True)
+        rank_df = pd.DataFrame()
+        for label in psm_tmtoutput.psm_LabelFLAG.unique():
+            tmtrank = rank_peptides(psm_tmtoutput[psm_tmtoutput.psm_LabelFLAG == label],
+                                    area_col=area_col_to_use, ranks_only=True)
+            rank_df = pd.concat([rank_df, tmtrank])
+        rank_df.columns = ['psm_PeptRank']
+            # rank_df = rank_df.join(tmtrank, how='outer')
+        psm_tmtoutput = psm_tmtoutput.join(rank_df, how='left')
+        psm_tmtoutput['psm_PeptRank'] = psm_tmtoutput['psm_PeptRank'].fillna(0)  # anyone who
+                              # didn't get a rank gets a rank of 0
+    #print('Length of usrdata after merge : ',len(usrdata))
+
+        psm_tmtoutput['psm_ModificationTS'] = datetime.now().strftime("%m/%d/%Y %H:%M:%S")
+        psm_tmtoutput['psm_HIDList'] = ''  # will be populated later
+        psm_tmtoutput['psm_HIDCount'] = ''  # will be populated later
+    else:
+        usrdata.df = pd.merge(usrdata.df, temp_df, how='left')
+        dstr_area = 'psm_PrecursorArea_dstrAdj'
+        area_col_to_use = dstr_area if dstr_area in usrdata.df.columns else orig_area_col
+        # rare case where no PSMs pass into the temp_df of quantified PSMs
+        usrdata.df = rank_peptides(usrdata.df, area_col=area_col_to_use)
+        usrdata.df['psm_PeptRank'] = usrdata.df['psm_PeptRank'].fillna(0)  # anyone who
+                              # didn't get a rank gets a rank of 0
+    #print('Length of usrdata after merge : ',len(usrdata))
+
     #usrdata.to_csv(usrdata_out, columns=usrdata.columns,
                                 #encoding='utf-8', sep='\t')
 
@@ -1120,7 +1143,6 @@ def grouper(usrdata, outdir='', database=None,
             print('Potential error, not all columns filled.')
             print([x for x in data_cols if x not in usrdata.df.columns.values])
             data_cols = [x for x in data_cols if x in usrdata.df.columns.values]
-        usrdata.df = pd.merge(usrdata.df, temp_df, how='left')
         usrdata.df.to_csv(os.path.join(usrdata.outdir, usrdata_out), columns=data_cols,
                           index=False, encoding='utf-8', sep='\t')
 
