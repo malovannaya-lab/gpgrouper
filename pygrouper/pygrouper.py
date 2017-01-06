@@ -624,7 +624,8 @@ def _distribute_psm_area(inputdata, genes_df, area_col, taxon_totals=None):
                               ].e2g_nGPArea_Sum_u2g_all.sum()
         distArea = (u2gPept/totArea) * inputvalue
         #ratio of u2g peptides over total area
-
+    elif all(gene_inputdata.e2g_IDSet == 3):
+        distArea = 0
     elif u2gPept == 0:  # no uniques, normalize by genecount
         taxon_percentage = taxon_totals.get(inputdata.gene_taxon_map, 1)
         distArea = inputvalue
