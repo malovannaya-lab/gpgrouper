@@ -481,10 +481,10 @@ def create_e2g_df(inputdf, label, inputcol='psm_GeneID'):
 
 def select_good_peptides(usrdata, labelix):
     """Selects peptides of a given label with the correct flag and at least one genecount"""
-    temp_df = usrdata[(usrdata['psm_LabelFLAG'] == labelix) &
-                      # (usrdata['psm_AUC_UseFLAG'] == 1) &
+    temp_df = usrdata[# (usrdata['psm_AUC_UseFLAG'] == 1) &
                       (usrdata['psm_PSM_UseFLAG'] == 1) &
                       (usrdata['psm_GeneCount'] > 0)].copy()  # should keep WL's
+    temp_df['psm_LabelFLAG'] = labelix
     return temp_df
 
 
@@ -591,12 +591,13 @@ def calculate_protein_area(genes_df, temp_df, area_col, normalize):
     return genes_df
 
 
-def _distribute_psm_area(inputdata, genes_df, area_col, taxon_totals=None):
+def _distribute_psm_area(inputdata, genes_df, area_col, taxon_totals=None, taxon_redistribute=True):
     """Row based normalization of PSM area (mapped to a specific gene).
     Normalization is based on the ratio of the area of unique peptides for the
     specific gene to the sum of the areas of the unique peptides for all other genes
     that this particular peptide also maps to.
     """
+
     if inputdata.psm_AUC_UseFLAG == 0:
         return 0
     inputvalue = inputdata[area_col]
@@ -631,9 +632,13 @@ def _distribute_psm_area(inputdata, genes_df, area_col, taxon_totals=None):
         if taxon_percentage < 1:
             distArea *=  taxon_percentage
         try: # still needs work
-            distArea /= len( genes_df[ (genes_df.e2g_GPGroup == gene_inputdata.e2g_GPGroup.values[0]) &
-                                       (genes_df.e2g_TaxonID == gene_inputdata.e2g_TaxonID.values[0])
-            ])
+            if taxon_redistribute:
+                distArea /= len( genes_df[(genes_df.e2g_GPGroup == gene_inputdata.e2g_GPGroup.values[0]) &
+                                          (genes_df.e2g_TaxonID == gene_inputdata.e2g_TaxonID.values[0])
+                ])
+            else:
+                distArea /= len( genes_df[(genes_df.e2g_GPGroup == gene_inputdata.e2g_GPGroup.values[0])
+                ])
             # distArea = inputvalue/inputdata.psm_GeneCount
         except ZeroDivisionError:
             pass
@@ -641,13 +646,14 @@ def _distribute_psm_area(inputdata, genes_df, area_col, taxon_totals=None):
 
     return distArea
 
-def distribute_psm_area(temp_df, genes_df, area_col, taxon_totals):
+def distribute_psm_area(temp_df, genes_df, area_col, taxon_totals, taxon_redistribute=True):
    """Distribute psm area based on unique gene product area"""
 
    temp_df['psm_PrecursorArea_dstrAdj'] = temp_df.apply(
        _distribute_psm_area, args=(genes_df,
                                    area_col,
-                                   taxon_totals),
+                                   taxon_totals,
+                                   taxon_redistribute),
    axis=1)
 
    return temp_df
@@ -932,6 +938,8 @@ def grouper(usrdata, outdir='', database=None,
     # orig_area_col = 'psm_SequenceArea' if usrdata.labeltype == 'None' else area_col
     orig_area_col = 'psm_SequenceArea'
     # Don't use the aggregated SequenceArea for TMT experiments
+    if usrdata.labeltype == 'TMT':
+        psm_tmtoutput = pd.DataFrame()  # instead of merging, we will concat
     for label in labeltypes:  # increase the range to go through more label types
         labelix = labelflag.get(label, 0)
         area_col = orig_area_col
@@ -939,11 +947,11 @@ def grouper(usrdata, outdir='', database=None,
             time.ctime(), label))
         # ==========Select only peptides flagged  with good quality=========== #
         mylabelix = labelix
-        if usrdata.labeltype == 'TMT':
-            mylabelix = 0 # originally would be the label type as indicated
-                          # by the modification, but Proteome Discoverer changed how they
-                          # mark the label.
-                          # Really no need for marking the label (but maybe for SILAC)
+        # if usrdata.labeltype == 'TMT':
+        #     mylabelix = 0 # originally would be the label type as indicated
+        #                   # by the modification, but Proteome Discoverer changed how they
+        #                   # mark the label.
+        #                   # Really no need for marking the label (but maybe for SILAC)
         temp_df = select_good_peptides(usrdata.df, mylabelix)
         if usrdata.labeltype == 'TMT':
             temp_df, area_col = redistribute_area_tmt(temp_df, label, labeltypes, area_col)
@@ -992,7 +1000,9 @@ def grouper(usrdata, outdir='', database=None,
 
         genes_df = set_gene_gpgroups(genes_df)
 
-        temp_df = distribute_psm_area(temp_df, genes_df, area_col, taxon_totals)
+
+        temp_df = distribute_psm_area(temp_df, genes_df, area_col, taxon_totals,
+                                      not usrdata.no_taxa_redistrib)
 
 
         #genes_df['e2g_GeneCapacity'] = genes_df.e2g_GeneCapacity.astype('float')
@@ -1023,6 +1033,8 @@ def grouper(usrdata, outdir='', database=None,
 
         #genes_df.rename(columns=torename, inplace=True)
         # print(os.path.join(outdir, genedata_out))
+        if usrdata.labeltype == 'TMT':
+            psm_tmtoutput = pd.concat([psm_tmtoutput, temp_df])
         genes_df.to_csv(os.path.join(usrdata.outdir, genedata_out), columns=e2g_cols,
                         index=False, encoding='utf-8', sep='\t')
         logfile.write('{} | Export of genetable for labeltype {}'\
@@ -1033,12 +1045,9 @@ def grouper(usrdata, outdir='', database=None,
             # ========================================================================= #
 
     # ----------------End of none/silac loop--------------------------------- #
-    if usrdata.labeltype == 'TMT':
-        concat_tmt_e2gs(usrdata.recno, usrdata.runno, usrdata.searchno,
-                        usrdata.outdir, cols=e2g_cols)
+
     usrdata.df.drop('metadatainfo', axis=1, inplace=True)  # Don't need this
                                       # column anymore.
-    usrdata.df = pd.merge(usrdata.df, temp_df, how='left')
     if len(usrdata.df) == 0:
         print('No protein information for {}.\n'.format(repr(usrdata)))
         logfile.write('No protein information for {}.\n'.format(repr(usrdata)))
@@ -1078,18 +1087,14 @@ def grouper(usrdata, outdir='', database=None,
                  'psm_PSM_IDG', 'psm_SequenceModi',
                  'psm_SequenceModiCount', 'psm_LabelFLAG',
                  'psm_PeptRank', 'psm_AUC_UseFLAG', 'psm_PSM_UseFLAG',
-                 'psm_Peak_UseFLAG', 'psm_SequenceArea', 'psm_PrecursorArea_dstrAdj']
+                 'psm_Peak_UseFLAG', 'psm_SequenceArea', 'psm_SequenceArea_reporter',
+                 'psm_PrecursorArea_dstrAdj']
     if usrdata.labeltype == 'TMT':
         data_cols = data_cols + ['TMT_126', 'TMT_127_N', 'TMT_127_C', 'TMT_128_N',
                                  'TMT_128_C', 'TMT_129_N', 'TMT_129_C', 'TMT_130_N',
                                  'TMT_130_C', 'TMT_131', 'QuanInfo', 'QuanUsage']
     #usrdata.to_csv(usrdata_out, columns=usrdata.columns,
                                 #encoding='utf-8', sep='\t')
-    if not all(x in usrdata.df.columns.values for x in data_cols):
-        print('Potential error, not all columns filled.')
-        print([x for x in data_cols if x not in usrdata.df.columns.values])
-        data_cols = [x for x in data_cols if x in usrdata.df.columns.values]
-    data_cols += [x for x in usrdata.original_columns if x not in data_cols]  # Don't drop any cols.
 
 
     export_metadata(program_title=program_title, usrdata=usrdata, matched_psms=matched_psms,
@@ -1100,9 +1105,24 @@ def grouper(usrdata, outdir='', database=None,
     msfdata = spectra_summary(usrdata)
     msfdata.to_csv(os.path.join(usrdata.outdir, msfname), index=False, sep='\t')
 
-    print(usrdata.outdir, usrdata_out)
-    usrdata.df.to_csv(os.path.join(usrdata.outdir, usrdata_out), columns=data_cols,
-                   index=False, encoding='utf-8', sep='\t')
+    if usrdata.labeltype == 'TMT':
+        if not all(x in psm_tmtoutput.columns.values for x in data_cols):
+            print('Potential error, not all columns filled.')
+            print([x for x in data_cols if x not in psm_tmtoutput.columns.values])
+            data_cols = [x for x in data_cols if x in psm_tmtoutput.columns.values]
+        concat_tmt_e2gs(usrdata.recno, usrdata.runno, usrdata.searchno,
+                        usrdata.outdir, cols=e2g_cols)
+        usrdata.df = pd.merge(usrdata.df, temp_df, how='left')
+        psm_tmtoutput.to_csv(os.path.join(usrdata.outdir, usrdata_out), columns=data_cols,
+                          index=False, encoding='utf-8', sep='\t')
+    else:
+        if not all(x in usrdata.df.columns.values for x in data_cols):
+            print('Potential error, not all columns filled.')
+            print([x for x in data_cols if x not in usrdata.df.columns.values])
+            data_cols = [x for x in data_cols if x in usrdata.df.columns.values]
+        usrdata.df = pd.merge(usrdata.df, temp_df, how='left')
+        usrdata.df.to_csv(os.path.join(usrdata.outdir, usrdata_out), columns=data_cols,
+                          index=False, encoding='utf-8', sep='\t')
 
 
     logfile.write('{} | Export of datatable completed.\n'.format(time.ctime()))
