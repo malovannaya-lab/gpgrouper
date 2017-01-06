@@ -26,6 +26,7 @@ class UserData:
         self.datafile = datafile
         self.df = pd.DataFrame()
         self.pipeline = None
+        self.original_columns = None
 
 
     def __repr__(self):
@@ -50,6 +51,7 @@ class UserData:
         """Uses pandas read_csv function to read an input file
         args and kwargs are passed to this function"""
         self.df = pd.read_csv(self.full_path(), *args, **kwargs)
+        self.original_columns = self.df.columns.values
         return self
 
     def output_name(self, *suffix, ext='tab'):

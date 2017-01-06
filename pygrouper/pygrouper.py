@@ -446,7 +446,7 @@ def multi_taxon_splitter(taxon_ids, usrdata, gid_ignore_list, area_col):
     Returns a dictionary with the totals for each detected taxon"""
     taxon_totals = dict()
     for taxon in taxon_ids:
-        taxon = int(taxon)
+        taxon = str(taxon)
         #all_others = [x for x in taxon_ids if x != taxon]
         uniq_taxon = usrdata[
             #(usrdata._data_tTaxonIDList.str.contains(taxon)) &
@@ -460,7 +460,7 @@ def multi_taxon_splitter(taxon_ids, usrdata, gid_ignore_list, area_col):
         tot_unique = sum(taxon_totals.values())  #sum of unique
         # now compute ratio:
     for taxon in taxon_ids:
-        taxon = int(taxon)
+        taxon = str(taxon)
         try:
             percentage = taxon_totals[taxon] / tot_unique
         except ZeroDivisionError:
@@ -592,7 +592,7 @@ def calculate_protein_area(genes_df, temp_df, area_col, normalize):
     return genes_df
 
 
-def _distribute_psm_area(inputdata, genes_df, area_col, taxon_totals):
+def _distribute_psm_area(inputdata, genes_df, area_col, taxon_totals=None):
     """Row based normalization of PSM area (mapped to a specific gene).
     Normalization is based on the ratio of the area of unique peptides for the
     specific gene to the sum of the areas of the unique peptides for all other genes
@@ -601,6 +601,7 @@ def _distribute_psm_area(inputdata, genes_df, area_col, taxon_totals):
     if inputdata.psm_AUC_UseFLAG == 0:
         return 0
     inputvalue = inputdata[area_col]
+    gene_inputdata = genes_df[ genes_df['e2g_GeneID'] == inputdata['psm_GeneID']]
     u2gPept = (genes_df[genes_df['e2g_GeneID']==inputdata['psm_GeneID']]
                ['e2g_nGPArea_Sum_u2g_all']).values
 
@@ -614,7 +615,7 @@ def _distribute_psm_area(inputdata, genes_df, area_col, taxon_totals):
     else :
         distArea = 0
         print('No distArea for GeneID : {}'.format(inputdata['psm_GeneID']))
-    taxon_ratio = taxon_totals.get(inputdata.gene_taxon_map, 1)
+    # taxon_ratio = taxon_totals.get(inputdata.gene_taxon_map, 1)
     if u2gPept != 0 :
         totArea = 0
         gene_list = inputdata.psm_GeneList.split(',')
@@ -625,13 +626,18 @@ def _distribute_psm_area(inputdata, genes_df, area_col, taxon_totals):
         #ratio of u2g peptides over total area
 
     elif u2gPept == 0:  # no uniques, normalize by genecount
-        taxon_ratio = taxon_totals.get(inputdata.gene_taxon_map, 1)
+        taxon_percentage = taxon_totals.get(inputdata.gene_taxon_map, 1)
+        distArea = inputvalue
+        if taxon_percentage < 1:
+            distArea *=  taxon_percentage
         try: # still needs work
-            if taxon_ratio < 1:
-                distArea = inputvalue * taxon_ratio
-            else:
-                distArea = inputvalue/inputdata.psm_GeneCount
-        except ZeroDivisionError: distArea = inputvalue
+            distArea /= len( genes_df[ (genes_df.e2g_GPGroup == gene_inputdata.e2g_GPGroup.values[0]) &
+                                       (genes_df.e2g_TaxonID == gene_inputdata.e2g_TaxonID.values[0])
+            ])
+            # distArea = inputvalue/inputdata.psm_GeneCount
+        except ZeroDivisionError:
+            pass
+        # distArea = inputvalue/inputdata.psm_GeneCount
 
     return distArea
 
@@ -639,10 +645,11 @@ def distribute_psm_area(temp_df, genes_df, area_col, taxon_totals):
    """Distribute psm area based on unique gene product area"""
 
    temp_df['psm_PrecursorArea_dstrAdj'] = temp_df.apply(
-       _distribute_psm_area,args=(genes_df,
-                             area_col,
-                             taxon_totals),
-       axis=1)
+       _distribute_psm_area, args=(genes_df,
+                                   area_col,
+                                   taxon_totals),
+   axis=1)
+
    return temp_df
 
 
@@ -726,7 +733,7 @@ def _GPG_all_helper(genes_df,df_all):
     for pept in genes_df.e2g_PeptideSet:
         shared_values = [value for value in
                          df_all[df_all['e2g_PeptidePrint'].str.contains(
-                              pept, regex=False)].e2g_GPGroup.values]
+                              pept, regex=False, case=False)].e2g_GPGroup.values]
         # regex=False since we don't need regex, and is faster.
         for s in shared_values:
             if s !='':
@@ -891,8 +898,9 @@ def grouper(usrdata, outdir='', database=None,
     taxon_ids = get_all_taxons(usrdata.df['psm_TaxonIDList'].tolist())
     #area_col_new = 'psm_Area_taxonAdj'
     taxon_totals = dict()
+    # print(taxon_ids)
     if len(taxon_ids) == 1 or usrdata.no_taxa_redistrib:  # just 1 taxon id present
-        taxon_totals[int(list(taxon_ids)[0])] = 1  # taxon_ids is a set
+        taxon_totals[list(taxon_ids)[0]] = 1  # taxon_ids is a set
     #    usrdata[area_col_new] = usrdata[area_col]
     elif len(taxon_ids) > 1:  # more than 1 taxon id
         taxon_totals = multi_taxon_splitter(taxon_ids, usrdata.df, gid_ignore_list, area_col)
@@ -906,21 +914,23 @@ def grouper(usrdata, outdir='', database=None,
                                        # future this can grow
     gpgcount, genecount, ibaqtot, = 0, 0, 0
     e2g_cols = ['e2g_EXPRecNo', 'e2g_EXPRunNo', 'e2g_EXPSearchNo',
-                 'e2g_EXPLabelFLAG', 'e2g_AddedBy',
-                 'e2g_CreationTS', 'e2g_ModificationTS', 'e2g_GeneID',
-                 'e2g_IDSet', 'e2g_IDGroup', 'e2g_IDGroup_u2g',
-                 'e2g_GPGroup', 'e2g_GPGroups_All', 'e2g_PSMs',
-                 'e2g_PSMs_u2g', 'e2g_PeptidePrint', 'e2g_PeptideCount',
-                 'e2g_PeptideCount_u2g', 'e2g_PeptideCount_S',
-                 'e2g_PeptideCount_S_u2g', 'e2g_nGPArea_Sum_cgpAdj',
-                 'e2g_nGPArea_Sum_u2g', 'e2g_nGPArea_Sum_u2g_all',
-                 'e2g_nGPArea_Sum_max', 'e2g_nGPArea_Sum_dstrAdj',
-                 'e2g_GeneCapacity', 'e2g_n_iBAQ_dstrAdj']  # cols of interest
+                'e2g_EXPLabelFLAG', 'e2g_AddedBy',
+                'e2g_CreationTS', 'e2g_ModificationTS', 'e2g_TaxonID',
+                'e2g_GeneID',
+                'e2g_IDSet', 'e2g_IDGroup', 'e2g_IDGroup_u2g',
+                'e2g_GPGroup', 'e2g_GPGroups_All', 'e2g_PSMs',
+                'e2g_PSMs_u2g', 'e2g_PeptidePrint', 'e2g_PeptideCount',
+                'e2g_PeptideCount_u2g', 'e2g_PeptideCount_S',
+                'e2g_PeptideCount_S_u2g', 'e2g_nGPArea_Sum_cgpAdj',
+                'e2g_nGPArea_Sum_u2g', 'e2g_nGPArea_Sum_u2g_all',
+                'e2g_nGPArea_Sum_max', 'e2g_nGPArea_Sum_dstrAdj',
+                'e2g_GeneCapacity', 'e2g_n_iBAQ_dstrAdj']  # cols of interest
 
     labeltypes = get_labels(usrdata.df, labels, usrdata.labeltype)
     additional_labels = list()
 
-    orig_area_col = 'psm_SequenceArea' if usrdata.labeltype == 'None' else area_col
+    # orig_area_col = 'psm_SequenceArea' if usrdata.labeltype == 'None' else area_col
+    orig_area_col = 'psm_SequenceArea'
     # Don't use the aggregated SequenceArea for TMT experiments
     for label in labeltypes:  # increase the range to go through more label types
         labelix = labelflag.get(label, 0)
@@ -949,6 +959,9 @@ def grouper(usrdata, outdir='', database=None,
         # genes_df['_e2g_GeneID'] = Set(temp_df['_data_GeneID']) #only in 2.7
         genes_df = create_e2g_df(temp_df, label)
 
+        genes_df['e2g_TaxonID'] = genes_df.apply(lambda x: gene_taxon_dict.get(x['e2g_GeneID']),
+                                                 axis=1)
+
         genes_df = get_gene_capacity(genes_df, database)
         genes_df = get_peptides_for_gene(genes_df, temp_df)
         genes_df = get_psms_for_gene(genes_df, temp_df)
@@ -959,7 +972,7 @@ def grouper(usrdata, outdir='', database=None,
             datetime.now(), usrdata.datafile))
         logfile.write('{} | Calculating peak areas.\n'.format(time.ctime()))
 
-        genes_df = calculate_protein_area(genes_df, temp_df, area_col, normalize)
+        genes_df = calculate_protein_area(genes_df, temp_df, area_col, normalize).fillna(0)
         # pandas may give a warning from this though it is fine
         print('{}: Calculating distributed area ratio for {}.'.format(
             datetime.now(), usrdata.datafile))
@@ -967,7 +980,6 @@ def grouper(usrdata, outdir='', database=None,
             datetime.now(), usrdata.datafile))
         logfile.write('{} | Calculating distributed area ratio.\n'.format(
             time.ctime()))
-        temp_df = distribute_psm_area(temp_df, genes_df, area_col, taxon_totals)
 
         print('{}: Assigning gene sets and groups for {}.'.format(
             datetime.now(), usrfile))
@@ -978,12 +990,16 @@ def grouper(usrdata, outdir='', database=None,
 
         genes_df = assign_gene_sets(genes_df, temp_df)
 
+        genes_df = set_gene_gpgroups(genes_df)
+
+        temp_df = distribute_psm_area(temp_df, genes_df, area_col, taxon_totals)
+
+
         #genes_df['e2g_GeneCapacity'] = genes_df.e2g_GeneCapacity.astype('float')
         #genes_df._e2g_GeneCapacity.dtype)  # for debugging
         genes_df = calculate_gene_dstrarea(genes_df, temp_df, normalize)
         genes_df['e2g_n_iBAQ_dstrAdj'] = \
             genes_df.e2g_nGPArea_Sum_dstrAdj / genes_df.e2g_GeneCapacity
-        genes_df = set_gene_gpgroups(genes_df)
 
         genes_df.sort_values(by=['e2g_GPGroup'], ascending=True, inplace=True)
         genes_df.index = list(range(0, len(genes_df)))  # reset the index
@@ -1028,7 +1044,11 @@ def grouper(usrdata, outdir='', database=None,
         logfile.write('No protein information for {}.\n'.format(repr(usrdata)))
         logfile.close()
         return
-    usrdata.df = rank_peptides(usrdata.df, 'psm_PrecursorArea_dstrAdj')
+
+    dstr_area = 'psm_PrecursorArea_dstrAdj'
+    area_col_to_use = dstr_area if dstr_area in usrdata.df.columns else orig_area_col
+    # rare case where no PSMs pass into the temp_df of quantified PSMs
+    usrdata.df = rank_peptides(usrdata.df, area_col=area_col_to_use)
     usrdata.df['psm_PeptRank'] = usrdata.df['psm_PeptRank'].fillna(0)  # anyone who
                               # didn't get a rank gets a rank of 0
     #print('Length of usrdata after merge : ',len(usrdata))
@@ -1069,7 +1089,8 @@ def grouper(usrdata, outdir='', database=None,
         print('Potential error, not all columns filled.')
         print([x for x in data_cols if x not in usrdata.df.columns.values])
         data_cols = [x for x in data_cols if x in usrdata.df.columns.values]
-    data_cols += [x for x in usrdata.df.columns if x not in data_cols]  # add in anything else
+    data_cols += [x for x in usrdata.original_columns if x not in data_cols]  # Don't drop any cols.
+
 
     export_metadata(program_title=program_title, usrdata=usrdata, matched_psms=matched_psms,
                     unmatched_psms=unmatched_psms, usrfile=usrfile, taxon_totals=taxon_totals,

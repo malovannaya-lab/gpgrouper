@@ -27,13 +27,25 @@ CONFIG_FILE = os.path.join(BASEDIR, '../pygrouper_config.ini')
 
 # usrdata = UserData(datafile=PSMS_FILE, indir=INPUT_DIR, outdir=OUTPUT_DIR, rawfiledir=RAWFILE_DIR,
                    # no_taxa_redistrib=0, labeltype='None', addedby='test', searchdb=REFSEQ_FILE)
-devnull = open(os.devnull, 'w')
+# devnull = open(os.devnull, 'w')
 
 class InputTest(unittest.TestCase):
     """Test ability to call `pygrouper run`"""
 
+    stdout = sys.stdout
+    stderr = sys.stderr
 
-    @mock.patch('sys.stdout', devnull)
+    def setUp(self):
+        sys.stdout = StringIO()
+        sys.stderr = StringIO()
+
+    def tearDown(self):
+        sys.stdout = self.stdout
+        sys.stderr = self.stderr
+
+
+
+    # @mock.patch('sys.stdout', devnull)
     @mock.patch('pygrouper.pygrouper.main')
     def test_call_run(self, main):
         self.longMessage = True
@@ -83,8 +95,20 @@ def get_sample_data():
             #                          )
         return main.call_args[-1]
 
-@mock.patch('sys.stdout', devnull)
+# @mock.patch('sys.stdout', devnull)
 class MatchTest(unittest.TestCase):
+
+
+    stdout = sys.stdout
+    stderr = sys.stderr
+
+    def setUp(self):
+        sys.stdout = StringIO()
+        sys.stderr = StringIO()
+
+    def tearDown(self):
+        sys.stdout = self.stdout
+        sys.stderr = self.stderr
 
     def test_called_match(self):
         "Test if match function gets called (stage_match is working properly)"
@@ -128,14 +152,20 @@ class TestMin(unittest.TestCase):
     MIN_FASTA = os.path.join(_dirname, './testdata/minfasta.tab')
     MIN_FILE  = os.path.join(_dirname, './testdata/minfile.tab')
 
+    stdout = sys.stdout
+    stderr = sys.stderr
+
     def setUp(self):
+        sys.stdout = StringIO()
+        sys.stderr = StringIO()
         fasta_h = '\t'.join(['TaxonID', 'HomologeneID', 'GeneID', 'ProteinGI', 'FASTA'])
         fasta_values = '\t'.join(['9606', '', '1234', '12345678', 'AAAAAAA'])
         fasta_file = '\n'.join([fasta_h, fasta_values])
 
         headers = '\t'.join(['Sequence', 'Modifications', 'PrecursorArea',
-                             'IonScore', 'q_value', ])
-        values = '\t'.join(['AAAAAAA', ' ', '12345', '50', '0.00'])
+                             'Charge', 'IonScore', 'q_value', 'PEP', 'SpectrumFile',
+                             'RTmin', 'DeltaMassPPM'])
+        values = '\t'.join(['AAAAAAA', ' ', '12345', '2', '50', '0.00', '0.00', 'file1.raw', '10', '1'])
         small_file = '\n'.join([headers, values])
 
         with open(self.MIN_FASTA, 'w') as fasta, open(self.MIN_FILE, 'w') as file_:
@@ -143,6 +173,8 @@ class TestMin(unittest.TestCase):
             file_.write(small_file)
 
     def tearDown(self):
+        sys.stdout = self.stdout
+        sys.stderr = self.stderr
         os.remove(self.MIN_FASTA)
         os.remove(self.MIN_FILE)
         for f in os.listdir('.'):
@@ -163,57 +195,111 @@ class TestMin(unittest.TestCase):
                                                                              response.exc_info[1])
                          )
 
-# class TestAreaTMT(unittest.TestCase):
-#     _dirname = os.path.dirname(os.path.realpath(__file__))
+class TestAreaTMT(unittest.TestCase):
+    """ Testing for dealing with Areas for TMT and Labelfree data"""
+    _dirname = os.path.dirname(os.path.realpath(__file__))
 
-#     MIN_FASTA = os.path.join(_dirname, './testdata/tmt.tab')
-#     MIN_FILE  = os.path.join(_dirname, './testdata/tmt_fa.tab')
+    TMT_FASTA = os.path.join(_dirname, './testdata/tmt_fa.tab')
+    TMT_FILE  = os.path.join(_dirname, './testdata/10101_1_1_tmt_fa.tab')
 
-#     def setUp(self):
-#         fasta_h = '\t'.join(['TaxonID', 'HomologeneID', 'GeneID', 'ProteinGI', 'FASTA'])
-#         fasta_values = '\t'.join(['9606', '', '1234', '12345678', 'AAAAAAA'])
-#         fasta_file = '\n'.join([fasta_h, fasta_values])
+    stdout = sys.stdout
+    stderr = sys.stderr
 
-#         headers = '\t'.join(['Sequence', 'Modifications', 'PrecursorArea',
-#                              'IonScore', 'q_value', ])
-#         values = '\t'.join(['AAAAAAA', ' ', '12345', '50', '0.00'])
-#         small_file = '\n'.join([headers, values])
+    def setUp(self):
+        sys.stdout = StringIO()
+        sys.stderr = StringIO()
 
-#         with open(self.MIN_FASTA, 'w') as fasta, open(self.MIN_FILE, 'w') as file_:
-#             fasta.write(fasta_file)
-#             file_.write(small_file)
+        fasta_h = '\t'.join(['TaxonID', 'HomologeneID', 'GeneID', 'ProteinGI', 'FASTA'])
+        fasta_values = '\t'.join(['9606', '', '1234', '12345678', 'AAAAAAAKBBBBBBBKCCCCCCCK\n'])
+        fasta_values += '\t'.join(['9606', '', '2345', '12345678', 'AAAAAAAKBBBBBBBKCCCCCCCK\n'])
+        fasta_values += '\t'.join(['9606', '', '111', '11111', 'CBACBACBAK\n'])
+        fasta_values += '\t'.join(['9606', '', '666', '46123', 'BBBBBBBKCCCCCCCK\n'])
 
-#     def tearDown(self):
-#         os.remove(self.MIN_FASTA)
-#         os.remove(self.MIN_FILE)
-#         for f in os.listdir('.'):
-#             if f.startswith('1_1_1'):
-#                 os.remove(f)
-
-#     def test_labelfree(self):
-#         runner = CliRunner()
-#         response = runner.invoke(cli.cli, ['run', '--database', self.MIN_FASTA,
-#                                            '--psms-file', self.MIN_FILE,
-#                                            '--taxonid', 9606,
-#                                            '--outdir', '.',
-#                                            '--configfile', CONFIG_FILE,
-#                                            '--labeltype',
-#                                            ])
-
-#         # print full traceback if there is a failure
-#         self.assertEqual(0, response.exit_code,
-#                          msg='\n{}\n{!r}'.format(''.join(traceback.format_tb(response.exc_info[-1])),
-#                                                                              response.exc_info[1])
+        fasta_values += '\t'.join(['9606', '', '567', '865431', 'AAAAAAAKBBBBBBBKCCCCCCCK\n'])
+        fasta_values += '\t'.join(['9606', '', '678', '865431', 'AAAAAAAKBBBBBBBKCCCCCCCK\n'])
+        fasta_values += '\t'.join(['9606', '', '999', '99999', 'ABCABCABCK\n'])
+        fasta_file = '\n'.join([fasta_h, fasta_values])
 
 
+        n = 3 # number of PSMs
+        # d = dict(Sequence       = ['aAAAAAAK', 'bBBBBBBK', 'bBBBBBBK'],
+        #          Modifications  = ['N-Term(TMT6plex)'] * n,
+        #          PrecursorArea  = [100] * n,
+        #          Charge         = [2] * n,
+        #          IonScore       = [50, 50, 30],
+        #          q_value        = [0] * n,
+        #          PEP            = [0] * n,
+        #          SpectrumFile   = ['File1.raw'] * n,
+        #          RTmin          = [1, 2, 2.2],
+        #          DeltaMassPPM   = [0] * n,
+        #          TMT_126        = [2, 2, 4],
+        #          TMT_131        = [4, 4, 2]
+        # )
+        n = 5
 
+        d = dict(Sequence       = ['AAAAAAAK', 'BBBBBBBK', 'BBBBBBBK',
+                                   'CBACBACBAK', 'ABCABCABCK'],
+                 Modifications  = [' '] * n,
+                 PrecursorArea  = [np.multiply(x, np.power(10, 8))
+                                   for x in [100, 100, 100, 80, 20]],
+                 Charge         = [2] * n,
+                 IonScore       = [50]* n,
+                 q_value        = [0] * n,
+                 PEP            = [0] * n,
+                 SpectrumFile   = ['File1.raw'] * n,
+                 RTmin          = [1.1, 1, 1, 2.2, 2.3],
+                 DeltaMassPPM   = [0] * n,
+                 TMT_126        = [2, 2, 2, 4, 4],
+                 TMT_131        = [4, 4, 4, 4, 4]
+        )
 
+        df = pd.DataFrame(d)
+        df.to_csv(self.TMT_FILE, sep='\t', index=False)
 
-@mock.patch('sys.stdout', devnull)
+        with open(self.TMT_FASTA, 'w') as fasta:
+            fasta.write(fasta_file)
+
+    def tearDown(self):
+        sys.stdout = self.stdout
+        sys.stderr = self.stderr
+        os.remove(self.TMT_FASTA)
+        os.remove(self.TMT_FILE)
+        for f in os.listdir('.'):
+            pass
+            if f.startswith('10101_1_1'):
+                os.remove(f)
+
+    def test_labelfree(self):
+        runner = CliRunner()
+        response = runner.invoke(cli.cli, ['run', '--database', self.TMT_FASTA,
+                                           '--psms-file', self.TMT_FILE,
+                                           '--taxonid', 9606,
+                                           '--outdir', './testdata',
+                                           '--configfile', CONFIG_FILE,
+                                           '--labeltype', 'none',
+                                           ])
+
+        # print full traceback if there is a failure
+        self.assertEqual(0, response.exit_code,
+                         msg='\n{}\n{!r}'.format(''.join(traceback.format_tb(response.exc_info[-1])),
+                                                                             response.exc_info[1])
+                         )
+
+# @mock.patch('sys.stdout', devnull)
 class TestFull(unittest.TestCase):
     """Test a full runthrough to make sure we can go from start to finish"""
 
+    stdout = sys.stdout
+    stderr = sys.stderr
+
+    def setUp(self):
+        sys.stdout = StringIO()
+        sys.stderr = StringIO()
+
+
     def tearDown(self):
+        sys.stdout = self.stdout
+        sys.stderr = self.stderr
         for f in os.listdir('.'):
             if _logfile.match(f):
                 os.remove(f)
