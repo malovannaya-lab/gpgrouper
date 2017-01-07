@@ -794,7 +794,7 @@ def redistribute_area_tmt(temp_df, label, labeltypes, area_col):
     # with_reporter = temp_df[temp_df['QuanUsage'] == 'Use']
     with_reporter = temp_df[ temp_df['psm_SequenceModi'].str.contains('.*tmt.*')]
     reporter_area = with_reporter[label] * with_reporter[area_col] / with_reporter[labeltypes].sum(1)
-    new_area_col = area_col + '_reporter'
+    new_area_col = 'psm_' + area_col + '_split'
     reporter_area.name = new_area_col
     temp_df = temp_df.join(reporter_area, how='right')  # only keep peptides with good reporter ion
     temp_df[new_area_col].fillna(temp_df[area_col], inplace=True)
@@ -892,12 +892,6 @@ def grouper(usrdata, outdir='', database=None,
     # ============= Gather all genes that all peptides map to =============== #
     usrdata.df = split_on_geneid(usrdata.df)
     # ========================================================================= #
-    logfile.write('{} | Starting peptide ranking.\n'.format(time.ctime()))
-
-    logfile.write('{} | Peptide ranking complete.\n'.format(time.ctime()))
-    print('{}: Peptide ranking complete for {}.'.format(datetime.now(), usrdata.datafile))
-    logging.info('{}: Peptide ranking complete for {}.'.format(datetime.now(),
-                                                               usrdata.datafile))
 
     # Now calculate AUC and PSM use flags
     usrdata.df = flag_AUC_PSM(usrdata.df, usrdata.filtervalues)
@@ -958,7 +952,11 @@ def grouper(usrdata, outdir='', database=None,
         #                   # Really no need for marking the label (but maybe for SILAC)
         temp_df = select_good_peptides(usrdata.df, mylabelix)
         if usrdata.labeltype == 'TMT':
-            temp_df, area_col = redistribute_area_tmt(temp_df, label, labeltypes, area_col)
+            if usrdata.quant_source.strip() == 'AUC':
+                tmt_area_col = 'PrecursorArea'  # we always use Precursor Area
+            elif usrdata.quant_source.strip() == 'Intensity':
+                tmt_area_col = 'Intensity'
+            temp_df, area_col = redistribute_area_tmt(temp_df, label, labeltypes, area_col=tmt_area_col)
         elif usrdata.labeltype == 'SILAC':
             raise NotImplementedError('No support for SILAC experiments yet.')
         # ==================================================================== #
@@ -1084,8 +1082,13 @@ def grouper(usrdata, outdir='', database=None,
                  'psm_PSM_IDG', 'psm_SequenceModi',
                  'psm_SequenceModiCount', 'psm_LabelFLAG',
                  'psm_PeptRank', 'psm_AUC_UseFLAG', 'psm_PSM_UseFLAG',
-                 'psm_Peak_UseFLAG', 'psm_SequenceArea', 'psm_SequenceArea_reporter',
+                 'psm_Peak_UseFLAG', 'psm_SequenceArea', 'psm_PrecursorArea_split',
                  'psm_PrecursorArea_dstrAdj']
+
+
+    logfile.write('{} | Starting peptide ranking.\n'.format(time.ctime()))
+    dstr_area = 'psm_PrecursorArea_dstrAdj'
+    area_col_to_use = dstr_area if dstr_area in usrdata.df.columns else orig_area_col
     if usrdata.labeltype == 'TMT':
         data_cols = data_cols + ['TMT_126', 'TMT_127_N', 'TMT_127_C', 'TMT_128_N',
                                  'TMT_128_C', 'TMT_129_N', 'TMT_129_C', 'TMT_130_N',
@@ -1108,14 +1111,18 @@ def grouper(usrdata, outdir='', database=None,
         psm_tmtoutput['psm_HIDCount'] = ''  # will be populated later
     else:
         usrdata.df = pd.merge(usrdata.df, temp_df, how='left')
-        dstr_area = 'psm_PrecursorArea_dstrAdj'
-        area_col_to_use = dstr_area if dstr_area in usrdata.df.columns else orig_area_col
         # rare case where no PSMs pass into the temp_df of quantified PSMs
         usrdata.df = rank_peptides(usrdata.df, area_col=area_col_to_use)
         usrdata.df['psm_PeptRank'] = usrdata.df['psm_PeptRank'].fillna(0)  # anyone who
+        # TODO : Make this valid for AUC and Intensity based quantification
+        usrdata.df['psm_PrecursorArea_split'] = usrdata.df['PrecursorArea']
                               # didn't get a rank gets a rank of 0
     #print('Length of usrdata after merge : ',len(usrdata))
 
+    logfile.write('{} | Peptide ranking complete.\n'.format(time.ctime()))
+    print('{}: Peptide ranking complete for {}.'.format(datetime.now(), usrdata.datafile))
+    logging.info('{}: Peptide ranking complete for {}.'.format(datetime.now(),
+                                                               usrdata.datafile))
     #usrdata.to_csv(usrdata_out, columns=usrdata.columns,
                                 #encoding='utf-8', sep='\t')
 
