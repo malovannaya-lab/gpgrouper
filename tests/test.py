@@ -7,6 +7,7 @@ import traceback
 from unittest import mock
 from io import StringIO
 from click.testing import CliRunner
+import numpy as np
 import pandas as pd
 
 from pygrouper import pygrouper, auto_grouper
@@ -205,6 +206,10 @@ class TestAreaTMT(unittest.TestCase):
     stdout = sys.stdout
     stderr = sys.stderr
 
+    set2s = [2345, 1234, 678, 567]
+    ratios = {'9606' : 4/5.0,
+              '10090' : 1/5.0}
+
     def setUp(self):
         sys.stdout = StringIO()
         sys.stderr = StringIO()
@@ -215,9 +220,9 @@ class TestAreaTMT(unittest.TestCase):
         fasta_values += '\t'.join(['9606', '', '111', '11111', 'CBACBACBAK\n'])
         fasta_values += '\t'.join(['9606', '', '666', '46123', 'BBBBBBBKCCCCCCCK\n'])
 
-        fasta_values += '\t'.join(['9606', '', '567', '865431', 'AAAAAAAKBBBBBBBKCCCCCCCK\n'])
-        fasta_values += '\t'.join(['9606', '', '678', '865431', 'AAAAAAAKBBBBBBBKCCCCCCCK\n'])
-        fasta_values += '\t'.join(['9606', '', '999', '99999', 'ABCABCABCK\n'])
+        fasta_values += '\t'.join(['10090', '', '567', '865431', 'AAAAAAAKBBBBBBBKCCCCCCCK\n'])
+        fasta_values += '\t'.join(['10090', '', '678', '865431', 'AAAAAAAKBBBBBBBKCCCCCCCK\n'])
+        fasta_values += '\t'.join(['10090', '', '999', '99999', 'ABCABCABCK\n'])
         fasta_file = '\n'.join([fasta_h, fasta_values])
 
 
@@ -237,9 +242,9 @@ class TestAreaTMT(unittest.TestCase):
         # )
         n = 5
 
-        d = dict(Sequence       = ['AAAAAAAK', 'BBBBBBBK', 'BBBBBBBK',
-                                   'CBACBACBAK', 'ABCABCABCK'],
-                 Modifications  = [' '] * n,
+        d = dict(Sequence       = ['aAAAAAAK', 'bBBBBBBK', 'bBBBBBBK',
+                                   'cBACBACBAK', 'aBCABCABCK'],
+                 Modifications  = ['N-Term(TMT6plex)'] * n,
                  PrecursorArea  = [np.multiply(x, np.power(10, 8))
                                    for x in [100, 100, 100, 80, 20]],
                  Charge         = [2] * n,
@@ -265,9 +270,11 @@ class TestAreaTMT(unittest.TestCase):
         os.remove(self.TMT_FASTA)
         os.remove(self.TMT_FILE)
         for f in os.listdir('.'):
-            pass
             if f.startswith('10101_1_1'):
                 os.remove(f)
+        for f in os.listdir('./testdata'):
+            if f.startswith('10101_1_1'):
+                os.remove(os.path.join('./testdata', f))
 
     def test_labelfree(self):
         runner = CliRunner()
@@ -284,6 +291,24 @@ class TestAreaTMT(unittest.TestCase):
                          msg='\n{}\n{!r}'.format(''.join(traceback.format_tb(response.exc_info[-1])),
                                                                              response.exc_info[1])
                          )
+        dstrAdj = 'e2g_nGPArea_Sum_dstrAdj'
+        maxarea = 'e2g_nGPArea_Sum_max'
+        df = pd.read_table('./testdata/10101_1_1_none_0_e2g.tab')
+        print(df.columns)
+        self.assertEqual(True, all(df[ df.e2g_GeneID.isin(self.set2s)]['e2g_IDSet'] == 2))
+        self.assertEqual(True, all(df.query('e2g_IDSet==3')['e2g_nGPArea_Sum_dstrAdj']==0))
+        for tid in 9606, 10090:
+            q = 'e2g_IDSet==2 & e2g_TaxonID == {}'.format(tid)
+            subdf = df.query(q)
+            tot = len(subdf)
+            self.assertEqual(True,
+                             all(subdf[dstrAdj]==(subdf[maxarea]*self.ratios[str(tid)])/tot),
+                             # msg=subdf[[dstrAdj, maxarea]]
+                             msg=self.ratios[str(tid)]
+            )
+
+
+
 
 # @mock.patch('sys.stdout', devnull)
 class TestFull(unittest.TestCase):

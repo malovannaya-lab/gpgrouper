@@ -4,6 +4,7 @@ import re, os, sys, time
 import json
 import logging
 from collections import defaultdict
+from functools import partial
 from math import ceil
 from warnings import warn
 from configparser import ConfigParser
@@ -172,37 +173,75 @@ def get_gid_ignore_list(inputfile):
 
 def _extract_peptideinfo(ixs, database):
 
-     taxonids = set()
-     homologeneids = set()
-     proteingis = set()
-     genefraglens = []
-     genelist = set()
-     capacity = list()
+    taxonids = set()
+    homologeneids = set()
+    proteingis = set()
+    genefraglens = []
+    genelist = set()
+    capacity = list()
 
-     database_matches = database.loc[set(ixs)]
+    database_matches = database.loc[set(map(int, ixs))]
 
-     for ix, row in database_matches.iterrows():
-         genelist.add(row.GeneID)
-         taxonids.add(row.TaxonID)
-         homologeneids.add(row.HomologeneID)
-         proteingis.add(row.ProteinGI)
-         capacity.append(row.capacity)
-     return (','.join(str(x) for x in genelist),
-             len(genelist),
-             ','.join(str(x) for x in taxonids),
-             len(taxonids),
-             ','.join(str(x) for x in proteingis),
-             len(proteingis),
-             tuple(capacity))
+    for ix, row in database_matches.iterrows():
+        genelist.add(row.GeneID)
+        taxonids.add(row.TaxonID)
+        homologeneids.add(row.HomologeneID)
+        proteingis.add(row.ProteinGI)
+        capacity.append(row.capacity)
+    return (','.join(str(x) for x in genelist),
+            len(genelist),
+            ','.join(str(x) for x in taxonids),
+            len(taxonids),
+            ','.join(str(x) for x in proteingis),
+            len(proteingis),
+            tuple(capacity))
 
 def extract_peptideinfo(usrdata, database):
-    peptide_info = usrdata.df.apply(lambda x: _extract_peptideinfo(x['metadatainfo'],
-                                                                   database),
-    axis=1)
+    #import ipdb; ipdb.set_trace()
+    to_int = partial(map, int)
+    ixs = (usrdata.df.metadatainfo.str.strip('|')
+           .str.split('|')
+           .apply(to_int)
+           .apply(tuple)
+           .apply(pd.Series)
+           .stack()
+           .to_frame()
+           )
+    ixs.columns = ['database_ix']
+    ixs.index.names = ['psm_index', 'database_occurrence']
+    gid_op = {'psm_GeneList' : lambda x: ','.join(x.dropna().unique()),
+              'psm_GeneCount': lambda x : len(x.dropna()),
+             }
+    tid_op = {'psm_TaxonIDList' : lambda x: ','.join(x.dropna().unique()),
+              'psm_TaxonCount': lambda x : len(x.dropna()),
+             }
+    pid_op = {'psm_ProteinList' : lambda x: ','.join(x.dropna().unique()),
+              'psm_ProteinCount': lambda x : len(x.dropna()),
+             }
+    hid_op = {'psm_HIDList' : lambda x: ','.join(x.dropna().unique()),
+              'psm_HIDCount': lambda x : len(x.dropna()),
+             }
+    groups = {'GeneID' : gid_op,
+              'HomologeneID' : hid_op,
+              'ProteinGI' : pid_op,
+              'TaxonID' : tid_op,
+              'capacity' : {'psm_GeneCapacity': np.mean}
+            }
+    psm_database = (ixs.merge(database, left_on='database_ix', right_index=True)
+                    .groupby(level='psm_index')
+                    .agg(groups)
+                   )
+    psm_database.columns = psm_database.columns.droplevel(0)
+    usrdata.df = usrdata.df.join(psm_database, how='left')
+    
 
-    (usrdata.df['psm_GeneList'], usrdata.df['psm_GeneCount'], usrdata.df['psm_TaxonIDList'],
-     usrdata.df['psm_TaxonCount'], usrdata.df['psm_ProteinList'],
-     usrdata.df['psm_ProteinCount'], usrdata.df['psm_GeneCapacities']) = list(zip((*peptide_info)))
+    #peptide_info = usrdata.df.apply(lambda x: _extract_peptideinfo(ixs,
+    #                                                               database),
+    #axis=1)
+
+    #(usrdata.df['psm_GeneList'], usrdata.df['psm_GeneCount'], usrdata.df['psm_TaxonIDList'],
+    #usrdata.df['psm_TaxonCount'], usrdata.df['psm_ProteinList'],
+    #usrdata.df['psm_ProteinCount'], usrdata.df['psm_GeneCapacities']) = list(zip((*peptide_info)))
     return 0
 
 def gene_taxon_mapper(df):
@@ -212,33 +251,43 @@ def gene_taxon_mapper(df):
     return {x[1].GeneID: x[1].TaxonID for x in df.iterrows()}
 
 
-def _assign_IDG(ionscore, qvalue, ion_score_bins):
+# def _assign_IDG(ionscore, qvalue, ion_score_bins):
 
-    low, med, high = ion_score_bins  # default should be 10, 20, 30
-    if (ionscore>= high and qvalue <= .01): IDGout = 1
-    elif (ionscore >= high and qvalue <= .05): IDGout = 2
-    elif (ionscore >= med and qvalue <= .01): IDGout = 3
-    elif (ionscore >= med and qvalue <= .05): IDGout = 4
-    elif (ionscore >= low and qvalue <= .01): IDGout = 5
-    elif (ionscore >= low and qvalue <= .05): IDGout = 6
-    elif (ionscore >= 0 and qvalue <= .01): IDGout = 7
-    elif (ionscore >= 0 and qvalue <= .05): IDGout = 8
-    else: IDGout  = 9
-    return IDGout
+#     low, med, high = ion_score_bins  # default should be 10, 20, 30
+#     if (ionscore>= high and qvalue <= .01): IDGout = 1
+#     elif (ionscore >= high and qvalue <= .05): IDGout = 2
+#     elif (ionscore >= med and qvalue <= .01): IDGout = 3
+#     elif (ionscore >= med and qvalue <= .05): IDGout = 4
+#     elif (ionscore >= low and qvalue <= .01): IDGout = 5
+#     elif (ionscore >= low and qvalue <= .05): IDGout = 6
+#     elif (ionscore >= 0 and qvalue <= .01): IDGout = 7
+#     elif (ionscore >= 0 and qvalue <= .05): IDGout = 8
+#     else: IDGout  = 9
+#     return IDGout
+
+# def assign_IDG(usrdata):
+#     """Assign IDG bsaed on combination of
+#     IonScore and q_value"""
+#     ion_score_bins = usrdata.filtervalues.get('ion_score_bins', (10, 20, 30))
+#     usrdata.df['psm_PSM_IDG'] = usrdata.df.apply(lambda x:
+#                                                  _assign_IDG(x['IonScore'],
+#                                                              x['q_value'],
+#                                                              ion_score_bins), axis=1)
+#     return usrdata
 
 def assign_IDG(usrdata):
-    """Assign IDG bsaed on combination of
-    IonScore and q_value"""
     ion_score_bins = usrdata.filtervalues.get('ion_score_bins', (10, 20, 30))
-    usrdata.df['psm_PSM_IDG'] = usrdata.df.apply(lambda x:
-                                                 _assign_IDG(x['IonScore'],
-                                                             x['q_value'],
-                                                             ion_score_bins), axis=1)
+    df = usrdata.df
+    df['psm_PSM_IDG'] = pd.cut(df['IonScore'],
+                               bins=(0, *ion_score_bins, np.inf),
+                               labels=[7, 5, 3, 1], include_lowest=True,
+                               right=False).astype('int')
+    df.loc[ df['q_value'] > .01, 'psm_PSM_IDG' ] += 1
     return usrdata
 
 def make_seqlower(usrdata, col='Sequence'):
     """Make a new column called sequence_lower from a DataFrame"""
-    usrdata['sequence_lower'] = usrdata.apply(lambda x: x[col].lower(), axis=1)
+    usrdata['sequence_lower'] = usrdata[col].str.lower()
     return usrdata
 
 def _peptidome_matcher(seq, metadata, prot):
@@ -258,6 +307,16 @@ def peptidome_matcher(usrdata, ref_dict):
                                                                x['metadatainfo'],
                                                                ref_dict),
                                             axis=1)
+    return usrdata
+def peptidome_matcher(usrdata, ref_dict):
+    pmap = partial(map, str)
+    result = (usrdata.Sequence.str.upper().map(ref_dict)
+              .fillna('')
+              .map(pmap)
+              .map('|'.join)
+              .add('|')
+              )
+    usrdata['metadatainfo'] += result
     return usrdata
 
 
@@ -1058,8 +1117,8 @@ def grouper(usrdata, outdir='', database=None,
 
 
     usrdata.df['psm_ModificationTS'] = datetime.now().strftime("%m/%d/%Y %H:%M:%S")
-    usrdata.df['psm_HIDList'] = ''  # will be populated later
-    usrdata.df['psm_HIDCount'] = ''  # will be populated later
+    #usrdata.df['psm_HIDList'] = ''  # will be populated later
+    #usrdata.df['psm_HIDCount'] = ''  # will be populated later
     data_cols = ['psm_EXPRecNo', 'psm_EXPRunNo', 'psm_EXPSearchNo',
                  'psm_EXPTechRepNo', 'Sequence',
                  'PSMAmbiguity', 'Modifications', 'ActivationType',
