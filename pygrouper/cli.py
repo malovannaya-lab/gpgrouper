@@ -288,7 +288,7 @@ def run(autorun, contaminants, database, enzyme, interval, ion_score, ion_score_
                         usrdata.filtervalues[param] = params[param]
             else:
                 usrdata.filtervalues['ion_score']      = ion_score
-                usrdata.filtervalues['ion_score_bins'] = ion_score
+                usrdata.filtervalues['ion_score_bins'] = ion_score_bins
                 usrdata.filtervalues['qvalue']         = qvalue
                 usrdata.filtervalues['pep']            = pep
                 usrdata.filtervalues['idg']            = idg
