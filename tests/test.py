@@ -180,7 +180,10 @@ class TestMin(unittest.TestCase):
         os.remove(self.MIN_FILE)
         for f in os.listdir('.'):
             if f.startswith('1_1_1'):
-                os.remove(f)
+                try:
+                    os.remove(f)
+                except PermissionError:
+                    pass
 
     def test_minimum_cols(self):
         runner = CliRunner()
@@ -245,7 +248,7 @@ class TestAreaTMT(unittest.TestCase):
         d = dict(Sequence       = ['aAAAAAAK', 'bBBBBBBK', 'bBBBBBBK',
                                    'cBACBACBAK', 'aBCABCABCK'],
                  Modifications  = ['N-Term(TMT6plex)'] * n,
-                 PrecursorArea  = [np.multiply(x, np.power(10, 8))
+                 PrecursorArea  = [np.multiply(x, np.power(10, 2))
                                    for x in [100, 100, 100, 80, 20]],
                  Charge         = [2] * n,
                  IonScore       = [50]* n,
@@ -271,10 +274,16 @@ class TestAreaTMT(unittest.TestCase):
         os.remove(self.TMT_FILE)
         for f in os.listdir('.'):
             if f.startswith('10101_1_1'):
-                os.remove(f)
+                try:
+                    os.remove(f)
+                except PermissionError:
+                    pass
         for f in os.listdir('./testdata'):
             if f.startswith('10101_1_1'):
-                os.remove(os.path.join('./testdata', f))
+                try:
+                    os.remove(f)
+                except (PermissionError, FileNotFoundError):
+                    pass
 
     def test_labelfree(self):
         runner = CliRunner()
@@ -301,10 +310,22 @@ class TestAreaTMT(unittest.TestCase):
             q = 'e2g_IDSet==2 & e2g_TaxonID == {}'.format(tid)
             subdf = df.query(q)
             tot = len(subdf)
-            self.assertEqual(True,
-                             all(subdf[dstrAdj]==(subdf[maxarea]*self.ratios[str(tid)])/tot),
-                             # msg=subdf[[dstrAdj, maxarea]]
-                             msg=self.ratios[str(tid)]
+
+            # all(subdf[dstrAdj]==(subdf[maxarea]*self.ratios[str(tid)])/tot),
+            msg = '\n'+str(subdf[[dstrAdj, maxarea]]) +'\n' +\
+                  str(subdf[maxarea]*self.ratios[str(tid)]/tot) +\
+                  '\n'+ str(self.ratios[str(tid)])
+            # self.assertEqual(True,
+            #                  all(subdf[dstrAdj]==(subdf[maxarea]*self.ratios[str(tid)])/tot),
+            #                  msg=msg
+            #                  # msg=self.ratios[str(tid)]
+            # )
+            np.testing.assert_almost_equal(
+                             subdf[dstrAdj],
+                (subdf[maxarea]*self.ratios[str(tid)]/tot).values,
+                             # msg='\n'+str(subdf[[dstrAdj, maxarea]]) +'\n'+ str(self.ratios[str(tid)])
+                             # msg=subdf
+                             # msg=self.ratios[str(tid)]
             )
 
 
@@ -327,7 +348,10 @@ class TestFull(unittest.TestCase):
         sys.stderr = self.stderr
         for f in os.listdir('.'):
             if _logfile.match(f):
-                os.remove(f)
+                try:
+                    os.remove(f)
+                except PermissionError:
+                    pass
         for f in os.listdir(INPUT_DIR):
             if f.startswith('1_1_1'):
                 os.remove(os.path.join(INPUT_DIR, f))

@@ -197,10 +197,11 @@ def _extract_peptideinfo(ixs, database):
             tuple(capacity))
 
 def extract_peptideinfo(usrdata, database):
-    #import ipdb; ipdb.set_trace()
+    filter_int = partial(filter, lambda x : x.isdigit())
     to_int = partial(map, int)
     ixs = (usrdata.df.metadatainfo.str.strip('|')
            .str.split('|')
+           .apply(filter_int)
            .apply(to_int)
            .apply(tuple)
            .apply(pd.Series)
@@ -233,7 +234,7 @@ def extract_peptideinfo(usrdata, database):
                    )
     psm_database.columns = psm_database.columns.droplevel(0)
     usrdata.df = usrdata.df.join(psm_database, how='left')
-    
+    usrdata.df['psm_TaxonIDList'] = usrdata.df['psm_TaxonIDList'].astype(str)
 
     #peptide_info = usrdata.df.apply(lambda x: _extract_peptideinfo(ixs,
     #                                                               database),
@@ -290,24 +291,24 @@ def make_seqlower(usrdata, col='Sequence'):
     usrdata['sequence_lower'] = usrdata[col].str.lower()
     return usrdata
 
-def _peptidome_matcher(seq, metadata, prot):
-    seq = seq.upper()
-    if not isinstance(metadata, tuple):
-        metadata = tuple()
-    if seq in prot:
-        metadata = set(metadata).union(prot[seq])
-    return tuple(metadata)
+# def _peptidome_matcher(seq, metadata, prot):
+#     seq = seq.upper()
+#     if not isinstance(metadata, tuple):
+#         metadata = tuple()
+#     if seq in prot:
+#         metadata = set(metadata).union(prot[seq])
+#     return tuple(metadata)
 
-def peptidome_matcher(usrdata, ref_dict):
-    """Matches Sequence column with refseq dictionary
-    returns an empty list if there is no match.
-    returns input DataFrame with a metadata column with a list of named tuples"""
-    usrdata['metadatainfo'] = usrdata.apply(lambda x:
-                                            _peptidome_matcher(x['Sequence'],
-                                                               x['metadatainfo'],
-                                                               ref_dict),
-                                            axis=1)
-    return usrdata
+# def peptidome_matcher(usrdata, ref_dict):
+#     """Matches Sequence column with refseq dictionary
+#     returns an empty list if there is no match.
+#     returns input DataFrame with a metadata column with a list of named tuples"""
+#     usrdata['metadatainfo'] = usrdata.apply(lambda x:
+#                                             _peptidome_matcher(x['Sequence'],
+#                                                                x['metadatainfo'],
+#                                                                ref_dict),
+#                                             axis=1)
+#     return usrdata
 def peptidome_matcher(usrdata, ref_dict):
     pmap = partial(map, str)
     result = (usrdata.Sequence.str.upper().map(ref_dict)
@@ -438,69 +439,108 @@ def rank_peptides(usrdata, area_col, ranks_only=False):
 
     return usrdata
 
-def _flag_AUC_PSM(df, d):
-    if d['pep'] =='all' : d['pep'] = float('inf')
-    if d['idg'] =='all' : d['idg'] = float('inf')
-    #if df['IonScore'] == '' and df['q-Value'] == '':
-    if df['Charge'] < d['zmin'] or df['Charge'] > d['zmax'] :
-         # if charge is empty (nan), this will not be true
-        AUC_flag = 0
-        PSM_flag = 0
-    elif df['psm_SequenceModiCount'] > d['modi'] :
-        AUC_flag = 0
-        PSM_flag = 0
-    elif np.isnan(df['IonScore']) and np.isnan(df['q_value']):
-        AUC_flag = 1 #retains WLs Q2up assignments
-        PSM_flag = 0
-    elif df['IonScore'] < d['ion_score'] :
-        AUC_flag = 0
-        PSM_flag = 0
-    elif df['q_value'] > d['qvalue'] :
-        AUC_flag = 0
-        PSM_flag = 0
-    elif df['PEP'] > d['pep'] :
-        AUC_flag = 0
-        PSM_flag = 0
-    elif df['psm_PSM_IDG'] > d['idg'] :
-        AUC_flag = 0
-        PSM_flag = 0
-    elif df['psm_Peak_UseFLAG'] == 0 :
-        AUC_flag = 0
-        #if 'PSMAmbiguity' in df.columns:  # will not work like this
-        if df['PSMAmbiguity'].lower() == 'unambiguous':
-            PSM_flag = 1
-        else:
-            PSM_flag = 0
-    else:
-        AUC_flag = 1
-        PSM_flag = 1
+# def _flag_AUC_PSM(df, d):
+#     if d['pep'] =='all' : d['pep'] = float('inf')
+#     if d['idg'] =='all' : d['idg'] = float('inf')
+#     #if df['IonScore'] == '' and df['q-Value'] == '':
+#     if df['Charge'] < d['zmin'] or df['Charge'] > d['zmax'] :
+#          # if charge is empty (nan), this will not be true
+#         AUC_flag = 0
+#         PSM_flag = 0
+#     elif df['psm_SequenceModiCount'] > d['modi'] :
+#         AUC_flag = 0
+#         PSM_flag = 0
+#     elif np.isnan(df['IonScore']) and np.isnan(df['q_value']):
+#         AUC_flag = 1 #retains WLs Q2up assignments
+#         PSM_flag = 0
+#     elif df['IonScore'] < d['ion_score'] :
+#         AUC_flag = 0
+#         PSM_flag = 0
+#     elif df['q_value'] > d['qvalue'] :
+#         AUC_flag = 0
+#         PSM_flag = 0
+#     elif df['PEP'] > d['pep'] :
+#         AUC_flag = 0
+#         PSM_flag = 0
+#     elif df['psm_PSM_IDG'] > d['idg'] :
+#         AUC_flag = 0
+#         PSM_flag = 0
+#     elif df['psm_Peak_UseFLAG'] == 0 :
+#         AUC_flag = 0
+#         #if 'PSMAmbiguity' in df.columns:  # will not work like this
+#         if df['PSMAmbiguity'].lower() == 'unambiguous':
+#             PSM_flag = 1
+#         else:
+#             PSM_flag = 0
+#     else:
+#         AUC_flag = 1
+#         PSM_flag = 1
 
-    if df['AUC_reflagger'] == 0:
-        AUC_flag = 0
+#     if df['AUC_reflagger'] == 0:
+#         AUC_flag = 0
 
-    return AUC_flag, PSM_flag
+#     return AUC_flag, PSM_flag
 
-def flag_AUC_PSM(usrdata, filtervalues):
-    """Apply AUC and PSM flags per row"""
-    flags = usrdata.apply(_flag_AUC_PSM, args=(filtervalues,), axis=1)
-    usrdata['psm_AUC_UseFLAG'], usrdata['psm_PSM_UseFLAG'] = list(zip(*flags))
-    return usrdata
+# def flag_AUC_PSM(usrdata, filtervalues):
+#     """Apply AUC and PSM flags per row"""
+#     flags = usrdata.apply(_flag_AUC_PSM, args=(filtervalues,), axis=1)
+#     usrdata['psm_AUC_UseFLAG'], usrdata['psm_PSM_UseFLAG'] = list(zip(*flags))
+#     return usrdata
 
-def _gene_taxon_map(gene, d):
-    return d.get(gene)
+def flag_AUC_PSM(df, fv):
+    if fv['pep'] =='all' : fv['pep'] = float('inf')
+    if fv['idg'] =='all' : fv['idg'] = float('inf')
+    df['psm_AUC_UseFLAG'] = 1
+    df['psm_PSM_UseFLAG'] = 1
+    df.loc[(df['Charge'] < fv['zmin']) | (df['Charge'] > fv['zmax']),
+           ['psm_AUC_UseFLAG', 'psm_PSM_UseFLAG']] = 0
+
+    df.loc[df['psm_SequenceModiCount'] > fv['modi'],
+           ['psm_AUC_UseFLAG', 'psm_PSM_UseFLAG']] = 0
+
+    df.loc[(df['IonScore'].isnull() & df['q_value'].isnull()),
+           ['psm_AUC_UseFLAG', 'psm_PSM_UseFLAG']] = 1, 0
+
+    df.loc[df['IonScore'] < fv['ion_score'],
+           ['psm_AUC_UseFLAG', 'psm_PSM_UseFLAG']] = 0
+
+    df.loc[df['q_value'] > fv['qvalue'],
+           ['psm_AUC_UseFLAG', 'psm_PSM_UseFLAG']] = 0
+
+    df.loc[df['PEP'] > fv['pep'],
+           ['psm_AUC_UseFLAG', 'psm_PSM_UseFLAG']] = 0
+    df.loc[df['psm_PSM_IDG'] > fv['idg'],
+           ['psm_AUC_UseFLAG', 'psm_PSM_UseFLAG']] = 0
+
+    df.loc[(df['psm_Peak_UseFLAG'] == 0) & (df['PSMAmbiguity'].str.lower()=='unambiguous'),
+           ['psm_AUC_UseFLAG', 'psm_PSM_UseFLAG']] = 1
+    df.loc[(df['psm_Peak_UseFLAG'] == 0) & (df['PSMAmbiguity'].str.lower()!='unambiguous'),
+           ['psm_AUC_UseFLAG', 'psm_PSM_UseFLAG']] = 0
+
+    df.loc[ df['AUC_reflagger'] == 0, 'psm_AUC_UseFLAG'] = 0
+    return df
+
+# def _gene_taxon_map(gene, d):
+#     return d.get(gene)
+
+# def gene_taxon_map(usrdata, gene_taxon_dict):
+#     """make 'gene_taxon_map' column per row which displays taxon for given gene"""
+#     usrdata['psm_TaxonID'] = usrdata.apply(lambda x : _gene_taxon_map(
+#         ['psm_GeneID'], gene_taxon_dict), axis=1)
+#     return usrdata
 
 def gene_taxon_map(usrdata, gene_taxon_dict):
     """make 'gene_taxon_map' column per row which displays taxon for given gene"""
-    usrdata['psm_TaxonID'] = usrdata.apply(lambda x : _gene_taxon_map(
-    x['psm_GeneID'], gene_taxon_dict), axis=1)
+    usrdata['psm_TaxonID'] = usrdata['psm_GeneID'].map(gene_taxon_dict)
     return usrdata
+
 
 def get_all_taxons(taxonidlist):
     """Return a set of all taxonids from
     usrdata.psm_TaxonIDList"""
 
     taxon_ids = set(','.join(x for x in taxonidlist
-                             if x).split(','))
+                             if x.strip()).split(','))
     return taxon_ids
 
 def multi_taxon_splitter(taxon_ids, usrdata, gid_ignore_list, area_col):
@@ -551,16 +591,23 @@ def select_good_peptides(usrdata, labelix):
     return temp_df
 
 
-def _get_gene_capacity(geneid, database):
-    return database[database.GeneID == geneid].capacity.mean()
+# def _get_gene_capacity(geneid, database):
+#     return database[database.GeneID == geneid].capacity.mean()
+
+# def get_gene_capacity(genes_df, database, col='e2g_GeneID'):
+#     """Get gene capcaity from the stored metadata"""
+#     genes_df['e2g_GeneCapacity'] = genes_df.apply(lambda x:
+#                                                   _get_gene_capacity(
+#                                                       x[col],
+#                                                       database),
+#                                                   axis=1)
+#     return genes_df
 
 def get_gene_capacity(genes_df, database, col='e2g_GeneID'):
     """Get gene capcaity from the stored metadata"""
-    genes_df['e2g_GeneCapacity'] = genes_df.apply(lambda x:
-                                                  _get_gene_capacity(
-                                                      x[col],
-                                                      database),
-                                                  axis=1)
+    capacity = database.groupby('GeneID').capacity.mean()
+    capacity.name = 'e2g_GeneCapacity'
+    genes_df = genes_df.merge(capacity.to_frame(), how='left', left_on='e2g_GeneID', right_index=True)
     return genes_df
 
 def _get_peptides_for_gene(df,usrdata):
@@ -652,6 +699,19 @@ def calculate_protein_area(genes_df, temp_df, area_col, normalize):
     (genes_df['e2g_nGPArea_Sum_max'],genes_df['e2g_nGPArea_Sum_cgpAdj'],
      genes_df['e2g_nGPArea_Sum_u2g'], genes_df['e2g_nGPArea_Sum_u2g_all']) = list(zip(*areas))
     return genes_df
+
+# def calculate_protein_area(genes_df, temp_df, area_col, normalize):
+
+#     g = temp_df.query('psm_AUC_UseFLAG == 1').groupby('psm_GeneID')
+
+#     # full = {'e2g_nGPArea_Sum_max': np.sum}
+#     # uniq = {'e2g_nGPArea_Sum_cgpAdj': (lambda x: [x['psm_GeneCount'] == 1].sum())
+#     #         }
+#     import pdb; pdb.set_trace()
+#     full = g[area_col].sum()
+#     uniq = g.apply(lambda x : x['psm_GeneCount']==1)[area_col].sum()
+
+
 
 
 def _distribute_psm_area(inputdata, genes_df, area_col, taxon_totals=None, taxon_redistribute=True):
@@ -751,21 +811,31 @@ def assign_gene_sets(genes_df, temp_df):
     return genes_df
 
 
-def _calculate_gene_dstrarea(genes_df, temp_df, normalization):
-    gene = genes_df['e2g_GeneID']
-    if genes_df['e2g_IDSet'] in [1,2]:
-        return (temp_df[(temp_df['psm_GeneID'] == gene) &
-                       (temp_df['psm_AUC_UseFLAG'] == 1)]
-                .psm_PrecursorArea_dstrAdj).sum()/normalization
-    elif genes_df['e2g_IDSet'] == 3:
-        return 0
+# def _calculate_gene_dstrarea(genes_df, temp_df, normalization):
+#     gene = genes_df['e2g_GeneID']
+#     if genes_df['e2g_IDSet'] in [1,2]:
+#         return (temp_df[(temp_df['psm_GeneID'] == gene) &
+#                        (temp_df['psm_AUC_UseFLAG'] == 1)]
+#                 .psm_PrecursorArea_dstrAdj).sum()/normalization
+#     elif genes_df['e2g_IDSet'] == 3:
+#         return 0
+
+# def calculate_gene_dstrarea(genes_df, temp_df, normalize):
+#     """Calculate distributed area for each gene product"""
+#     genes_df['e2g_nGPArea_Sum_dstrAdj'] = genes_df.apply(_calculate_gene_dstrarea,
+#                                                       args=(temp_df,
+#                                                             normalize,),
+#                                                       axis=1)
+#     return genes_df
 
 def calculate_gene_dstrarea(genes_df, temp_df, normalize):
     """Calculate distributed area for each gene product"""
-    genes_df['e2g_nGPArea_Sum_dstrAdj'] = genes_df.apply(_calculate_gene_dstrarea,
-                                                      args=(temp_df,
-                                                            normalize,),
-                                                      axis=1)
+    g = temp_df.groupby('psm_GeneID')
+    result = g['psm_PrecursorArea_dstrAdj'].sum() / normalize
+    result.name = 'e2g_nGPArea_Sum_dstrAdj'
+    genes_df = genes_df.merge(result.to_frame(), how='left',
+                              left_on='e2g_GeneID', right_index=True)
+    genes_df.loc[genes_df['e2g_IDSet'] == 3, 'e2g_nGPArea_Sum_dstrAdj'] = 0
     return genes_df
 
 
@@ -959,6 +1029,7 @@ def grouper(usrdata, outdir='', database=None,
     # Flag good quality peptides
         # ======================== Plugin for multiple taxons  ===================== #
     taxon_ids = get_all_taxons(usrdata.df['psm_TaxonIDList'].tolist())
+    # taxon_ids = get_all_taxons(usrdata.df['psm_TaxonIDList'].str.strip().dropna().tolist())
     #area_col_new = 'psm_Area_taxonAdj'
     taxon_totals = dict()
     # print(taxon_ids)
