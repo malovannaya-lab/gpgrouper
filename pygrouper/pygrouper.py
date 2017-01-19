@@ -329,9 +329,9 @@ def export_metadata(program_title='version',usrdata=None, matched_psms=0, unmatc
         matched_psms=matched_psms,
         unmatched_psms=unmatched_psms,
         inputname=usrdata.datafile,
-        hu=taxon_totals.get(9606, 0),
-        mou=taxon_totals.get(10090, 0),
-        gg=taxon_totals.get(9031, 0),
+        hu=taxon_totals.get('9606', 0),
+        mou=taxon_totals.get('10090', 0),
+        gg=taxon_totals.get('9031', 0),
         recno=usrdata.recno,
         runno=usrdata.runno,
         searchno=usrdata.searchno
@@ -621,7 +621,7 @@ def _distribute_psm_area(inputdata, genes_df, area_col, taxon_totals=None, taxon
     elif all(gene_inputdata.e2g_IDSet == 3):
         distArea = 0
     elif u2gPept == 0:  # no uniques, normalize by genecount
-        taxon_percentage = taxon_totals.get(inputdata.psm_TaxonID, 1)
+        taxon_percentage = taxon_totals.get(str(inputdata.psm_TaxonID), 1)
         distArea = inputvalue
         if taxon_percentage < 1:
             distArea *=  taxon_percentage
