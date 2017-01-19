@@ -75,14 +75,18 @@ def make_database(n=200, seed=None):
     gids    = np.random.randint(2, 20000, size=database_size)
     protgis = np.random.randint(200000, 800000, size=database_size)
 
-    lb = 25
-    lengths_ = np.random.randn(database_size)
-    pos_lengths = np.multiply(np.where(lengths_ > 0, lengths_, np.abs(lengths_)), 200)
+    lb = 5
+    lengths_ = np.random.randn(database_size*5)
+    pos_lengths = np.multiply(np.where(lengths_ > 0,
+                                       lengths_, np.abs(lengths_)), 30)
     adjust = lb - np.min(pos_lengths)
     # approximately normal distribution, though in reality it's right tailed
     lengths = (pos_lengths + adjust).round()
 
-    seqs = [ get_peptide(length) for length in lengths ]
+    pept_pool = [  get_peptide(length) for length in lengths  ]
+    seqs = [ ''.join(np.random.choice(pept_pool,
+                                      np.random.randint(5,12)))
+                     for _ in range(database_size)]
 
     data = dict(TaxonID = 9606,
                 HomologeneID = '',
@@ -127,12 +131,14 @@ class RunThrough():
     DB  = './testdata/random_db.tab'
     FILE = './testdata/10101_1_1_random.tab'
 
-    def __init__(self, N, seed=None):
+    def __init__(self, N, seed=None, create=True, delete=True):
         self.N = N
         if seed is not None:
             self.seed = int(seed)
         else:
             self.seed = None
+        self.create = create
+        self.delete = delete
     def setUp(self):
         if not os.path.exists('./testdata'):
             os.mkdir('./testdata')
@@ -144,6 +150,7 @@ class RunThrough():
         psms.to_csv(self.FILE, sep='\t', index=False)
 
     def tearDown(self):
+        print('Cleaning up ...', end='')
         os.remove(self.DB)
         os.remove(self.FILE)
         for f in os.listdir('.'):
@@ -152,16 +159,21 @@ class RunThrough():
         for f in os.listdir('./testdata'):
             if f.startswith('10101_1_1'):
                 os.remove(os.path.join('./testdata', f))
+        print('done')
     def run(self):
-        self.setUp()
+        # if self.create or not (os.path.exists(self.DB) and
+        #                        os.path.exists(self.FILE)):
+        # self.setUp()
         self._exec()
-        self.tearDown()
+        # if self.delete:
+        #     self.tearDown()
         return 0
 
-    @timed(10)
+    @timed(3)
     def _exec(self):
         sys.stdout = StringIO()
         sys.stderr = StringIO()
+        print('hi')
         runner = CliRunner()
         response = runner.invoke(cli.cli, ['run', '--database', self.DB,
                                            '--psms-file', self.FILE,
@@ -181,10 +193,16 @@ class RunThrough():
             )
 
 @click.command()
+@click.option('--create/--no-create', default=False, show_default=True,
+              help="""Create a new database.
+              Will happen automatically if does not exist.""")
+@click.option('--delete/--no-delete', default=True, show_default=True,
+              help='Delete all output files.')
 @click.option('-n', '--number', default=1000, show_default=True)
 @click.option('-s', '--seed', default=None, show_default=True)
-def main(number, seed):
-    RunThrough(number, seed).run()
+def main(create, delete, number, seed):
+    RunThrough(number, seed, create=create,
+               delete=delete).run()
 
 if __name__ == '__main__':
     main()

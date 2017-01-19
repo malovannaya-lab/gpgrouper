@@ -16,6 +16,7 @@ import pandas as pd
 from . import _version
 from .subfuncts import *
 
+from ._orig_code import timed
 pd.set_option(
     "display.width", 170,
     "display.max_columns", 500,
@@ -171,6 +172,33 @@ def get_gid_ignore_list(inputfile):
     return [x.strip() for x in open(inputfile, 'r') if
             not x.strip().startswith('#')]
 
+def _extract_peptideinfo(row):
+
+    # row = database.loc[ix]
+    if len(row) == 0:
+        return ('', 0, '', 0, '', 0, '', 0, ())
+    result = (
+        # ','.join(row['GeneID'].dropna().unique()),
+        ','.join(str(x) for x in set(row['GeneID'])),
+        row['GeneID'].nunique(dropna=True),
+
+        # ','.join(row['TaxonID'].dropna().unique()),
+        ','.join(str(x) for x in set(row['TaxonID'])),
+        row['TaxonID'].nunique(dropna=True),
+
+        # ','.join(row['ProteinGI'].dropna().unique()),
+        ','.join(str(x) for x in set(row['ProteinGI'])),
+        row['ProteinGI'].nunique(dropna=True),
+
+        # ','.join(row['HomologeneID'].dropna().unique()),
+        ','.join(str(x) for x in set(row['HomologeneID'])),
+        row['HomologeneID'].nunique(dropna=True),
+        tuple(row['capacity']),
+          # row['capacity'].mean(),
+    )
+    return result
+
+
 
 def extract_peptideinfo(usrdata, database):
     filter_int = partial(filter, lambda x : x.isdigit())
@@ -179,38 +207,26 @@ def extract_peptideinfo(usrdata, database):
            .str.split('|')
            .apply(filter_int)
            .apply(to_int)
-           .apply(tuple)
-           .apply(pd.Series)
-           .stack()
-           .to_frame()
+           .apply(list)
+           # .apply(pd.Series)
+           # .stack()
+           # .to_frame()
            )
-    ixs.columns = ['database_ix']
-    ixs.index.names = ['psm_index', 'database_occurrence']
-    gid_op = {'psm_GeneList' : lambda x: ','.join(x.dropna().unique()),
-              'psm_GeneCount': lambda x : len(x.dropna()),
-             }
-    tid_op = {'psm_TaxonIDList' : lambda x: ','.join(x.dropna().unique()),
-              'psm_TaxonCount': lambda x : len(x.dropna()),
-             }
-    pid_op = {'psm_ProteinList' : lambda x: ','.join(x.dropna().unique()),
-              'psm_ProteinCount': lambda x : len(x.dropna()),
-             }
-    hid_op = {'psm_HIDList' : lambda x: ','.join(x.dropna().unique()),
-              'psm_HIDCount': lambda x : len(x.dropna()),
-             }
-    groups = {'GeneID' : gid_op,
-              'HomologeneID' : hid_op,
-              'ProteinGI' : pid_op,
-              'TaxonID' : tid_op,
-              'capacity' : {'psm_GeneCapacity': np.mean}
-            }
-    psm_database = (ixs.merge(database, left_on='database_ix', right_index=True)
-                    .groupby(level='psm_index')
-                    .agg(groups)
-                   )
-    psm_database.columns = psm_database.columns.droplevel(0)
-    usrdata.df = usrdata.df.join(psm_database, how='left')
-    usrdata.df['psm_TaxonIDList'] = usrdata.df['psm_TaxonIDList'].astype(str)
+    # t0= time.time()
+
+    info = ixs.apply(lambda x : _extract_peptideinfo(database.loc[x]))
+    (usrdata.df['psm_GeneList'],
+     usrdata.df['psm_GeneCount'],
+     usrdata.df['psm_TaxonIDList'],
+     usrdata.df['psm_TaxonCount'],
+     usrdata.df['psm_ProteinList'],
+     usrdata.df['psm_ProteinCount'],
+     usrdata.df['psm_HIDList'],
+     usrdata.df['psm_HIDCount'],
+     usrdata.df['psm_GeneCapacities']) = zip(*info)
+    # print(time.time()-t0, '\n')
+    usrdata.df['psm_TaxonIDList'] = usrdata.df['psm_TaxonIDList'].dropna().astype(str)
+    usrdata.df['psm_HIDList'] = usrdata.df['psm_HIDList'].fillna('')
 
     return 0
 
@@ -238,6 +254,10 @@ def make_seqlower(usrdata, col='Sequence'):
     return usrdata
 
 def peptidome_matcher(usrdata, ref_dict):
+
+    if not ref_dict:
+        return usrdata
+    ref_dict_filtered = ref_dict
     pmap = partial(map, str)
     result = (usrdata.Sequence.str.upper().map(ref_dict)
               .fillna('')
@@ -796,6 +816,8 @@ def concat_tmt_e2gs(rec, run, search, outdir, cols=None):
     print('Export of TMT e2g file : {}'.format(outf))
 
 # from ._orig_code import *
+# from ._orig_code import (extract_peptideinfo, _extract_peptideinfo,
+#                          _peptidome_matcher, peptidome_matcher)
 def grouper(usrdata, outdir='', database=None,
             gid_ignore_file='', labels=dict()):
     """Function to group a psm file from PD after Mascot Search"""
@@ -880,7 +902,8 @@ def grouper(usrdata, outdir='', database=None,
     usrdata.df = gene_taxon_map(usrdata.df, gene_taxon_dict)
     # Flag good quality peptides
         # ======================== Plugin for multiple taxons  ===================== #
-    taxon_ids = get_all_taxons(usrdata.df['psm_TaxonIDList'].tolist())
+    taxon_ids = usrdata.df['psm_TaxonID'].dropna().unique()
+    # taxon_ids = get_all_taxons(usrdata.df['psm_TaxonIDList'].tolist())
     # taxon_ids = get_all_taxons(usrdata.df['psm_TaxonIDList'].str.strip().dropna().tolist())
     #area_col_new = 'psm_Area_taxonAdj'
     taxon_totals = dict()
@@ -1185,7 +1208,7 @@ def _match(usrdatas, refseq_file):
 
         if counter > breakup_size:
             for usrdata in usrdatas:
-                usrdata.df  = peptidome_matcher(usrdata.df, prot)  # match peptides to peptidome
+                usrdata.df = peptidome_matcher(usrdata.df, prot)  # match peptides to peptidome
             counter = 0
             del prot # frees up memory, can get quite large otherwise
             prot = defaultdict(list)

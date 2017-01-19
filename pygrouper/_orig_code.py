@@ -1,7 +1,29 @@
 """Original, non vectorized code
 Keeping around in case there is an error with new code logic"""
+import sys
+import time
 import numpy as np
 import pandas as pd
+
+
+def timed(n=30):
+    '''
+    Running a microbenchmark. Never use this.
+    '''
+    def deco(func):
+        def wrapper(*args, **kwargs):
+            timings = []
+            for i in range(n):
+                t0 = time.time()
+                result = func(*args, **kwargs)
+                t1 = time.time()
+                timings.append(t1 - t0)
+            print('for {} runs, mean : {}, std : {}'.format(n,
+                                                            np.mean(timings),
+                                                            np.std(timings)))
+            return result
+        return wrapper
+    return deco
 
 def _get_peptides_for_gene(df,usrdata):
     '''
@@ -88,24 +110,6 @@ def assign_IDG(usrdata):
     return usrdata
 
 
-# def _peptidome_matcher(seq, metadata, prot):
-#     seq = seq.upper()
-#     if not isinstance(metadata, tuple):
-#         metadata = tuple()
-#     if seq in prot:
-#         metadata = set(metadata).union(prot[seq])
-#     return tuple(metadata)
-
-# def peptidome_matcher(usrdata, ref_dict):
-#     """Matches Sequence column with refseq dictionary
-#     returns an empty list if there is no match.
-#     returns input DataFrame with a metadata column with a list of named tuples"""
-#     usrdata['metadatainfo'] = usrdata.apply(lambda x:
-#                                             _peptidome_matcher(x['Sequence'],
-#                                                                x['metadatainfo'],
-#                                                                ref_dict),
-#                                             axis=1)
-#     return usrdata
 
 
 def _flag_AUC_PSM(df, d):
@@ -225,3 +229,81 @@ def calculate_gene_dstrarea(genes_df, temp_df, normalize):
                                                             normalize,),
                                                       axis=1)
     return genes_df
+
+def _extract_peptideinfo(ixs, database):
+
+    taxonids = set()
+    homologeneids = set()
+    proteingis = set()
+    genefraglens = []
+    genelist = set()
+    capacity = list()
+
+    database_matches = database.loc[set(map(int, ixs))]
+
+    for ix, row in database_matches.iterrows():
+        genelist.add(row.GeneID)
+        taxonids.add(row.TaxonID)
+        homologeneids.add(row.HomologeneID)
+        proteingis.add(row.ProteinGI)
+        capacity.append(row.capacity)
+    return (','.join(str(x) for x in genelist),
+            len(genelist),
+            ','.join(str(x) for x in taxonids),
+            len(taxonids),
+            ','.join(str(x) for x in proteingis),
+            len(proteingis),
+            ','.join(str(x) for x in homologeneids),
+            len(homologeneids),
+            tuple(capacity))
+
+
+@timed(1)
+def extract_peptideinfo(usrdata, database):
+    peptide_info = usrdata.df.apply(lambda x: _extract_peptideinfo(x['metadatainfo'],
+                                                                   database),
+    axis=1)
+
+    (usrdata.df['psm_GeneList'], usrdata.df['psm_GeneCount'], usrdata.df['psm_TaxonIDList'],
+     usrdata.df['psm_TaxonCount'], usrdata.df['psm_ProteinList'],
+     usrdata.df['psm_HIDList'], usrdata.df['psm_HIDCount'],
+     usrdata.df['psm_ProteinCount'], usrdata.df['psm_GeneCapacities']) = list(zip((*peptide_info)))
+
+def _peptidome_matcher(seq, metadata, prot):
+    seq = seq.upper()
+    if not isinstance(metadata, tuple):
+        metadata = tuple()
+    if seq in prot:
+        metadata = set(metadata).union(prot[seq])
+    return tuple(metadata)
+
+def peptidome_matcher(usrdata, ref_dict):
+    """Matches Sequence column with refseq dictionary
+    returns an empty list if there is no match.
+    returns input DataFrame with a metadata column with a list of named tuples"""
+    usrdata['metadatainfo'] = usrdata.apply(lambda x:
+                                            _peptidome_matcher(x['Sequence'],
+                                                               x['metadatainfo'],
+                                                               ref_dict),
+                                            axis=1)
+    return usrdata
+
+def __abe():
+    gid_op = {'psm_GeneList' : lambda x: ','.join(x.dropna().unique()),
+              'psm_GeneCount': lambda x : len(x.dropna()),
+             }
+    tid_op = {'psm_TaxonIDList' : lambda x: ','.join(x.dropna().unique()),
+              'psm_TaxonCount': lambda x : len(x.dropna()),
+             }
+    pid_op = {'psm_ProteinList' : lambda x: ','.join(x.dropna().unique()),
+              'psm_ProteinCount': lambda x : len(x.dropna()),
+             }
+    hid_op = {'psm_HIDList' : lambda x: ','.join(x.dropna().unique()),
+              'psm_HIDCount': lambda x : len(x.dropna()),
+             }
+    groups = {'GeneID' : gid_op,
+              'HomologeneID' : hid_op,
+              'ProteinGI' : pid_op,
+              'TaxonID' : tid_op,
+              'capacity' : {'psm_GeneCapacity': np.mean}
+            }
