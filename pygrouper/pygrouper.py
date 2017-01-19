@@ -596,12 +596,13 @@ def _distribute_psm_area(inputdata, genes_df, area_col, taxon_totals=None, taxon
         return 0
     inputvalue = inputdata[area_col]
     gene_inputdata = genes_df[ genes_df['e2g_GeneID'] == inputdata['psm_GeneID']]
-    u2gPept = (genes_df[genes_df['e2g_GeneID']==inputdata['psm_GeneID']]
-               ['e2g_nGPArea_Sum_u2g_all']).values
+    u2g_values = (genes_df[genes_df['e2g_GeneID']==inputdata['psm_GeneID']]
+                  ['e2g_nGPArea_Sum_u2g_all']).values
 
-    if len(u2gPept) == 1: u2gPept = u2gPept[0] # grab u2g info, should always be
+    if len(u2g_values) == 1:
+        u2g_area = u2g_values[0] # grab u2g info, should always be
     #of length 1
-    elif len(u2gPept) > 1 :
+    elif len(u2g_values) > 1 :
         warn('DistArea is not singular at GeneID : {}'.format(
              datetime.now(),inputdata['psm_GeneID']))
         distArea = 0
@@ -610,17 +611,21 @@ def _distribute_psm_area(inputdata, genes_df, area_col, taxon_totals=None, taxon
         distArea = 0
         print('No distArea for GeneID : {}'.format(inputdata['psm_GeneID']))
     # taxon_ratio = taxon_totals.get(inputdata.gene_taxon_map, 1)
-    if u2gPept != 0 :
+    if u2g_area != 0 :
         totArea = 0
         gene_list = inputdata.psm_GeneList.split(',')
-        totArea = genes_df[
-             genes_df['e2g_GeneID'].isin(gene_list)
-                              ].e2g_nGPArea_Sum_u2g_all.sum()
-        distArea = (u2gPept/totArea) * inputvalue
+        all_u2gareas = (genes_df[genes_df['e2g_GeneID'].isin(gene_list)]
+                        .e2g_nGPArea_Sum_u2g_all)
+        if len(all_u2gareas) > 1 and any(x == 0 for x in all_u2gareas):
+            # special case with multiple u2g peptides but not all have areas, rare but does happen
+            u2g_area = 0  # force to distribute by gene count (and taxon percentage if appropriate)
+        else:
+            totArea = all_u2gareas.sum()
+            distArea = (u2g_area/totArea) * inputvalue
         #ratio of u2g peptides over total area
     elif all(gene_inputdata.e2g_IDSet == 3):
         distArea = 0
-    elif u2gPept == 0:  # no uniques, normalize by genecount
+    if u2g_area == 0:  # no uniques, normalize by genecount
         taxon_percentage = taxon_totals.get(str(inputdata.psm_TaxonID), 1)
         distArea = inputvalue
         if taxon_percentage < 1:
