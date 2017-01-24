@@ -843,6 +843,8 @@ def grouper(usrdata, outdir='', database=None,
     elif usrdata.quant_source.strip() == 'Intensity':
         area_col = 'Intensity'
         normalize = 10**5
+    else:
+        area_col = 'PrecursorArea'  # set default
 
     print('Starting Grouper for exp file {}'.format(usrfile))
     print('\nFilter values set to : {}'.format(usrdata.filterstamp))
