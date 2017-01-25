@@ -845,6 +845,7 @@ def grouper(usrdata, outdir='', database=None,
         normalize = 10**5
     else:
         area_col = 'PrecursorArea'  # set default
+        normalize = 10**9
 
     print('Starting Grouper for exp file {}'.format(usrfile))
     print('\nFilter values set to : {}'.format(usrdata.filterstamp))
