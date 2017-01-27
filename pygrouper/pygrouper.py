@@ -715,6 +715,38 @@ def calculate_gene_dstrarea(genes_df, temp_df, normalize):
     return genes_df
 
 
+def calculate_gene_razorarea(genes_df, temp_df, normalize):
+    """Calculate razor area for each gene product"""
+
+    separate_groups = lambda gpg_all : set(int(x.strip()) for z in
+                                           (y.split(',') for y in gpg_all.values)
+                                           for x in z
+    )
+
+    def razor_area(temp_df, genes_df):
+        if temp_df.psm_GeneCount == 1:
+            return temp_df.psm_SequenceArea
+        gid = temp_df.psm_GeneID
+        gpgs = (genes_df[genes_df.e2g_GeneID==gid].e2g_GPGroups_All
+                .pipe(separate_groups))
+        if len(gpgs) == 0:
+            return 0
+        allgenes = genes_df[ genes_df.e2g_GPGroup.isin(gpgs)]
+        max_uniq = allgenes.e2g_PeptideCount_u2g.max()
+        if len(allgenes[allgenes.e2g_PeptideCount_u2g==max_uniq]) > 1 or max_uniq == 0:  # no uniques
+            return 0
+        if gid == allgenes[ allgenes.e2g_PSMs_u2g==max_uniq ].e2g_GeneID:
+            return temp_df.psm_SequenceArea
+        else:
+            return 0
+
+    temp_df['psm_RazorArea'] = temp_df.apply(razor_area, args=(genes_df,), axis=1)
+    result = temp_df.groupby('psm_GeneID')['psm_RazorArea'].sum()
+    result.name = 'e2g_nGPArea_Sum_razor'
+    genes_df = genes_df.merge(result.to_frame(), how='left',
+                              left_on='e2g_GeneID', right_index=True)
+    return genes_df
+
 def _GPG_helper(idset,peptideset, df_all,last):
     if idset == 3:
         gpg =  ''
@@ -941,7 +973,7 @@ def grouper(usrdata, outdir='', database=None,
                 'e2g_PeptideCount_S_u2g', 'e2g_nGPArea_Sum_cgpAdj',
                 'e2g_nGPArea_Sum_u2g', 'e2g_nGPArea_Sum_u2g_all',
                 'e2g_nGPArea_Sum_max', 'e2g_nGPArea_Sum_dstrAdj',
-                'e2g_GeneCapacity', 'e2g_n_iBAQ_dstrAdj']  # cols of interest
+                'e2g_GeneCapacity', 'e2g_nGPArea_Sum_razor', 'e2g_n_iBAQ_dstrAdj']  # cols of interest
 
     labeltypes = get_labels(usrdata.df, labels, usrdata.labeltype)
     additional_labels = list()
@@ -1023,6 +1055,7 @@ def grouper(usrdata, outdir='', database=None,
         #genes_df['e2g_GeneCapacity'] = genes_df.e2g_GeneCapacity.astype('float')
         #genes_df._e2g_GeneCapacity.dtype)  # for debugging
         genes_df = calculate_gene_dstrarea(genes_df, temp_df, normalize)
+        genes_df = calculate_gene_razorarea(genes_df, temp_df, normalize)
         genes_df['e2g_n_iBAQ_dstrAdj'] = \
             genes_df.e2g_nGPArea_Sum_dstrAdj / genes_df.e2g_GeneCapacity
 
@@ -1096,6 +1129,7 @@ def grouper(usrdata, outdir='', database=None,
                  'psm_SequenceModiCount', 'psm_LabelFLAG',
                  'psm_PeptRank', 'psm_AUC_UseFLAG', 'psm_PSM_UseFLAG',
                  'psm_Peak_UseFLAG', 'psm_SequenceArea', 'psm_PrecursorArea_split',
+                 'psm_RazorArea',
                  'psm_PrecursorArea_dstrAdj']
 
 
@@ -1112,7 +1146,7 @@ def grouper(usrdata, outdir='', database=None,
             tmtrank = rank_peptides(psm_tmtoutput[psm_tmtoutput.psm_LabelFLAG == label],
                                     area_col=area_col_to_use, ranks_only=True)
             rank_df = pd.concat([rank_df, tmtrank])
-        rank_df.columns = ['psm_PeptRank']
+            rank_df.columns = ['psm_PeptRank']
             # rank_df = rank_df.join(tmtrank, how='outer')
         psm_tmtoutput = psm_tmtoutput.join(rank_df, how='left')
         psm_tmtoutput['psm_PeptRank'] = psm_tmtoutput['psm_PeptRank'].fillna(0)  # anyone who
