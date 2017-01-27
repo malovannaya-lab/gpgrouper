@@ -591,7 +591,6 @@ def _distribute_psm_area(inputdata, genes_df, area_col, taxon_totals=None, taxon
     specific gene to the sum of the areas of the unique peptides for all other genes
     that this particular peptide also maps to.
     """
-
     if inputdata.psm_AUC_UseFLAG == 0:
         return 0
     inputvalue = inputdata[area_col]
@@ -624,7 +623,7 @@ def _distribute_psm_area(inputdata, genes_df, area_col, taxon_totals=None, taxon
             distArea = (u2g_area/totArea) * inputvalue
         #ratio of u2g peptides over total area
     elif all(gene_inputdata.e2g_IDSet == 3):
-        distArea = 0
+        return 0
     if u2g_area == 0:  # no uniques, normalize by genecount
         taxon_percentage = taxon_totals.get(str(inputdata.psm_TaxonID), 1)
         distArea = inputvalue
@@ -700,7 +699,6 @@ def assign_gene_sets(genes_df, temp_df):
 
 
 #     return genes_df
-
 
 
 
