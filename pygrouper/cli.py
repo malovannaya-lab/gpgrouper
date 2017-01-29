@@ -264,15 +264,16 @@ def run(autorun, contaminants, database, enzyme, interval, ion_score, ion_score_
         if not taxonid:
             taxonid = click.prompt('Enter taxon id', default=9606, type=int,)
         for ix, psmfile in enumerate(psms_file):
-            usrdata = UserData(datafile=psmfile, indir=INPUT_DIR, outdir=OUTPUT_DIR, rawfiledir=RAWFILE_DIR,
-                               no_taxa_redistrib=no_taxa_redistrib, labeltype=labeltype, addedby=name,
-                               searchdb=database)
             try:
                 rec, run, search = find_rec_run_search(psmfile)
-                usrdata.recno, usrdata.runno, usrdata.searchno = int(rec), int(run), int(search)
+                recno, runno, searchno = int(rec), int(run), int(search)
             except AttributeError:  # regex search failed, just use a default
-                usrdata.recno = ix+1  # default recno starts at 1
-            usrdata.taxonid = taxonid
+                recno = ix+1  # default recno starts at 1
+                runno, searchno = 1, 1
+            usrdata = UserData(recno=recno, runno=runno, searchno=searchno, taxonid=taxonid,
+                               datafile=psmfile, indir=INPUT_DIR, outdir=OUTPUT_DIR, rawfiledir=RAWFILE_DIR,
+                               no_taxa_redistrib=no_taxa_redistrib, labeltype=labeltype, addedby=name,
+                               searchdb=database)
             refseqs[taxonid] = database
             INPUT_DIR, usrfile = os.path.split(Path(psmfile).resolve().__str__())
             usrdata.indir, usrdata.datafile = INPUT_DIR, usrfile

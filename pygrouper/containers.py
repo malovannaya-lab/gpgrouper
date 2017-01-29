@@ -5,14 +5,16 @@ import pandas as pd
 
 class UserData:
 
-    def __init__(self, datafile=None, runno=1, searchno=1, no_taxa_redistrib=0, addedby='',
-                 indir = '.', outdir='.', rawfiledir='.', usedb=False, labeltype='none',
-                 searchdb=None):
-        self.recno = None
+    def __init__(self, recno=None, datafile=None, runno=1, searchno=1, no_taxa_redistrib=0, addedby='',
+                 indir = '.', outdir='.', rawfiledir='.', usedb=False, labeltype='none', quant_source=None,
+                 searchdb=None, taxonid=None):
+        if recno is None:
+            raise ValueError('Must supply record number (recno)')
+        self.recno = recno
         self.runno = runno
         self.searchno = searchno
-        self.taxonid = None
-        self.quant_source = None
+        self.taxonid = taxonid
+        self.quant_source = quant_source
         self.added_by = addedby
         self.techrepno = 1 # depreciated
         self.labeltype = labeltype
@@ -27,6 +29,10 @@ class UserData:
         self.df = pd.DataFrame()
         self.pipeline = None
         self.original_columns = None
+        self.LOGFILE = os.path.join(outdir, self.output_name(ext='log'))
+        self._LOGSTACK = list()
+        self.EXIT_CODE = None
+        self.ERROR = None
 
 
     def __repr__(self):
@@ -36,6 +42,26 @@ class UserData:
         if self.datafile is not None and self.recno is not None:
             return True
         return False
+
+    def to_log(self, *messages, sep='\n'):
+        if self._LOGSTACK:  # flush
+            messages = (*self._LOGSTACK, *messages)
+        with open(self.LOGFILE, 'w+') as f:
+            for message in messages:
+                f.write(message)
+                f.write(sep)
+
+    def to_logq(self, *messages, sep='\n'):
+        for message in messages:
+            self._LOGSTACK.append(message+sep)
+        return self
+
+    def flush_log(self):
+        if self._LOGSTACK:
+            stack, self._LOGSTACK = self._LOGSTACK, list()
+            self.to_log(*stack)
+        return self
+
 
     def full_path(self, in_or_out='in'):
         """returns data file with given path"""

@@ -268,6 +268,7 @@ class TestAreaTMT(unittest.TestCase):
             fasta.write(fasta_file)
 
     def tearDown(self):
+        return
         sys.stdout = self.stdout
         sys.stderr = self.stderr
         os.remove(self.TMT_FASTA)
@@ -321,8 +322,9 @@ class TestAreaTMT(unittest.TestCase):
             #                  # msg=self.ratios[str(tid)]
             # )
             np.testing.assert_almost_equal(
-                             subdf[dstrAdj],
+                subdf[dstrAdj],
                 (subdf[maxarea]*self.ratios[str(tid)]/tot).values,
+                decimal=7
                              # msg='\n'+str(subdf[[dstrAdj, maxarea]]) +'\n'+ str(self.ratios[str(tid)])
                              # msg=subdf
                              # msg=self.ratios[str(tid)]

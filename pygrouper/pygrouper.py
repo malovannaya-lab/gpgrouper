@@ -9,6 +9,7 @@ from math import ceil
 from warnings import warn
 from configparser import ConfigParser
 from itertools import repeat
+import traceback
 
 import numpy as np
 import pandas as pd
@@ -277,7 +278,7 @@ def redundant_peaks(usrdata):
     peaks.is_copy = False  # duplicate dataframe in memory
     peaks['psm_Peak_UseFLAG'] = 1
     usrdata = usrdata.join(peaks['psm_Peak_UseFLAG'])
-    usrdata['psm_Peak_UseFLAG'] = usrdata.psm_Peak_UseFLAG.fillna(0)
+    usrdata['psm_Peak_UseFLAG'] = usrdata.psm_Peak_UseFLAG.fillna(0).astype(np.integer)
     print('Redundant peak areas removed : ', len(usrdata)-len(peaks))
     return usrdata
 
@@ -508,7 +509,8 @@ def get_peptides_for_gene(genes_df, temp_df):
 
     uniq = (temp_df.query(q_uniq)
             .groupby('psm_GeneID')['sequence_lower']
-            .agg(u2g_op))
+            .agg(u2g_op)
+    )
 
     strict = (temp_df.query(q_strict)
               .groupby('psm_GeneID')['sequence_lower']
@@ -517,7 +519,11 @@ def get_peptides_for_gene(genes_df, temp_df):
             .groupby('psm_GeneID')['sequence_lower']
             .agg(s_u2g_op))
 
-    result = pd.concat( (full, uniq, strict, s_u2g), copy=False, axis=1) .fillna(0)
+    result = pd.concat( (full, uniq, strict, s_u2g), copy=False, axis=1).fillna(0)
+    ints = ['e2g_' + x for x in ('PeptideCount', 'PeptideCount_u2g', 'PeptideCount_S',
+                                 'PeptideCount_S_u2g')]
+    result[ints] = result[ints].astype(np.integer)
+
     genes_df = genes_df.merge(result, how='left',
                               left_on='e2g_GeneID', right_index=True)
     return genes_df
@@ -551,7 +557,9 @@ def get_psms_for_gene(genes_df, temp_df):
     )
     total_s_u2g.name = 'e2g_PSMs_S_u2g'
 
-    result = pd.concat( (total, total_u2g, total_s, total_s_u2g), copy=False, axis=1) .fillna(0)
+    result = (pd.concat( (total, total_u2g, total_s, total_s_u2g), copy=False, axis=1)
+              .fillna(0)
+              .astype(np.integer))
     genes_df = genes_df.merge(result, how='left',
                               left_on='e2g_GeneID', right_index=True)
     return genes_df
@@ -718,7 +726,7 @@ def calculate_gene_dstrarea(genes_df, temp_df, normalize):
 def calculate_gene_razorarea(genes_df, temp_df, normalize):
     """Calculate razor area for each gene product"""
 
-    separate_groups = lambda gpg_all : set(int(x.strip()) for z in
+    separate_groups = lambda gpg_all : set(float(x.strip()) for z in
                                            (y.split(',') for y in gpg_all.values)
                                            for x in z
     )
@@ -733,86 +741,164 @@ def calculate_gene_razorarea(genes_df, temp_df, normalize):
             return 0
         allgenes = genes_df[ genes_df.e2g_GPGroup.isin(gpgs)]
         max_uniq = allgenes.e2g_PeptideCount_u2g.max()
-        if len(allgenes[allgenes.e2g_PeptideCount_u2g==max_uniq]) > 1 or max_uniq == 0:  # no uniques
+        gene_selection = allgenes[allgenes.e2g_PeptideCount_u2g==max_uniq]
+        if len(gene_selection) != 1 or max_uniq == 0:  # no uniques
             return 0
-        if gid == allgenes[ allgenes.e2g_PSMs_u2g==max_uniq ].e2g_GeneID:
+        if gid == gene_selection.e2g_GeneID.values[0]:
             return temp_df.psm_SequenceArea
         else:
             return 0
 
     temp_df['psm_RazorArea'] = temp_df.apply(razor_area, args=(genes_df,), axis=1)
-    result = temp_df.groupby('psm_GeneID')['psm_RazorArea'].sum()
+    result = temp_df.groupby('psm_GeneID')['psm_RazorArea'].sum() / normalize
     result.name = 'e2g_nGPArea_Sum_razor'
     genes_df = genes_df.merge(result.to_frame(), how='left',
                               left_on='e2g_GeneID', right_index=True)
     return genes_df
 
-def _GPG_helper(idset,peptideset, df_all,last):
-    if idset == 3:
-        gpg =  ''
-    else:
-        if idset == 1:
-            gpg =  last + 1
-        elif idset == 2:
-            selection = df_all[df_all.e2g_PeptideSet.values == peptideset].e2g_GPGroup
-            selection = selection[selection != '']
-            if len(selection) == 1:
-                gpg =  selection.values[0]
-            elif len(selection) == 0:
-                gpg =  last + 1
-            elif len(selection) > 1:
-                uniq_sel = []
-                for k in range(len(selection)):
-                    if selection.iloc[k] not in uniq_sel:
-                        uniq_sel.append(selection.iloc[k])
-                    if len(uniq_sel) == 1:
-                        gpg =  uniq_sel[0]
-                    elif len(uniq_sel) > 1:
-                        warn('More than one IDSet type 2 genes '
-                              'already has assignment')
-                        gpg =  genes_df['e2g_GPGroup']
+# def _GPG_helper(idset,peptideset, df_all,last):
+#     if idset == 3:
+#         gpg =  ''
+#     else:
+#         if idset == 1:
+#             gpg =  last + 1
+#         elif idset == 2:
+#             selection = df_all[df_all.e2g_PeptideSet.values == peptideset].e2g_GPGroup
+#             selection = selection[selection != np.nan]
+#             if len(selection) == 1:
+#                 gpg =  selection.values[0]
+#             elif len(selection) == 0:
+#                 gpg =  last + 1
+#             elif len(selection) > 1:
+#                 uniq_sel = []
+#                 for k in range(len(selection)):
+#                     if selection.iloc[k] not in uniq_sel:
+#                         uniq_sel.append(selection.iloc[k])
+#                     if len(uniq_sel) == 1:
+#                         gpg =  uniq_sel[0]
+#                     elif len(uniq_sel) > 1:
+#                         warn('More than one IDSet type 2 genes '
+#                               'already has assignment')
+#                         gpg =  genes_df['e2g_GPGroup']
 
-    return gpg, True if gpg < last else False
+#     return gpg, True if gpg < last else False
+
+def _GPG_helper(peptideset, df_all, last):
+    selection = df_all[(df_all.e2g_PeptideSet.values == peptideset) &
+                       (~df_all.e2g_GPGroup.isnull())].e2g_GPGroup
+    if len(selection) == 1:
+        gpg =  selection.values[0]
+    elif len(selection) == 0:
+        gpg =  last + 1
+    elif len(selection) > 1:
+        uniq_gpgs = set()
+        for ix, gpg in selection.iteritems():
+            uniq_gpgs.add(gpg)
+            if len(uniq_gpgs) == 1:
+                gpg =  tuple(uniq_gpgs)[0]
+            elif len(uniq_gpgs) > 1:
+                warn('More than one IDSet type 2 genes '
+                     'already has assignment for '
+                     '{} with GPGs: {}'.format(peptideset, uniq_gpgs )
+                )
+                gpgs += 1  # this needs validation
+                # gpg =  genes_df['e2g_GPGroup']
+
+    if gpg > last:
+        last += 1
+
+    return gpg, last
 
 def _GPG_all_helper(genes_df,df_all):
 
     GPGall = set()
     for pept in genes_df.e2g_PeptideSet:
-        shared_values = [value for value in
-                         df_all[df_all['e2g_PeptidePrint'].str.contains(
-                              pept, regex=False, case=False)].e2g_GPGroup.values]
+        shared_values = (df_all[df_all['e2g_PeptidePrint'].str.contains(pept, regex=False, case=False)]
+                         .e2g_GPGroup
+                         .dropna()
+                         .unique())
         # regex=False since we don't need regex, and is faster.
         for s in shared_values:
-            if s !='':
+            if s != np.nan:
                 GPGall.add(s)
 
-    return str([k for k in GPGall]).strip('[').strip(']')
+    return ','.join(str(x) for x in GPGall)
 
 
 def set_gene_gpgroups(genes_df):
     """Assign GPGroups"""
-    genes_df['e2g_GPGroup'] = ''
+
     genes_df.sort_values(by=['e2g_PSMs'], ascending=False, inplace=True)
-    genes_df.index = list(range(0, len(genes_df)))
-    last = 0
-    for i in range(len(genes_df)):  # The logic behind it makes
+    genes_df.reset_index(inplace=True)
+
+    set1s =  genes_df.query('e2g_IDSet==1')
+
+    gpg_vals = range(1, len(set1s) + 1 )
+    set1_gpgs = (pd.Series(data=gpg_vals, index=set1s.index, name='e2g_GPGroup')
+                 .to_frame())
+
+    set2s =  genes_df.query('e2g_IDSet==2')
+
+    groups = set2s.groupby('e2g_PeptidePrint')
+    set2_gene_gpgroups = dict()
+    next_gpg = len(set1_gpgs) + 1
+    for key, group in groups:
+        for gid in group['e2g_GeneID']:
+            set2_gene_gpgroups[gid] = next_gpg
+        next_gpg += 1
+    set2_gpgs = set2s['e2g_GeneID'].map(set2_gene_gpgroups).to_frame(name='e2g_GPGroup')
+    gpg_frame = pd.concat((set1_gpgs, set2_gpgs))
+
+    # gpg_frame = set1_gpgs
+
+    genes_df = genes_df.join(gpg_frame, how='left')
+
+    # last = set1_gpgs.max() or 0
+    # for ix, row in set2s.iterrows():
+    #     genes_df.loc[ix, 'e2g_GPGroup'], last = _GPG_helper(row['e2g_IDSet'],
+    #                                                             genes_df, last)
+
+    # for i in range(len(genes_df)):  # The logic behind it makes
         #sense,
         #but the implementation is weird.
         # print(last)  # for debugging
-        if genes_df.loc[i]['e2g_IDSet'] != 3:
-            genes_df.loc[i,'e2g_GPGroup'], lessthan = _GPG_helper(genes_df.at[i,'e2g_IDSet'],
-                                                                  genes_df.at[i,'e2g_PeptideSet'],
-                                                                  genes_df, last
-            )
+        # if genes_df.loc[i]['e2g_IDSet'] != 3:
+        #     genes_df.loc[i,'e2g_GPGroup'], lessthan = _GPG_helper(genes_df.at[i,'e2g_IDSet'],
+        #                                                           genes_df.at[i,'e2g_PeptideSet'],
+        #                                                           genes_df, last
+        #     )
 
-        if isinstance(genes_df.loc[i]['e2g_GPGroup'],int) and not lessthan:
-            last = genes_df.loc[i, 'e2g_GPGroup']
+        # if isinstance(genes_df.loc[i]['e2g_GPGroup'],int) and not lessthan:
+        #     last = genes_df.loc[i, 'e2g_GPGroup']
 
-    genes_df['e2g_GPGroups_All'] = genes_df.apply(_GPG_all_helper,
-                                                  args=(genes_df,),
-                                                  axis=1)
-    genes_df['e2g_GPGroup'].replace(to_replace='', value=float('NaN'),
-                                    inplace=True)  # can't sort int and
+    # genes_df['e2g_GPGroups_All'] = genes_df.apply(_GPG_all_helper,
+    #                                               args=(genes_df,),
+    #                                               axis=1)
+
+    gene_pept_mapping = defaultdict(set)
+    pept_group_mapping = defaultdict(set)
+    valid_gpgroups = genes_df[~(genes_df.e2g_GPGroup.isnull())]
+    for ix, row in valid_gpgroups.iterrows():
+        for pept in row['e2g_PeptidePrint'].split('_'):
+            gene_pept_mapping[row.e2g_GeneID].add(pept)
+            pept_group_mapping[pept].add(row.e2g_GPGroup)
+    for ix, row in genes_df[genes_df.e2g_GPGroup.isnull()].iterrows():  # need to add set3s
+        for pept in row['e2g_PeptidePrint'].split('_'):
+            gene_pept_mapping[row.e2g_GeneID].add(pept)
+
+    def gpg_all(gid, gene_pept_mapping, pept_group_mapping):
+        gpgs = set()
+        for pept in gene_pept_mapping.get(gid):
+            gpgs |= pept_group_mapping.get(pept)
+        return ','.join(str(int(x)) for x in sorted(gpgs))
+
+    genes_df['e2g_GPGroups_All'] = genes_df.apply(lambda x: gpg_all(x['e2g_GeneID'],
+                                                                    gene_pept_mapping,
+                                                                    pept_group_mapping),
+    axis=1)
+
+    # genes_df['e2g_GPGroup'].replace(to_replace='', value=float('NaN'),
+    #                                 inplace=True)  # can't sort int and
     #strings, convert all strings to NaN
     return genes_df
 
@@ -881,11 +967,10 @@ def grouper(usrdata, outdir='', database=None,
 
     print('Starting Grouper for exp file {}'.format(usrfile))
     print('\nFilter values set to : {}'.format(usrdata.filterstamp))
-    logfilestr = usrdata.output_name(ext='log')
-    logfile = open(os.path.join(usrdata.outdir, logfilestr),
-                   'w+')  # append to previously opened log file
-    logfile.write('{} | Starting {} for file : {}\n'.format(
-        time.ctime(),program_title, usrfile))
+    # logfilestr = usrdata.output_name(ext='log')
+    # logfile = open(os.path.join(usrdata.outdir, logfilestr),
+    #                'w+')  # append to previously opened log file
+    usrdata.to_logq('{} | Starting {} for file : {}'.format(time.ctime(),program_title, usrfile))
     # ==================== Populate gene info ================================ #
     # gene_metadata = extract_metadata(usrdata.df.metadatainfo)
     gene_taxon_dict = gene_taxon_mapper(database)
@@ -899,8 +984,8 @@ def grouper(usrdata, outdir='', database=None,
     # potentially filled in later,
     #fields will exist in database at least
 
-    logfile.write('{} | Finished matching PSMs to {} '\
-                  'refseq\n'.format(time.ctime(),
+    usrdata.to_logq('{} | Finished matching PSMs to {} '\
+                    'refseq'.format(time.ctime(),
                                     usrdata.taxonid))
     logging.info('Starting Grouper for exp number'\
                  '{}'.format(repr(usrdata)))
@@ -908,15 +993,14 @@ def grouper(usrdata, outdir='', database=None,
     #PSMs that didn't get a match to the refseq peptidome
     matched_psms = len(usrdata.df[usrdata.df['psm_GeneCount'] != 0])
     unmatched_psms = len(nomatches)
-    logfile.write('{} | Total identified PSMs : {}\n'.format(time.ctime(),
+    usrdata.to_logq('{} | Total identified PSMs : {}'.format(time.ctime(),
                                                              matched_psms))
-    logfile.write('{} | Total unidentified PSMs : {}\n'.format(time.ctime(),
+    usrdata.to_logq('{} | Total unidentified PSMs : {}'.format(time.ctime(),
                                                                unmatched_psms))
     for missing_seq in nomatches:
         logging.warning('No match for sequence {} in {}'.format(missing_seq,
                                                                 usrfile))
         # Store all of these sequences in the big log file, not per experiment.
-    logfile.write('{} | Starting grouper.\n'.format(time.ctime()))
     usrdata = assign_IDG(usrdata)
     usrdata.df = make_seqlower(usrdata.df)
     usrdata.df = usrdata.df.sort_values(by=['SpectrumFile', area_col,
@@ -954,8 +1038,8 @@ def grouper(usrdata, outdir='', database=None,
     elif len(taxon_ids) > 1:  # more than 1 taxon id
         taxon_totals = multi_taxon_splitter(taxon_ids, usrdata.df, gid_ignore_list, area_col)
         print('Multiple taxons found, redistributing areas...')
-        logfile.write('{} | Multiple taxons found, '\
-                      'redistributing areas.\n'.format(time.ctime()))
+        usrdata.to_logq('{} | Multiple taxons found, '\
+                      'redistributing areas.'.format(time.ctime()))
     pd.options.mode.chained_assignment = None  # default='warn'
 
     # none/SILAC loop
@@ -986,7 +1070,7 @@ def grouper(usrdata, outdir='', database=None,
     for label in labeltypes:  # increase the range to go through more label types
         labelix = labelflag.get(label, 0)
         area_col = orig_area_col
-        logfile.write('{} | Starting gene assignment for label {}.\n'.format(
+        usrdata.to_logq('{} | Starting gene assignment for label {}.'.format(
             time.ctime(), label))
         # ==========Select only peptides flagged  with good quality=========== #
         mylabelix = labelix
@@ -1020,12 +1104,13 @@ def grouper(usrdata, outdir='', database=None,
         genes_df = get_gene_capacity(genes_df, database)
         genes_df = get_peptides_for_gene(genes_df, temp_df)
         genes_df = get_psms_for_gene(genes_df, temp_df)
+        genes_df['e2g_PSMs_u2g'] = genes_df['e2g_PSMs_u2g'].fillna(0).astype(np.integer)
 
         print('{}: Calculating peak areas for {}.'.format(
             datetime.now(), usrdata.datafile))
         logging.info('{}: Calculating peak areas for {}.'.format(
             datetime.now(), usrdata.datafile))
-        logfile.write('{} | Calculating peak areas.\n'.format(time.ctime()))
+        usrdata.to_logq('{} | Calculating peak areas.'.format(time.ctime()))
 
         genes_df = calculate_protein_area(genes_df, temp_df, area_col, normalize).fillna(0)
         # pandas may give a warning from this though it is fine
@@ -1033,14 +1118,14 @@ def grouper(usrdata, outdir='', database=None,
             datetime.now(), usrdata.datafile))
         logging.info('{}: Calculating distributed area ratio for {}.'.format(
             datetime.now(), usrdata.datafile))
-        logfile.write('{} | Calculating distributed area ratio.\n'.format(
+        usrdata.to_logq('{} | Calculating distributed area ratio.'.format(
             time.ctime()))
 
         print('{}: Assigning gene sets and groups for {}.'.format(
             datetime.now(), usrfile))
         logging.info('{}: Assigning gene sets and groups for {}.'.format(
             datetime.now(), usrfile))
-        logfile.write('{} | Assigning gene sets and groups.\n'.format(
+        usrdata.to_logq('{} | Assigning gene sets and groups.'.format(
             time.ctime()))
 
         genes_df = assign_gene_sets(genes_df, temp_df)
@@ -1060,7 +1145,8 @@ def grouper(usrdata, outdir='', database=None,
             genes_df.e2g_nGPArea_Sum_dstrAdj / genes_df.e2g_GeneCapacity
 
         genes_df.sort_values(by=['e2g_GPGroup'], ascending=True, inplace=True)
-        genes_df.index = list(range(0, len(genes_df)))  # reset the index
+        # genes_df.index = list(range(0, len(genes_df)))  # reset the index
+        genes_df.reset_index(inplace=True)  # not sure why is needed
         gpgcount += genes_df.e2g_GPGroup.max()  # do this before filling na
         genes_df['e2g_GPGroup'].fillna('', inplace=True)  # convert all NaN
                                                         #back to empty string
@@ -1085,8 +1171,8 @@ def grouper(usrdata, outdir='', database=None,
             psm_tmtoutput = pd.concat([psm_tmtoutput, temp_df])
         genes_df.to_csv(os.path.join(usrdata.outdir, genedata_out), columns=e2g_cols,
                         index=False, encoding='utf-8', sep='\t')
-        logfile.write('{} | Export of genetable for labeltype {}'\
-                        'completed.\n'.format(
+        usrdata.to_logq('{} | Export of genetable for labeltype {}'\
+                        'completed.'.format(
                             time.ctime(),
                             label))
 
@@ -1098,8 +1184,8 @@ def grouper(usrdata, outdir='', database=None,
                                       # column anymore.
     if len(usrdata.df) == 0:
         print('No protein information for {}.\n'.format(repr(usrdata)))
-        logfile.write('No protein information for {}.\n'.format(repr(usrdata)))
-        logfile.close()
+        usrdata.to_logq('No protein information for {}.\n'.format(repr(usrdata)))
+        usrdata.flush_log()
         return
 
 
@@ -1133,7 +1219,7 @@ def grouper(usrdata, outdir='', database=None,
                  'psm_PrecursorArea_dstrAdj']
 
 
-    logfile.write('{} | Starting peptide ranking.\n'.format(time.ctime()))
+    usrdata.to_logq('{} | Starting peptide ranking.'.format(time.ctime()))
     dstr_area = 'psm_PrecursorArea_dstrAdj'
     area_col_to_use = dstr_area if dstr_area in usrdata.df.columns else orig_area_col
     if usrdata.labeltype == 'TMT':
@@ -1145,8 +1231,8 @@ def grouper(usrdata, outdir='', database=None,
         for label in psm_tmtoutput.psm_LabelFLAG.unique():
             tmtrank = rank_peptides(psm_tmtoutput[psm_tmtoutput.psm_LabelFLAG == label],
                                     area_col=area_col_to_use, ranks_only=True)
-            rank_df = pd.concat([rank_df, tmtrank])
-            rank_df.columns = ['psm_PeptRank']
+            rank_df = pd.concat([rank_df, tmtrank.to_frame()])
+            # rank_df.columns = ['psm_PeptRank']
             # rank_df = rank_df.join(tmtrank, how='outer')
         psm_tmtoutput = psm_tmtoutput.join(rank_df, how='left')
         psm_tmtoutput['psm_PeptRank'] = psm_tmtoutput['psm_PeptRank'].fillna(0)  # anyone who
@@ -1165,8 +1251,8 @@ def grouper(usrdata, outdir='', database=None,
         usrdata.df['psm_PrecursorArea_split'] = usrdata.df['PrecursorArea']
                               # didn't get a rank gets a rank of 0
     #print('Length of usrdata after merge : ',len(usrdata))
-
-    logfile.write('{} | Peptide ranking complete.\n'.format(time.ctime()))
+    usrdata.df['psm_PeptRank'] = usrdata.df['psm_PeptRank'].fillna(0).astype(np.integer)
+    usrdata.to_logq('{} | Peptide ranking complete.'.format(time.ctime()))
     print('{}: Peptide ranking complete for {}.'.format(datetime.now(), usrdata.datafile))
     logging.info('{}: Peptide ranking complete for {}.'.format(datetime.now(),
                                                                usrdata.datafile))
@@ -1201,9 +1287,9 @@ def grouper(usrdata, outdir='', database=None,
                           index=False, encoding='utf-8', sep='\t')
 
 
-    logfile.write('{} | Export of datatable completed.\n'.format(time.ctime()))
-    logfile.write('Successful grouping of file completed.')
-    logfile.close()
+    usrdata.to_logq('{} | Export of datatable completed.'.format(time.ctime()),
+                    'Successful grouping of file completed.')
+    usrdata.flush_log()
 
     print('Successful grouping of {} completed.\n' \
           .format(repr(usrdata)))
@@ -1372,23 +1458,34 @@ def main(usrdatas=[], fullpeptread=False, inputdir='', outputdir='', refs=dict()
 
     usrdatas, databases = match(usrdatas, refs)
 
-    failed_exps = []
+    # failed_exps = []
     for usrdata in usrdatas:
         try:
             grouper(usrdata,
                     database=databases[usrdata.taxonid],
                     gid_ignore_file=gid_ignore_file, labels=labels)
+            usrdata.EXIT_CODE = 0
         except Exception as e:  # catch and store all exceptions, won't crash
                                 # the whole program at least
-            failed_exps.append((usrdata, e))
+            usrdata.EXIT_CODE = 1
+            usrdata.ERROR = traceback.format_exc()
+            stack = traceback.format_stack()
+            # failed_exps.append((usrdata, e))
+            usrdata.to_logq('Failure for file of experiment {}.\n'\
+                  'The reason is : {}'.format(repr(usrdata), e))
+            for s in stack:
+                usrdata.to_logq(s, sep='')
+                print(s, sep='')
+            usrdata.flush_log()
             print('Failure for file of experiment {}.\n'\
                   'The reason is : {}'.format(repr(usrdata), e))
+
             logging.warn('Failure for file of experiment {}.\n'\
                          'The reason is : {}'.format(repr(usrdata), e))
             raise  # usually don't need to raise, will kill the script. Re-enable
                    #if need to debug and find where errors are
     print('Time taken : {}\n'.format(datetime.now() - startTime))
-    return 0
+    return usrdatas
 
     # ============== Load refseq and start matching peptides ================ #
     logging.info('Time taken : {}.\n\n'.format(datetime.now() - startTime))

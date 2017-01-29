@@ -63,6 +63,19 @@ def _update_database(d):
                    d['runno'], d['searchno'])
     cursor.commit()
 
+def log_failure(usrdata):
+    conn = ispec.filedb_connect()
+    cursor = conn.cursor()
+    cursor.execute("""UPDATE iSPEC_ExperimentRuns
+    SET exprun_Grouper_FailedFLAG = ?
+    WHERE exprun_EXPRecNo= ? AND
+    exprun_EXPRunNo = ? AND
+    exprun_EXPSearchNo = ?""", 1, usrdata.recno,
+                   usrdata.runno, usrdata.searchno)
+    cursor.commit()
+    conn.close()
+
+
 def update_database(usrdata):
     """Update the database with an exported json file of data"""
     outname = usrdata.output_name('metadata', ext='json')
@@ -75,9 +88,12 @@ def update_database(usrdata):
     _update_database(metadata)
 
 def run_and_update(usrdatas=None, inputdir='.', outputdir='.', **kwargs):
-    pygrouper.main(usrdatas, inputdir=inputdir, outputdir=outputdir, **kwargs)
+    usrdatas = pygrouper.main(usrdatas, inputdir=inputdir, outputdir=outputdir, **kwargs)
     for usrdata in usrdatas:
-        update_database(usrdata)
+        if usrdata.EXIT_CODE == 0:
+            update_database(usrdata)
+        elif usrdata.EXIT_CODE == 1:
+            log_failure(usrdata)
 
 def experiment_checker():
     """Looks for experiments that have records in ispec but have not been grouped yet
@@ -146,14 +162,17 @@ def file_checker(INPUT_DIR, OUTPUT_DIR, maxqueue, **kwargs):
     MAX_SIZE = 2796774193548.3867
     queue_size = 0
     for recno, exp in ungrouped.iterrows():  # the index is the record number
-        usrdata = UserData()
-        usrdata.recno = int(recno)  # int to remove decimal to match file name
-        usrdata.runno = int(exp.exprun_EXPRunNo)
-        usrdata.searchno = int(exp.exprun_EXPSearchNo)
-        usrdata.taxonid = exp.exprun_TaxonID
-        usrdata.quant_source = exp.exprun_Search_QuantSource
-        usrdata.addedby = exp.exprun_AddedBy
-        usrdata.labeltype = exp.exprun_LabelType
+        recno = int(recno)  # int to remove decimal to match file name)
+        runno = int(exp.exprun_EXPRunNo)
+        searchno = int(exp.exprun_EXPSearchNo)
+        quant_source = exp.exprun_Search_QuantSource
+        labeltype = exp.exprun_LabelType
+        taxonid = exp.exprun_TaxonID
+        addedby = exp.exprun_AddedBy
+        usrdata = UserData(recno=recno, runno=runno,
+                           searchno=searchno, quant_source=quant_source,
+                           labeltype=labeltype, taxonid=taxonid,
+                           addedby=addedby)
         usrdata.no_taxa_redistrib = exp.exprun_Grouper_notaxaRedistribute
         usrdata.filtervalues['ion_score'] = exp.exprun_Grouper_Filter_IonScore or 7
         usrdata.filtervalues['qvalue']    = exp.exprun_Grouper_Filter_qValue or 0.05
