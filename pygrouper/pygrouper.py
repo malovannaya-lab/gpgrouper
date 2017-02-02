@@ -900,7 +900,7 @@ def set_gene_gpgroups(genes_df):
     # genes_df['e2g_GPGroup'].replace(to_replace='', value=float('NaN'),
     #                                 inplace=True)  # can't sort int and
     #strings, convert all strings to NaN
-    return
+    return genes_df
 
 def get_labels(usrdata, labels, labeltype='none'):
     '""labels is a dictionary of lists for each label type""'
@@ -1131,7 +1131,7 @@ def grouper(usrdata, outdir='', database=None,
 
         assign_gene_sets(genes_df, temp_df)
 
-        set_gene_gpgroups(genes_df)
+        genes_df = set_gene_gpgroups(genes_df)
 
 
         distribute_psm_area(temp_df, genes_df, area_col, taxon_totals,
