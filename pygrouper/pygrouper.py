@@ -1235,7 +1235,7 @@ def grouper(usrdata, outdir='', database=None,
             # rank_df.columns = ['psm_PeptRank']
             # rank_df = rank_df.join(tmtrank, how='outer')
         psm_tmtoutput = psm_tmtoutput.join(rank_df, how='left')
-        psm_tmtoutput['psm_PeptRank'] = psm_tmtoutput['psm_PeptRank'].fillna(0)  # anyone who
+        psm_tmtoutput['psm_PeptRank'] = psm_tmtoutput['psm_PeptRank'].fillna(0).astype(np.integer)  # anyone who
                               # didn't get a rank gets a rank of 0
     #print('Length of usrdata after merge : ',len(usrdata))
 
@@ -1246,12 +1246,11 @@ def grouper(usrdata, outdir='', database=None,
         usrdata.df = pd.merge(usrdata.df, temp_df, how='left')
         # rare case where no PSMs pass into the temp_df of quantified PSMs
         usrdata.df = rank_peptides(usrdata.df, area_col=area_col_to_use)
-        usrdata.df['psm_PeptRank'] = usrdata.df['psm_PeptRank'].fillna(0)  # anyone who
+        usrdata.df['psm_PeptRank'] = usrdata.df['psm_PeptRank'].fillna(0).astype(np.integer)  # anyone who
         # TODO : Make this valid for AUC and Intensity based quantification
         usrdata.df['psm_PrecursorArea_split'] = usrdata.df['PrecursorArea']
                               # didn't get a rank gets a rank of 0
     #print('Length of usrdata after merge : ',len(usrdata))
-    usrdata.df['psm_PeptRank'] = usrdata.df['psm_PeptRank'].fillna(0).astype(np.integer)
     usrdata.to_logq('{} | Peptide ranking complete.'.format(time.ctime()))
     print('{}: Peptide ranking complete for {}.'.format(datetime.now(), usrdata.datafile))
     logging.info('{}: Peptide ranking complete for {}.'.format(datetime.now(),
