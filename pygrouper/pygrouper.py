@@ -583,11 +583,11 @@ def calculate_protein_area(genes_df, temp_df, area_col, normalize):
 
     qstring_u = qstring + ' & psm_GeneCount == 1'
     uniq = temp_df.query(qstring_u).groupby('psm_GeneID')[area_col].sum()/normalize
-    uniq.name = 'e2g_nGPArea_Sum_u2g'
+    uniq.name = 'e2g_nGPArea_Sum_u2g_all'
 
     qstring_u0 = qstring_u + ' & MissedCleavages == 0'
     uniq_0 = temp_df.query(qstring_u0).groupby('psm_GeneID')[area_col].sum()/normalize
-    uniq_0.name = 'e2g_nGPArea_Sum_u2g_all'
+    uniq_0.name = 'e2g_nGPArea_Sum_u2g'
     result = pd.concat( (full, full_adj, uniq, uniq_0), copy=False, axis=1) .fillna(0)
     genes_df = genes_df.merge(result, how='left',
                               left_on='e2g_GeneID', right_index=True)
