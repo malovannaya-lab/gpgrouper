@@ -251,7 +251,7 @@ def assign_IDG(usrdata):
 def make_seqlower(usrdata, col='Sequence'):
     """Make a new column called sequence_lower from a DataFrame"""
     usrdata['sequence_lower'] = usrdata[col].str.lower()
-    return usrdata
+    return
 
 def peptidome_matcher(usrdata, ref_dict):
 
@@ -320,7 +320,7 @@ def export_metadata(program_title='version',usrdata=None, matched_psms=0, unmatc
                     usrfile='file', taxon_totals=dict(), outname=None, outpath='.', **kwargs):
     """Update iSPEC database with some metadata information
     """
-    print('{} | Updating experiment runs table in iSPEC.'.format(time.ctime()))
+    print('{} | Exporting metadata'.format(time.ctime()))
     #print('Number of matched psms : ', matched_psms)
     d = dict(
         version=program_title,
@@ -419,13 +419,13 @@ def flag_AUC_PSM(df, fv):
            ['psm_AUC_UseFLAG', 'psm_PSM_UseFLAG']] = 0
 
     df.loc[ df['AUC_reflagger'] == 0, 'psm_AUC_UseFLAG'] = 0
-    return df
+    return
 
 
 def gene_taxon_map(usrdata, gene_taxon_dict):
     """make 'gene_taxon_map' column per row which displays taxon for given gene"""
     usrdata['psm_TaxonID'] = usrdata['psm_GeneID'].map(gene_taxon_dict)
-    return usrdata
+    return
 
 
 def get_all_taxons(taxonidlist):
@@ -655,7 +655,7 @@ def distribute_psm_area(temp_df, genes_df, area_col, taxon_totals, taxon_redistr
                                    taxon_redistribute),
    axis=1)
 
-   return temp_df
+   return
 
 
 def _assign_gene_sets(genes_df,genes_df_all, temp_df ):
@@ -684,7 +684,7 @@ def assign_gene_sets(genes_df, temp_df):
     (genes_df['e2g_IDSet'], genes_df['e2g_IDGroup'],
      genes_df['e2g_IDGroup_u2g']) = list(zip(*genesets))
 
-    return genes_df
+    return
 
 # def __assign_gene_sets(genes_df, temp_df):
 #     import ipdb; ipdb.set_trace()
@@ -782,7 +782,7 @@ def set_gene_gpgroups(genes_df):
     genes_df['e2g_GPGroup'].replace(to_replace='', value=float('NaN'),
                                     inplace=True)  # can't sort int and
     #strings, convert all strings to NaN
-    return genes_df
+    return
 
 def get_labels(usrdata, labels, labeltype='none'):
     '""labels is a dictionary of lists for each label type""'
@@ -886,7 +886,7 @@ def grouper(usrdata, outdir='', database=None,
         # Store all of these sequences in the big log file, not per experiment.
     logfile.write('{} | Starting grouper.\n'.format(time.ctime()))
     usrdata = assign_IDG(usrdata)
-    usrdata.df = make_seqlower(usrdata.df)
+    make_seqlower(usrdata.df)
     usrdata.df = usrdata.df.sort_values(by=['SpectrumFile', area_col,
                                       'Sequence', 'Modifications',
                                       'Charge', 'psm_PSM_IDG', 'IonScore', 'PEP',
@@ -905,9 +905,9 @@ def grouper(usrdata, outdir='', database=None,
     # ========================================================================= #
 
     # Now calculate AUC and PSM use flags
-    usrdata.df = flag_AUC_PSM(usrdata.df, usrdata.filtervalues)
+    flag_AUC_PSM(usrdata.df, usrdata.filtervalues)
 
-    usrdata.df = gene_taxon_map(usrdata.df, gene_taxon_dict)
+    gene_taxon_map(usrdata.df, gene_taxon_dict)
     # Flag good quality peptides
         # ======================== Plugin for multiple taxons  ===================== #
     taxon_ids = usrdata.df['psm_TaxonID'].dropna().unique()
@@ -982,8 +982,9 @@ def grouper(usrdata, outdir='', database=None,
         # genes_df['_e2g_GeneID'] = Set(temp_df['_data_GeneID']) #only in 2.7
         genes_df = create_e2g_df(temp_df, label)
 
-        genes_df['e2g_TaxonID'] = genes_df.apply(lambda x: gene_taxon_dict.get(x['e2g_GeneID']),
-                                                 axis=1)
+        # genes_df['e2g_TaxonID'] = genes_df.apply(lambda x: gene_taxon_dict.get(x['e2g_GeneID']),
+        #                                          axis=1)
+        genes_df['e2g_TaxonID'] = genes_df['e2g_GeneID'].map(gene_taxon_dict)
 
         genes_df = get_gene_capacity(genes_df, database)
         genes_df = get_peptides_for_gene(genes_df, temp_df)
@@ -1011,13 +1012,13 @@ def grouper(usrdata, outdir='', database=None,
         logfile.write('{} | Assigning gene sets and groups.\n'.format(
             time.ctime()))
 
-        genes_df = assign_gene_sets(genes_df, temp_df)
+        assign_gene_sets(genes_df, temp_df)
 
-        genes_df = set_gene_gpgroups(genes_df)
+        set_gene_gpgroups(genes_df)
 
 
-        temp_df = distribute_psm_area(temp_df, genes_df, area_col, taxon_totals,
-                                      not usrdata.no_taxa_redistrib)
+        distribute_psm_area(temp_df, genes_df, area_col, taxon_totals,
+                            not usrdata.no_taxa_redistrib)
 
 
         #genes_df['e2g_GeneCapacity'] = genes_df.e2g_GeneCapacity.astype('float')
@@ -1248,7 +1249,7 @@ def match(usrdatas, refseqs):
                               refseqs[organism])
             databases[organism] = database
 
-    return usrdatas, databases
+    return databases
 
 def column_identifier(df, aliases):
     column_names = dict()
@@ -1295,7 +1296,7 @@ def set_up(usrdatas, column_aliases):
                               inplace=True)
             usrdata.df['psm_SequenceModiCount'] = count_modis_maxquant(usrdata.df)
             usrdata.df['psm_LabelFLAG'] = 0  #TODO: handle this properly
-    return usrdatas
+    return
 
 def rename_refseq_cols(df, filename):
     fasta_h = ['TaxonID', 'HomologeneID', 'GeneID', 'ProteinGI', 'FASTA']
@@ -1334,9 +1335,9 @@ def main(usrdatas=[], fullpeptread=False, inputdir='', outputdir='', refs=dict()
     # logging.info('Start at {}'.format(startTime))
 
     # first set the modifications. Importantly fills in X with the predicted amino acid
-    usrdatas = set_up(usrdatas, column_aliases)
+    set_up(usrdatas, column_aliases)
 
-    usrdatas, databases = match(usrdatas, refs)
+    databases = match(usrdatas, refs)
 
     failed_exps = []
     for usrdata in usrdatas:

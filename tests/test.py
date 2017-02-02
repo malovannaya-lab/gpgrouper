@@ -134,8 +134,9 @@ class MatchTest(unittest.TestCase):
         """Test functionality of matcher,
         does not validate any data, just if it dones't fail """
         sample = get_sample_data()
-        usrdatas = pygrouper.set_up(sample['usrdatas'], sample['column_aliases'])
-        usrdatas, _ = pygrouper.match(usrdatas, sample['refs'])
+        usrdatas = sample['usrdatas']
+        pygrouper.set_up(usrdatas, sample['column_aliases'])
+        _ = pygrouper.match(usrdatas, sample['refs'])
         usrdata = usrdatas[-1]
         outcols = ['GeneList', 'GeneCount', 'TaxonIDList', 'TaxonCount',
                    'ProteinList', 'ProteinCount']
