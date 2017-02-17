@@ -52,6 +52,7 @@ def timed(n=30):
         def wrapper(*args, **kwargs):
             timings = []
             for i in range(n):
+                print('Running trial', i)
                 t0 = time.time()
                 func(*args, **kwargs)
                 t1 = time.time()
@@ -161,19 +162,18 @@ class RunThrough():
                 os.remove(os.path.join('./testdata', f))
         print('done')
     def run(self):
-        # if self.create or not (os.path.exists(self.DB) and
-        #                        os.path.exists(self.FILE)):
-        # self.setUp()
+        if self.create or not (os.path.exists(self.DB) and
+                               os.path.exists(self.FILE)):
+            self.setUp()
         self._exec()
-        # if self.delete:
-        #     self.tearDown()
+        if self.delete:
+            self.tearDown()
         return 0
 
     @timed(3)
     def _exec(self):
-        sys.stdout = StringIO()
-        sys.stderr = StringIO()
-        print('hi')
+        # sys.stdout = StringIO()
+        # sys.stderr = StringIO()
         runner = CliRunner()
         response = runner.invoke(cli.cli, ['run', '--database', self.DB,
                                            '--psms-file', self.FILE,

@@ -204,8 +204,8 @@ class TestAreaTMT(unittest.TestCase):
     """ Testing for dealing with Areas for TMT and Labelfree data"""
     _dirname = os.path.dirname(os.path.realpath(__file__))
 
-    TMT_FASTA = os.path.join(_dirname, './testdata/tmt_fa.tab')
-    TMT_FILE  = os.path.join(_dirname, './testdata/10101_1_1_tmt_fa.tab')
+    FASTA = os.path.join(_dirname, './testdata/tmt_fa.tab')
+    PSMS  = os.path.join(_dirname, './testdata/10101_1_1_tmt_fa.tab')
 
     stdout = sys.stdout
     stderr = sys.stderr
@@ -263,17 +263,17 @@ class TestAreaTMT(unittest.TestCase):
         )
 
         df = pd.DataFrame(d)
-        df.to_csv(self.TMT_FILE, sep='\t', index=False)
+        df.to_csv(self.PSMS, sep='\t', index=False)
 
-        with open(self.TMT_FASTA, 'w') as fasta:
+        with open(self.FASTA, 'w') as fasta:
             fasta.write(fasta_file)
 
     def tearDown(self):
         return
         sys.stdout = self.stdout
         sys.stderr = self.stderr
-        os.remove(self.TMT_FASTA)
-        os.remove(self.TMT_FILE)
+        os.remove(self.FASTA)
+        os.remove(self.PSMS)
         for f in os.listdir('.'):
             if f.startswith('10101_1_1'):
                 try:
@@ -289,8 +289,8 @@ class TestAreaTMT(unittest.TestCase):
 
     def test_labelfree(self):
         runner = CliRunner()
-        response = runner.invoke(cli.cli, ['run', '--database', self.TMT_FASTA,
-                                           '--psms-file', self.TMT_FILE,
+        response = runner.invoke(cli.cli, ['run', '--database', self.FASTA,
+                                           '--psms-file', self.PSMS,
                                            '--taxonid', 9606,
                                            '--outdir', './testdata',
                                            '--configfile', CONFIG_FILE,
@@ -341,6 +341,9 @@ class TestFull(unittest.TestCase):
     stdout = sys.stdout
     stderr = sys.stderr
 
+    FASTA = REFSEQ_FILE
+    PSMS = PSMS_FILE
+
     def setUp(self):
         sys.stdout = StringIO()
         sys.stderr = StringIO()
@@ -357,14 +360,15 @@ class TestFull(unittest.TestCase):
                     pass
         for f in os.listdir(INPUT_DIR):
             if f.startswith('1_1_1'):
-                os.remove(os.path.join(INPUT_DIR, f))
+                # os.remove(os.path.join(INPUT_DIR, f))
+                pass
 
 
     def test_runthrough(self):
         # self.longMessage = True
         runner = CliRunner()
-        response = runner.invoke(cli.cli, ['run', '--database', REFSEQ_FILE,
-                                           '--psms-file', PSMS_FILE,
+        response = runner.invoke(cli.cli, ['run', '--database', self.FASTA,
+                                           '--psms-file', self.PSMS,
                                            '--taxonid', 9606,
                                            '--outdir', INPUT_DIR,
                                            '--configfile', CONFIG_FILE,

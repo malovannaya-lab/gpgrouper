@@ -4,12 +4,13 @@ import subprocess
 from click.testing import CliRunner
 from pygrouper import cli
 
-from test import TestAreaTMT
+from test import TestAreaTMT, TestFull
 
 BASEDIR, _ = os.path.split(os.path.abspath(__file__))
 CONFIG_FILE = os.path.join(BASEDIR, '../pygrouper_config.ini')
 
 class Interactive(TestAreaTMT):
+# class Interactive(TestFull):
 
     def setUp(self):
         super().setUp()
@@ -19,12 +20,13 @@ class Interactive(TestAreaTMT):
 
     def interact(self):
         self.setUp()
-        call = ['pygrouper', 'run', '--database', self.TMT_FASTA,
-                '--psms-file', self.TMT_FILE,
+        call = ['pygrouper', 'run', '--database', self.FASTA,
+                '--psms-file', self.PSMS,
                 '--taxonid', '9606',
                 '--outdir', './testdata',
                 '--configfile', CONFIG_FILE,
                 '--labeltype', 'TMT',
+                # '--labeltype', 'none',
         ]
         subprocess.call(call)
 
