@@ -14,6 +14,8 @@ import traceback
 import numpy as np
 import pandas as pd
 
+from RefProtDB.utils import fasta_dict_from_file
+
 from . import _version
 from .subfuncts import *
 
@@ -219,20 +221,20 @@ def _extract_peptideinfo(row):
         return ('', 0, '', 0, '', 0, '', 0, ())
     result = (
         # ','.join(row['GeneID'].dropna().unique()),
-        ','.join(str(x) for x in set(row['GeneID'])),
-        row['GeneID'].nunique(dropna=True),
+        ','.join(str(x) for x in set(row['geneid'])),
+        row['geneid'].nunique(dropna=True),
 
         # ','.join(row['TaxonID'].dropna().unique()),
-        ','.join(str(x) for x in set(row['TaxonID'])),
-        row['TaxonID'].nunique(dropna=True),
+        ','.join(str(x) for x in set(row['taxon'])),
+        row['taxon'].nunique(dropna=True),
 
         # ','.join(row['ProteinGI'].dropna().unique()),
-        ','.join(str(x) for x in set(row['ProteinGI'])),
-        row['ProteinGI'].nunique(dropna=True),
+        ','.join(str(x) for x in set(row['gi'])),
+        row['gi'].nunique(dropna=True),
 
         # ','.join(row['HomologeneID'].dropna().unique()),
-        ','.join(str(x) for x in set(row['HomologeneID'])),
-        row['HomologeneID'].nunique(dropna=True),
+        ','.join(str(x) for x in set(row['homologene'])),
+        row['homologene'].nunique(dropna=True),
         tuple(row['capacity']),
           # row['capacity'].mean(),
     )
@@ -270,7 +272,12 @@ def gene_taxon_mapper(df):
     """Returns a dictionary with mapping:
     gene -> taxon
     Input is the metadata extracted previously"""
-    return {x.GeneID: x.TaxonID for _, x in df.iterrows()}
+    return  (df[['geneid', 'taxon']]
+             .set_index('geneid')
+             .pipe(lambda x: pd.Series(data=x.taxon, index=x.index))
+    ).to_dict()
+
+
 
 def assign_IDG(df, filtervalues=None):
     filtervalues = filtervalues or dict()
@@ -507,7 +514,7 @@ def select_good_peptides(usrdata, labelix):
 
 def get_gene_capacity(genes_df, database, col='e2g_GeneID'):
     """Get gene capcaity from the stored metadata"""
-    capacity = (database.groupby('GeneID').capacity.mean()
+    capacity = (database.groupby('geneid').capacity.mean()
                 .to_frame(name='e2g_GeneCapacity'))
     genes_df = genes_df.merge(capacity, how='left', left_on='e2g_GeneID', right_index=True)
     return genes_df
@@ -1216,17 +1223,29 @@ def set_modifications(usrdata):
      usrdata['psm_SequenceModiCount'], usrdata['psm_LabelFLAG']) = zip(*modifications)
     return usrdata
 
+EXPECTED_COLUMNS = ('description', 'geneid', 'gi', 'homologene', 'ref', 'sequence', 'taxon')
+def load_fasta(refseq_file):
+    gen = fasta_dict_from_file(refseq_file)
+    df = pd.DataFrame.from_dict(gen)
+    if not all(x in df.columns for x in EXPECTED_COLUMNS):
+        missing = ', '.join(x for x in EXPECTED_COLUMNS if x not in df.columns)
+        fmt = 'Invalid FASTA file : {} is missing the following identifiers : {}\n'
+        raise ValueError(fmt.format(refseq_file, missing))
+    return df
+
+
 def _match(usrdatas, refseq_file):
     print('Using peptidome {} '.format(refseq_file))
-    database = pd.read_table(refseq_file, dtype=str)
-    rename_refseq_cols(database, refseq_file)
+    # database = pd.read_table(refseq_file, dtype=str)
+    # rename_refseq_cols(database, refseq_file)
+    database = load_fasta(refseq_file)
     database['capacity'] = 1
     breakup_size = calculate_breakup_size(len(database))
     counter = 0
     prot = defaultdict(list)
     for ix, row in database.iterrows():
         counter += 1
-        fragments, fraglen = protease(row.FASTA, minlen=7,
+        fragments, fraglen = protease(row.sequence, minlen=7,
                                       cutsites=['K', 'R'],
                                       exceptions=['P'])
         database.loc[ix, 'capacity'] = fraglen
