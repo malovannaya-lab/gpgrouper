@@ -4,13 +4,14 @@ import subprocess
 from click.testing import CliRunner
 from pygrouper import cli
 
-from test import TestAreaTMT, TestFull
+from test import TestAreaTMT, TestFull, TestMin
 
 BASEDIR, _ = os.path.split(os.path.abspath(__file__))
 CONFIG_FILE = os.path.join(BASEDIR, '../pygrouper_config.ini')
 
 class Interactive(TestAreaTMT):
 # class Interactive(TestFull):
+# class Interactive(TestMin):
 
     def setUp(self):
         super().setUp()
@@ -25,8 +26,8 @@ class Interactive(TestAreaTMT):
                 '--taxonid', '9606',
                 '--outdir', './testdata',
                 '--configfile', CONFIG_FILE,
-                '--labeltype', 'TMT',
-                # '--labeltype', 'none',
+                # '--labeltype', 'TMT',
+                '--labeltype', 'none',
         ]
         subprocess.call(call)
 

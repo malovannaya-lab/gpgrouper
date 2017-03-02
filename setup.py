@@ -17,6 +17,7 @@ setup(
     packages=find_packages(),
     install_requires=[
         'Click',
+        'RefProtDB>=0.1.1'
     ],
     entry_points="""
     [console_scripts]

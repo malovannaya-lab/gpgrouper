@@ -23,7 +23,8 @@ BASEDIR, _ = os.path.split(os.path.abspath(__file__))
 INPUT_DIR = os.path.join(BASEDIR, 'testdata/two_uniques')
 PSMS_FILE = os.path.join(BASEDIR,'testdata/two_uniques/test_input_all_02.tab')
 OUTPUT_DIR = RAWFILE_DIR = INPUT_DIR
-REFSEQ_FILE = os.path.join(BASEDIR, 'testdata/two_uniques/refseq_02.tab')
+# REFSEQ_FILE = os.path.join(BASEDIR, 'testdata/two_uniques/refseq_02.tab')
+REFSEQ_FILE = os.path.join(BASEDIR, 'testdata/two_uniques/refseq_02.fa')
 CONFIG_FILE = os.path.join(BASEDIR, '../pygrouper_config.ini')
 
 # usrdata = UserData(datafile=PSMS_FILE, indir=INPUT_DIR, outdir=OUTPUT_DIR, rawfiledir=RAWFILE_DIR,
@@ -141,7 +142,7 @@ class MatchTest(unittest.TestCase):
         outcols = ['GeneList', 'GeneCount', 'TaxonIDList', 'TaxonCount',
                    'ProteinList', 'ProteinCount']
         for outcol in outcols:
-            self.assertIn('psm_' + outcol, usrdata.df.columns,
+            self.assertIn(outcol, usrdata.df.columns,
                           msg='Matcher not returning correct columns')
 
 _logfile = re.compile('Pygrouper_v.*.log')
@@ -151,8 +152,8 @@ class TestMin(unittest.TestCase):
 
     _dirname = os.path.dirname(os.path.realpath(__file__))
 
-    MIN_FASTA = os.path.join(_dirname, './testdata/minfasta.tab')
-    MIN_FILE  = os.path.join(_dirname, './testdata/minfile.tab')
+    FASTA = os.path.join(_dirname, './testdata/minfasta.fa')
+    PSMS  = os.path.join(_dirname, './testdata/minfile.tab')
 
     stdout = sys.stdout
     stderr = sys.stderr
@@ -160,9 +161,17 @@ class TestMin(unittest.TestCase):
     def setUp(self):
         sys.stdout = StringIO()
         sys.stderr = StringIO()
-        fasta_h = '\t'.join(['TaxonID', 'HomologeneID', 'GeneID', 'ProteinGI', 'FASTA'])
-        fasta_values = '\t'.join(['9606', '', '1234', '12345678', 'AAAAAAA'])
-        fasta_file = '\n'.join([fasta_h, fasta_values])
+        # fasta_h = '\t'.join(['TaxonID', 'HomologeneID', 'GeneID', 'ProteinGI', 'FASTA'])
+        # fasta_values = '\t'.join(['9606', '', '1234', '12345678', 'AAAAAAA'])
+        # fasta_file = '\n'.join([fasta_h, fasta_values])
+
+        fasta_h = '>geneid|{gid}|ref|{ref}|taxon|{taxon}|gi|{gi}|homologene|{hid}| {desc}'
+        fasta_values = ''
+
+        r = dict(gid='1234', ref='NP_XX', taxon='9606', gi='12345678', hid='', desc=' \n')
+        fasta_values += fasta_h.format(**r)
+        fasta_values += 'AAAAAAA\n'
+        fasta_file = fasta_values
 
         headers = '\t'.join(['Sequence', 'Modifications', 'PrecursorArea',
                              'Charge', 'IonScore', 'q_value', 'PEP', 'SpectrumFile',
@@ -170,15 +179,15 @@ class TestMin(unittest.TestCase):
         values = '\t'.join(['AAAAAAA', ' ', '12345', '2', '50', '0.00', '0.00', 'file1.raw', '10', '1'])
         small_file = '\n'.join([headers, values])
 
-        with open(self.MIN_FASTA, 'w') as fasta, open(self.MIN_FILE, 'w') as file_:
+        with open(self.FASTA, 'w') as fasta, open(self.PSMS, 'w') as file_:
             fasta.write(fasta_file)
             file_.write(small_file)
 
     def tearDown(self):
         sys.stdout = self.stdout
         sys.stderr = self.stderr
-        os.remove(self.MIN_FASTA)
-        os.remove(self.MIN_FILE)
+        os.remove(self.FASTA)
+        os.remove(self.PSMS)
         for f in os.listdir('.'):
             if f.startswith('1_1_1'):
                 try:
@@ -188,8 +197,8 @@ class TestMin(unittest.TestCase):
 
     def test_minimum_cols(self):
         runner = CliRunner()
-        response = runner.invoke(cli.cli, ['run', '--database', self.MIN_FASTA,
-                                           '--psms-file', self.MIN_FILE,
+        response = runner.invoke(cli.cli, ['run', '--database', self.FASTA,
+                                           '--psms-file', self.PSMS,
                                            '--taxonid', 9606,
                                            '--outdir', '.',
                                            '--configfile', CONFIG_FILE,
@@ -218,16 +227,48 @@ class TestAreaTMT(unittest.TestCase):
         sys.stdout = StringIO()
         sys.stderr = StringIO()
 
-        fasta_h = '\t'.join(['TaxonID', 'HomologeneID', 'GeneID', 'ProteinGI', 'FASTA'])
-        fasta_values = '\t'.join(['9606', '', '1234', '12345678', 'AAAAAAAKBBBBBBBKCCCCCCCK\n'])
-        fasta_values += '\t'.join(['9606', '', '2345', '12345678', 'AAAAAAAKBBBBBBBKCCCCCCCK\n'])
-        fasta_values += '\t'.join(['9606', '', '111', '11111', 'CBACBACBAK\n'])
-        fasta_values += '\t'.join(['9606', '', '666', '46123', 'BBBBBBBKCCCCCCCK\n'])
+        # fasta_h = '\t'.join(['TaxonID', 'HomologeneID', 'GeneID', 'ProteinGI', 'FASTA'])
+        # fasta_values = '\t'.join(['9606', '', '1234', '12345678', 'AAAAAAAKBBBBBBBKCCCCCCCK\n'])
+        # fasta_values += '\t'.join(['9606', '', '2345', '12345678', 'AAAAAAAKBBBBBBBKCCCCCCCK\n'])
+        # fasta_values += '\t'.join(['9606', '', '111', '11111', 'CBACBACBAK\n'])
+        # fasta_values += '\t'.join(['9606', '', '666', '46123', 'BBBBBBBKCCCCCCCK\n'])
+        # fasta_values += '\t'.join(['10090', '', '567', '865431', 'AAAAAAAKBBBBBBBKCCCCCCCK\n'])
+        # fasta_values += '\t'.join(['10090', '', '678', '865431', 'AAAAAAAKBBBBBBBKCCCCCCCK\n'])
+        # fasta_values += '\t'.join(['10090', '', '999', '99999', 'ABCABCABCK\n'])
+        # fasta_file = '\n'.join([fasta_h, fasta_values])
 
-        fasta_values += '\t'.join(['10090', '', '567', '865431', 'AAAAAAAKBBBBBBBKCCCCCCCK\n'])
-        fasta_values += '\t'.join(['10090', '', '678', '865431', 'AAAAAAAKBBBBBBBKCCCCCCCK\n'])
-        fasta_values += '\t'.join(['10090', '', '999', '99999', 'ABCABCABCK\n'])
-        fasta_file = '\n'.join([fasta_h, fasta_values])
+        fasta_h = '>geneid|{gid}|ref|{ref}|taxon|{taxon}|gi|{gi}|homologene|{hid}| {desc}'
+        fasta_values = ''
+
+        r = dict(gid='1234', ref='NP_XX', taxon='9606', gi='12345678', hid='1', desc=' \n')
+        fasta_values += fasta_h.format(**r)
+        fasta_values += 'AAAAAAAKBBBBBBBKCCCCCCCK\n'
+
+        r = dict(gid='2345', ref='NP_XX', taxon='9606', gi='12345678', hid='1', desc=' \n')
+        fasta_values += fasta_h.format(**r)
+        fasta_values += 'AAAAAAAKBBBBBBBKCCCCCCCK\n'
+
+        r = dict(gid='111', ref='NP_XX', taxon='9606', gi='11111', hid='1', desc=' \n')
+        fasta_values += fasta_h.format(**r)
+        fasta_values += 'CBACBACBAK\n'
+
+        r = dict(gid='666', ref='NP_XX', taxon='9606', gi='46123', hid='1', desc=' \n')
+        fasta_values += fasta_h.format(**r)
+        fasta_values += 'BBBBBBBKCCCCCCCK\n'
+
+        r = dict(gid='567', ref='NP_XX', taxon='10090', gi='865431', hid='1', desc=' \n')
+        fasta_values += fasta_h.format(**r)
+        fasta_values += 'AAAAAAAKBBBBBBBKCCCCCCCK\n'
+
+        r = dict(gid='678', ref='NP_XX', taxon='10090', gi='865431', hid='1', desc=' \n')
+        fasta_values += fasta_h.format(**r)
+        fasta_values += 'AAAAAAAKBBBBBBBKCCCCCCCK\n'
+
+        r = dict(gid='999', ref='NP_XX', taxon='10090', gi='99999', hid='1', desc=' \n')
+        fasta_values += fasta_h.format(**r)
+        fasta_values += 'ABCABCABCK\n'
+
+        fasta_file = fasta_values
 
 
         n = 3 # number of PSMs
@@ -302,14 +343,14 @@ class TestAreaTMT(unittest.TestCase):
                          msg='\n{}\n{!r}'.format(''.join(traceback.format_tb(response.exc_info[-1])),
                                                                              response.exc_info[1])
                          )
-        dstrAdj = 'e2g_nGPArea_Sum_dstrAdj'
-        maxarea = 'e2g_nGPArea_Sum_max'
+        dstrAdj = 'AreaSum_dstrAdj'
+        maxarea = 'AreaSum_max'
         df = pd.read_table('./testdata/10101_1_1_none_0_e2g.tab')
         print(df.columns)
-        self.assertEqual(True, all(df[ df.e2g_GeneID.isin(self.set2s)]['e2g_IDSet'] == 2))
-        self.assertEqual(True, all(df.query('e2g_IDSet==3')['e2g_nGPArea_Sum_dstrAdj']==0))
+        self.assertEqual(True, all(df[ df.GeneID.isin(self.set2s)]['IDSet'] == 2))
+        self.assertEqual(True, all(df.query('IDSet==3')['AreaSum_dstrAdj']==0))
         for tid in 9606, 10090:
-            q = 'e2g_IDSet==2 & e2g_TaxonID == {}'.format(tid)
+            q = 'IDSet==2 & TaxonID == {}'.format(tid)
             subdf = df.query(q)
             tot = len(subdf)
 
@@ -378,27 +419,32 @@ class TestFull(unittest.TestCase):
                          msg='\n{}\n{!r}'.format(''.join(traceback.format_tb(response.exc_info[-1])),
                                                                              response.exc_info[1])
                          )
-    def test_proper_columns_e2g(self):
-        data_cols = ['psm_EXPRecNo', 'psm_EXPRunNo', 'psm_EXPSearchNo',
-                     'psm_EXPTechRepNo', 'Sequence',
-                     'PSMAmbiguity', 'Modifications', 'ActivationType',
-                     'DeltaScore', 'DeltaCn', 'Rank', 'SearchEngineRank',
-                     'PrecursorArea', 'q_value', 'PEP',
-                     'IonScore', 'MissedCleavages',
-                     'IsolationInterference', 'IonInjectTime',
+    def test_proper_columns_psms(self):
+
+        data_cols = ['EXPRecNo', 'EXPRunNo', 'EXPSearchNo',
+                     'Sequence', 'PSMAmbiguity', 'Modifications',
+                     'ActivationType', 'DeltaScore', 'DeltaCn',
+                     'Rank', 'SearchEngineRank', 'PrecursorArea',
+                     'q_value', 'PEP', 'IonScore',
+                     'MissedCleavages', 'IsolationInterference', 'IonInjectTime',
                      'Charge', 'mzDa', 'MHDa',
                      'DeltaMassDa', 'DeltaMassPPM', 'RTmin',
                      'FirstScan', 'MSOrder', 'MatchedIons',
-                     'SpectrumFile', 'psm_AddedBy', 'psm_oriFLAG',
-                     'psm_CreationTS', 'psm_ModificationTS', 'psm_GeneID',
-                     'psm_GeneList', 'psm_GeneCount', 'psm_ProteinGI',
-                     'psm_ProteinList', 'psm_ProteinCount',
-                     'psm_HID', 'psm_HIDList', 'psm_HIDCount',
-                     'psm_TaxonID', 'psm_TaxonIDList', 'psm_TaxonCount',
-                     'psm_PSM_IDG', 'psm_SequenceModi',
-                     'psm_SequenceModiCount', 'psm_LabelFLAG',
-                     'psm_PeptRank', 'psm_AUC_UseFLAG', 'psm_PSM_UseFLAG',
-                     'psm_Peak_UseFLAG', 'psm_SequenceArea', 'psm_PrecursorArea_dstrAdj']
+                     'SpectrumFile', 'AddedBy',
+                     'oriFLAG',
+                     'CreationTS', 'ModificationTS', 'GeneID',
+                     'GeneList', 'GeneCount', 'ProteinGI',
+                     'ProteinList', 'ProteinCount',
+                     'HID', 'HIDList', 'HIDCount',
+                     'TaxonID', 'TaxonIDList', 'TaxonCount',
+                     'IDG', 'SequenceModi',
+                     'SequenceModiCount', 'LabelFLAG',
+                     'PeptRank', 'AUC_UseFLAG', 'UseFLAG',
+                     'Peak_UseFLAG', 'SequenceArea', 'PrecursorArea_split',
+                     'RazorArea',
+                     'PrecursorArea_dstrAdj']
+
+
         runner = CliRunner()
         response = runner.invoke(cli.cli, ['run', '--database', REFSEQ_FILE,
                                            '--psms-file', PSMS_FILE,
@@ -410,7 +456,7 @@ class TestFull(unittest.TestCase):
         output = pd.read_table(os.path.join(INPUT_DIR, '1_1_1_none_psms.tab'))
         # print(output.columns)
         for col in data_cols:
-            self.assertTrue(col in output.columns, msg='{} not found in e2g file'.format(col))
+            self.assertTrue(col in output.columns, msg='{} not found in data file'.format(col))
 
 
     @mock.patch('pygrouper.auto_grouper._update_database')
