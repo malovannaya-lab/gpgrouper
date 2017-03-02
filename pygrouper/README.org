@@ -55,18 +55,18 @@
        GPGroups each to which a peptide belongs.
    - S (designation) :: A filter by strict PSMs/Peptides, which are PSMs with an IDGroup $\leq 3$.
    - u2g (designation) :: A filter by unique to gene PSMs/peptides.
-   - nGPArea Sum max :: The maximum possible GeneID area, no area redistribution
-   - nGPArea Sum cgpAdj :: The GeneID area as calculated after the division of each PSM's
+   - AreaSum max :: The maximum possible GeneID area, no area redistribution
+   - AreaSum gpcAdj :: The GeneID area as calculated after the division of each PSM's
        area by the total number of GeneIDs that map to each PSM.
-   - nGPArea Sum u2g all :: Same as *nGPArea Sum cgpAdj* but after filtering by
+   - AreaSum u2g all :: Same as *AreaSum gpcAdj* but after filtering by
        unique peptides.
-   - nGPArea Sum u2g ::   Same as *nGPArea Sum cgpAdj* but after filtering by
+   - AreaSum u2g 0 ::   Same as *AreaSum gpcAdj* but after filtering by
        unique peptides with zero miscuts.
-   - nGPArea Sum dstrAdj :: The GeneID area after adjustment of each shared
+   - AreaSum dstrAdj :: The GeneID area after adjustment of each shared
         PSM's area among each mapped GeneID based on the GeneID area as
         calculated by unique PSMs. IDSet 2 GeneIDs that have no unique PSMs are
         adjusted by dividing by the total number of IDSet 2 GeneIDs. IDSet 3
-        GeneIDs recieve a *nGPArea Sum dstrAdj* of 0.
+        GeneIDs recieve a *AreaSum dstrAdj* of 0.
 
 ** IDGroup Bins
 
@@ -153,49 +153,49 @@
    one with the highest IonScore.
    This best PSM gets a =Peak_UseFLAG= of 1, while the duplicates get a value of 0.
    Duplicates are PSMs with an identical =SpectrumFile= (mass spec fraction),
-  =psm_SequenceModi=, =Charge=, and =PrecursorArea=.
+  =SequenceModi=, =Charge=, and =PrecursorArea=.
 
 ** Summing Areas of Similar PSMs
    The same PSM may be observed multiple times, for example across mass spec
    fractions.
    For PSMs with =Peak_UseFLAG = 1=, the areas for PSMs with the same Modified Sequence
-   and Charge are summed to yield the =psm_SequenceArea=.
+   and Charge are summed to yield the =SequenceArea=.
 
 ** AUC Re-Flagging <<auc-reflag>>
    Similar to the considerations for removing redundant peaks,
-   multiple PSMs may have the same =psm_SequenceArea=.
-   Here, duplicates are PSMs with the same =psm_SequenceArea=, =Charge=, and =psm_SequenceModi=.
-   The best (based on =PSM_IDG=) PSM is given a =AUC_reflagger= value of 1 and
+   multiple PSMs may have the same =SequenceArea=.
+   Here, duplicates are PSMs with the same =SequenceArea=, =Charge=, and =SequenceModi=.
+   The best (based on =IDG=) PSM is given a =AUC_reflagger= value of 1 and
    any others are given a value of 0.
 
 ** Splitting PSMs on GeneID
    Each PSM record is duplicated for each identifier it maps to.
    So this:
    #+BEGIN_EXAMPLE
-   PSM  GeneList  PSM_IDG  SequenceArea  ...
+   PSM  GeneList  IDG  SequenceArea  ...
    0    1,2,3     30       100
    #+END_EXAMPLE
    becomes this:
    #+BEGIN_EXAMPLE
-   PSM  GeneList 	GeneID  PSM_IDG  SequenceArea  oriFLAG  ...
+   PSM  GeneList 	GeneID  IDG  SequenceArea  oriFLAG  ...
    0    1,2,3     1       1        100           1
    0    1,2,3     2       1        100           0
    0    1,2,3     3       1        100           0
    #+END_EXAMPLE
    All information is duplicated, with the original record marked as such with
-   the created =psm_oriFLAG= column.
+   the created =oriFLAG= column.
    This is used later when different Identifiers are assigned different
    distributed area.
-   Filtering by =psm_oriFLAG = 1= is useful when performing analytics on the original PSMs data.
+   Filtering by =oriFLAG = 1= is useful when performing analytics on the original PSMs data.
 
 ** AUC and PSM Flags
-   =psm_AUC_UseFLAG= and =psm_PSM_UseFLAG= columns are designations for the use
+   =AUC_UseFLAG= and =UseFLAG= columns are designations for the use
    of each PSM for area and ____________? calculations.
    Both are zeroed out if any value falls outside the preset filter value range.
    These filters include the minimum and maximum charge, the minimum ion score,
-   the minimum q-value, the minimum PEP value, and the maximum =PSM_IDG= value.
+   the minimum q-value, the minimum PEP value, and the maximum =IDG= value.
    There is some redundancy here,  i.e. if something is below the minimum ion
-   score it will be above the maximum =PSM_IDG= value.
+   score it will be above the maximum =IDG= value.
 
    Thermo's Proteome Discoverer tags each PSM with a =PSMAmbiguity= value. This
    can take a value of =Ambiguous= or =Unambiguous= depending on the ambiguity
@@ -203,11 +203,11 @@
    For example, a PSM may be equally matched to have a leucine or isoleucine in
    a certain position due to the equal masses of the amino acids, or the
    position of a modification may be ambiguous due to the lack of a b or y ion.
-   If a given PSM has a =psm_PeakUseFLAG= of 0 yet also has a =PSMAmbiguity= of
+   If a given PSM has a =PeakUseFLAG= of 0 yet also has a =PSMAmbiguity= of
    =Unambiguous=, the AUC and PSM flags are set to 1. Else if the PSM is
    =Ambiguous= the flags are set to 0.
 
-   Finally, if the =AUC_reflagger= flag is 0 (see [[auc-reflag][above]]), the =psm_AUC_UseFLAG=
+   Finally, if the =AUC_reflagger= flag is 0 (see [[auc-reflag][above]]), the =AUC_UseFLAG=
    is set to 0.
 
 ** PSM Area Redistribution Based on TaxonID <<taxon-redistrib>>
@@ -245,10 +245,10 @@
 ** Peptide and PSM Counts
    The total, strict, unique to gene, and strict unique to gene PSM and peptide counts
    are calculated for each gene identifier. A strict peptide is defined as
-   having a =PSM_IDG= <= 3.
+   having a =IDG= <= 3.
 
 * Area Calculations
-  PSMs with =psm_AUC_UseFLAG= of 1 are used for area calculations.
+  PSMs with =AUC_UseFLAG= of 1 are used for area calculations.
   Area calculations are performed in steps.
   First, the non-distributed areas are calculated for each GeneID.
   Then the distributed area for each shared PSM is able to be calculated.
@@ -257,15 +257,15 @@
 ** Non-Distributed Areas
    Non-distributed area is calculated through the aggregation of PSMs in a
    variety of ways.
-   Maximum area without any filtering or manipulation (=e2g_nGPArea_Sum_max=),
-   gene count normalized area (=e2g_nGPArea_Sum_cgpAdj=),
-   unique to gene area (=e2g_nGPArea_Sum_cgpAdj=), and unique to gene area  after
-   filtering for no miscuts (=e2g_nGPArea_Sum_cgpAdj=) are calculated.
+   Maximum area without any filtering or manipulation (=nGPArea_Sum_max=),
+   gene count normalized area (=nGPArea_Sum_cgpAdj=),
+   unique to gene area (=nGPArea_Sum_cgpAdj=), and unique to gene area  after
+   filtering for no miscuts (=nGPArea_Sum_cgpAdj=) are calculated.
 
 ** Distribution of PSM Areas
-   Here the assignment of =psm_PrecursorArea_dstrAdj= occurs.
+   Here the assignment of =PrecursorArea_dstrAdj= occurs.
    For PSMs with only a single gene identifier they simply take on a copy of
-   their =psm_SequenceArea= value.
+   their =SequenceArea= value.
    PSMs with a =AUC_UseFLAG= of 0 receive a distributed area of 0.
    PSMs that map to multiple gene identifiers are redistributed.
    This occurs separately for each gene identifier for a given PSM.
@@ -303,8 +303,8 @@
      subset of another gene.
 
 ** Gene Level Distributed Area
-   For gene level distributed area, =e2g_nGPArea_Sum_dstrAdj=,
-   the =psm_PrecursorArea_dstrAdj= calculated
+   For gene level distributed area, =nGPArea_Sum_dstrAdj=,
+   the =PrecursorArea_dstrAdj= calculated
    previously is summed on a per gene (and per label, as appropriate) level.
    Any IDSet 3 GeneID is assigned an area of 0.
 
@@ -313,12 +313,12 @@
    MaxQuant[fn:3].
    This was added to compare and contrast to the distributed area method and
    may be removed in the future.
-   For each shared PSM, the =psm_RazorArea= is the full =psm_SequenceArea= if
+   For each shared PSM, the =RazorArea= is the full =SequenceArea= if
    its GeneID has the most unique peptides over the other GeneIDs it maps to
    or 0 if not.
-   All unique to gene PSMs also get the full =psm_SequenceArea=.
-   This =psm_RazorArea= is summed on a per gene (and per label, as appropriate)
-   level to give the yield the =e2g_nGPArea_Sum_razor= calculation.
+   All unique to gene PSMs also get the full =SequenceArea=.
+   This =RazorArea= is summed on a per gene (and per label, as appropriate)
+   level to give the yield the =nGPArea_Sum_razor= calculation.
 
 ** iBAQ Calculation
    iBAQ (intensity based absolute quantification) is calculated by dividing the
