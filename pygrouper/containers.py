@@ -92,12 +92,12 @@ class UserData:
 
     def populate_base_data(self):
         """Populate dataframe with base data prior to grouping"""
-        self.df['psm_EXPRecNo'] = self.recno
-        self.df['psm_EXPRunNo'] = self.runno
-        self.df['psm_EXPSearchNo'] = self.searchno
-        self.df['psm_EXPTechRepNo'] = self.techrepno
-        self.df['psm_CreationTS'] = datetime.now().strftime("%m/%d/%Y %H:%M:%S")
-        self.df['psm_AddedBy'] = self.added_by
+        self.df['EXPRecNo'] = self.recno
+        self.df['EXPRunNo'] = self.runno
+        self.df['EXPSearchNo'] = self.searchno
+        # self.df['psm_EXPTechRepNo'] = self.techrepno
+        self.df['CreationTS'] = datetime.now().strftime("%m/%d/%Y %H:%M:%S")
+        self.df['AddedBy'] = self.added_by
         # self.df['psm_TaxonID'] = self.taxonid
         #self.df['psm_GeneList'] = ''
         #self.df['psm_ProteinList'] = ''

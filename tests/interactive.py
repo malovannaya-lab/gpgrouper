@@ -9,9 +9,9 @@ from test import TestAreaTMT, TestFull, TestMin
 BASEDIR, _ = os.path.split(os.path.abspath(__file__))
 CONFIG_FILE = os.path.join(BASEDIR, '../pygrouper_config.ini')
 
-# class Interactive(TestAreaTMT):
+class Interactive(TestAreaTMT):
 # class Interactive(TestFull):
-class Interactive(TestMin):
+# class Interactive(TestMin):
 
     def setUp(self):
         super().setUp()

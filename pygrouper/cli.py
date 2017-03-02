@@ -229,10 +229,18 @@ DEFAULTS = {'max_files': 99, 'pep': 1.0, 'enzyme': 'trypsin', 'configfile': None
               help='Minimum charge')
 @click.option('--zmax', type=int, default=DEFAULTS['zmax'], show_default=True,
               help='Maximum charge')
+@click.option('--record-no', type=int,
+              help='record numbers for the corresponding PSM files', multiple=True)
+@click.option('--run-no', type=int, multiple=True,
+              help='run numbers for the corresponding PSM files')
+@click.option('--search-no', type=int, multiple=True,
+              help='search numbers for the corresponding PSM files')
 def run(autorun, contaminants, database, enzyme, interval, ion_score, ion_score_bins, labeltype, max_files,
         modi, name, no_taxa_redistrib, outdir, psms_file, pipeline, idg, pep, qvalue, quant_source,
-        rawfiledir, configfile, taxonid, zmin, zmax):
+        rawfiledir, configfile, taxonid, zmin, zmax,
+        record_no, run_no, search_no):
     """Run PyGrouper"""
+
     if not all([database, psms_file]) and not autorun:
         click.echo('No database or psms file entered, showing help and exiting...')
         click.echo(click.get_current_context().get_help())
@@ -264,12 +272,23 @@ def run(autorun, contaminants, database, enzyme, interval, ion_score, ion_score_
         if not taxonid:
             taxonid = click.prompt('Enter taxon id', default=9606, type=int,)
         for ix, psmfile in enumerate(psms_file):
-            try:
-                rec, run, search = find_rec_run_search(psmfile)
-                recno, runno, searchno = int(rec), int(run), int(search)
-            except AttributeError:  # regex search failed, just use a default
-                recno = ix+1  # default recno starts at 1
-                runno, searchno = 1, 1
+            if record_no:
+                rec = record_no[ix]
+                try:
+                    run = run_no[ix]
+                except IndexError:
+                    run = 1
+                try:
+                    search = search_no[ix]
+                except IndexError:
+                    search = 1
+            else:
+                try:
+                    rec, run, search = find_rec_run_search(psmfile)
+                    recno, runno, searchno = int(rec), int(run), int(search)
+                except AttributeError:  # regex search failed, just use a default
+                    recno = ix+1  # default recno starts at 1
+                    runno, searchno = 1, 1
             usrdata = UserData(recno=recno, runno=runno, searchno=searchno, taxonid=taxonid,
                                datafile=psmfile, indir=INPUT_DIR, outdir=OUTPUT_DIR, rawfiledir=RAWFILE_DIR,
                                no_taxa_redistrib=no_taxa_redistrib, labeltype=labeltype, addedby=name,

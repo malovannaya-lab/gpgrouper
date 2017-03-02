@@ -142,7 +142,7 @@ class MatchTest(unittest.TestCase):
         outcols = ['GeneList', 'GeneCount', 'TaxonIDList', 'TaxonCount',
                    'ProteinList', 'ProteinCount']
         for outcol in outcols:
-            self.assertIn('psm_' + outcol, usrdata.df.columns,
+            self.assertIn(outcol, usrdata.df.columns,
                           msg='Matcher not returning correct columns')
 
 _logfile = re.compile('Pygrouper_v.*.log')
@@ -343,14 +343,14 @@ class TestAreaTMT(unittest.TestCase):
                          msg='\n{}\n{!r}'.format(''.join(traceback.format_tb(response.exc_info[-1])),
                                                                              response.exc_info[1])
                          )
-        dstrAdj = 'e2g_nGPArea_Sum_dstrAdj'
-        maxarea = 'e2g_nGPArea_Sum_max'
+        dstrAdj = 'AreaSum_dstrAdj'
+        maxarea = 'AreaSum_max'
         df = pd.read_table('./testdata/10101_1_1_none_0_e2g.tab')
         print(df.columns)
-        self.assertEqual(True, all(df[ df.e2g_GeneID.isin(self.set2s)]['e2g_IDSet'] == 2))
-        self.assertEqual(True, all(df.query('e2g_IDSet==3')['e2g_nGPArea_Sum_dstrAdj']==0))
+        self.assertEqual(True, all(df[ df.GeneID.isin(self.set2s)]['IDSet'] == 2))
+        self.assertEqual(True, all(df.query('IDSet==3')['AreaSum_dstrAdj']==0))
         for tid in 9606, 10090:
-            q = 'e2g_IDSet==2 & e2g_TaxonID == {}'.format(tid)
+            q = 'IDSet==2 & TaxonID == {}'.format(tid)
             subdf = df.query(q)
             tot = len(subdf)
 
@@ -419,27 +419,32 @@ class TestFull(unittest.TestCase):
                          msg='\n{}\n{!r}'.format(''.join(traceback.format_tb(response.exc_info[-1])),
                                                                              response.exc_info[1])
                          )
-    def test_proper_columns_e2g(self):
-        data_cols = ['psm_EXPRecNo', 'psm_EXPRunNo', 'psm_EXPSearchNo',
-                     'psm_EXPTechRepNo', 'Sequence',
-                     'PSMAmbiguity', 'Modifications', 'ActivationType',
-                     'DeltaScore', 'DeltaCn', 'Rank', 'SearchEngineRank',
-                     'PrecursorArea', 'q_value', 'PEP',
-                     'IonScore', 'MissedCleavages',
-                     'IsolationInterference', 'IonInjectTime',
+    def test_proper_columns_psms(self):
+
+        data_cols = ['EXPRecNo', 'EXPRunNo', 'EXPSearchNo',
+                     'Sequence', 'PSMAmbiguity', 'Modifications',
+                     'ActivationType', 'DeltaScore', 'DeltaCn',
+                     'Rank', 'SearchEngineRank', 'PrecursorArea',
+                     'q_value', 'PEP', 'IonScore',
+                     'MissedCleavages', 'IsolationInterference', 'IonInjectTime',
                      'Charge', 'mzDa', 'MHDa',
                      'DeltaMassDa', 'DeltaMassPPM', 'RTmin',
                      'FirstScan', 'MSOrder', 'MatchedIons',
-                     'SpectrumFile', 'psm_AddedBy', 'psm_oriFLAG',
-                     'psm_CreationTS', 'psm_ModificationTS', 'psm_GeneID',
-                     'psm_GeneList', 'psm_GeneCount', 'psm_ProteinGI',
-                     'psm_ProteinList', 'psm_ProteinCount',
-                     'psm_HID', 'psm_HIDList', 'psm_HIDCount',
-                     'psm_TaxonID', 'psm_TaxonIDList', 'psm_TaxonCount',
-                     'psm_PSM_IDG', 'psm_SequenceModi',
-                     'psm_SequenceModiCount', 'psm_LabelFLAG',
-                     'psm_PeptRank', 'psm_AUC_UseFLAG', 'psm_PSM_UseFLAG',
-                     'psm_Peak_UseFLAG', 'psm_SequenceArea', 'psm_PrecursorArea_dstrAdj']
+                     'SpectrumFile', 'AddedBy',
+                     'oriFLAG',
+                     'CreationTS', 'ModificationTS', 'GeneID',
+                     'GeneList', 'GeneCount', 'ProteinGI',
+                     'ProteinList', 'ProteinCount',
+                     'HID', 'HIDList', 'HIDCount',
+                     'TaxonID', 'TaxonIDList', 'TaxonCount',
+                     'IDG', 'SequenceModi',
+                     'SequenceModiCount', 'LabelFLAG',
+                     'PeptRank', 'AUC_UseFLAG', 'UseFLAG',
+                     'Peak_UseFLAG', 'SequenceArea', 'PrecursorArea_split',
+                     'RazorArea',
+                     'PrecursorArea_dstrAdj']
+
+
         runner = CliRunner()
         response = runner.invoke(cli.cli, ['run', '--database', REFSEQ_FILE,
                                            '--psms-file', PSMS_FILE,
@@ -451,7 +456,7 @@ class TestFull(unittest.TestCase):
         output = pd.read_table(os.path.join(INPUT_DIR, '1_1_1_none_psms.tab'))
         # print(output.columns)
         for col in data_cols:
-            self.assertTrue(col in output.columns, msg='{} not found in e2g file'.format(col))
+            self.assertTrue(col in output.columns, msg='{} not found in data file'.format(col))
 
 
     @mock.patch('pygrouper.auto_grouper._update_database')

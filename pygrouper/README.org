@@ -55,14 +55,14 @@
        GPGroups each to which a peptide belongs.
    - S (designation) :: A filter by strict PSMs/Peptides, which are PSMs with an IDGroup $\leq 3$.
    - u2g (designation) :: A filter by unique to gene PSMs/peptides.
-   - nGPArea Sum max :: The maximum possible GeneID area, no area redistribution
-   - nGPArea Sum cgpAdj :: The GeneID area as calculated after the division of each PSM's
+   - Area Sum max :: The maximum possible GeneID area, no area redistribution
+   - Area Sum cgpAdj :: The GeneID area as calculated after the division of each PSM's
        area by the total number of GeneIDs that map to each PSM.
    - nGPArea Sum u2g all :: Same as *nGPArea Sum cgpAdj* but after filtering by
        unique peptides.
-   - nGPArea Sum u2g ::   Same as *nGPArea Sum cgpAdj* but after filtering by
+   - Area Sum u2g 0 ::   Same as *nGPArea Sum cgpAdj* but after filtering by
        unique peptides with zero miscuts.
-   - nGPArea Sum dstrAdj :: The GeneID area after adjustment of each shared
+   - Area Sum dstrAdj :: The GeneID area after adjustment of each shared
         PSM's area among each mapped GeneID based on the GeneID area as
         calculated by unique PSMs. IDSet 2 GeneIDs that have no unique PSMs are
         adjusted by dividing by the total number of IDSet 2 GeneIDs. IDSet 3
