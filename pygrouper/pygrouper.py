@@ -75,9 +75,11 @@ DATA_COLS = ['EXPRecNo', 'EXPRunNo', 'EXPSearchNo',
              'SpectrumFile', 'AddedBy',
              'oriFLAG',
              'CreationTS', 'ModificationTS', 'GeneID',
-             'GeneList', 'GeneCount', 'ProteinGI',
+             'GeneList', 'GeneCount',
+             # 'ProteinGI',
              'ProteinList', 'ProteinCount',
-             'HID', 'HIDList', 'HIDCount',
+             # 'HID',
+             'HIDList', 'HIDCount',
              'TaxonID', 'TaxonIDList', 'TaxonCount',
              'IDG', 'SequenceModi',
              'SequenceModiCount', 'LabelFLAG',
@@ -232,8 +234,10 @@ def _extract_peptideinfo(row):
         # ','.join(row['HomologeneID'].dropna().unique()),
         ','.join(str(x) for x in set(row['homologene'])),
         row['homologene'].nunique(dropna=True),
+
         tuple(row['capacity']),
           # row['capacity'].mean(),
+
     )
     return result
 
@@ -273,6 +277,26 @@ def gene_taxon_mapper(df):
              .set_index('geneid')
              .pipe(lambda x: pd.Series(data=x.taxon, index=x.index))
     ).to_dict()
+
+def gene_symbol_mapper(df):
+    """Returns a dictionary with mapping:
+    gene -> taxon
+    Input is the metadata extracted previously"""
+    return  (df[['geneid', 'symbol']]
+             .groupby('geneid')
+             .apply(lambda x: ','.join(set(x['symbol'])))
+    ).to_dict()
+
+
+def gene_desc_mapper(df):
+    """Returns a dictionary with mapping:
+    gene -> taxon
+    Input is the metadata extracted previously"""
+    return  (df[['geneid', 'description']]
+             .groupby('geneid')
+             .apply(lambda x: ','.join(set(x['description'])))
+    ).to_dict()
+
 
 
 
@@ -987,10 +1011,12 @@ def grouper(usrdata, outdir='', database=None,
     # ==================== Populate gene info ================================ #
     # gene_metadata = extract_metadata(usrdata.df.metadatainfo)
     gene_taxon_dict = gene_taxon_mapper(database)
+    gene_symbol_dict = gene_symbol_mapper(database)
+    gene_desc_dict = gene_desc_mapper(database)
 
     # ==================== Populate gene info ================================ #
 
-    usrdata.df['HID'], usrdata.df['ProteinGI'] = '', ''
+    # usrdata.df['HID'], usrdata.df['ProteinGI'] = '', ''
     # potentially filled in later, but  likely not. Will be kept as list.
 
     usrdata.to_logq('{} | Finished matching PSMs to {} '\
@@ -1022,7 +1048,10 @@ def grouper(usrdata, outdir='', database=None,
                   .pipe(auc_reflagger)  # remove duplicate sequence areas
                   .pipe(flag_AUC_PSM, usrdata.filtervalues)
                   .pipe(split_on_geneid)
-                  .assign(TaxonID = lambda x: x['GeneID'].map(gene_taxon_dict))
+                  .assign(TaxonID = lambda x: x['GeneID'].map(gene_taxon_dict),
+                          Symbol = lambda x: x['GeneID'].map(gene_symbol_dict),
+                          Description = lambda x: x['GeneID'].map(gene_desc_dict),
+                  )
     )
     # ======================== Plugin for multiple taxons  ===================== #
     taxon_ids = usrdata.df['TaxonID'].dropna().unique()
@@ -1089,6 +1118,9 @@ def grouper(usrdata, outdir='', database=None,
                     .pipe(print_log_msg, msg=msg_sets)
                     .pipe(assign_gene_sets, temp_df)
                     .pipe(set_gene_gpgroups, temp_df)
+                    .assign(Symbol = lambda x: x['GeneID'].map(gene_symbol_dict),
+                            Description = lambda x: x['GeneID'].map(gene_desc_dict),
+                    )
         )
 
 
@@ -1242,7 +1274,9 @@ def load_fasta(refseq_file):
     REQUIRED_COLS = ('geneid', 'sequence')
     ADDITIONAL_COLS = ('description', 'gi', 'homologene', 'ref', 'taxon', 'symbol')
     gen = fasta_dict_from_file(refseq_file)
-    df = pd.DataFrame.from_dict(gen)
+    df = (pd.DataFrame.from_dict(gen)
+          .replace(np.nan, '')
+    )
     if not all(x in df.columns for x in REQUIRED_COLS):
         missing = ', '.join(x for x in REQUIRED_COLS if x not in df.columns)
         fmt = 'Invalid FASTA file : {} is missing the following identifiers : {}\n'
@@ -1423,13 +1457,15 @@ def main(usrdatas=[], fullpeptread=False, inputdir='', outputdir='', refs=dict()
                                 # the whole program at least
             usrdata.EXIT_CODE = 1
             usrdata.ERROR = traceback.format_exc()
-            stack = traceback.format_stack()
+            stack = traceback.format_exc()
             # failed_exps.append((usrdata, e))
             usrdata.to_logq('Failure for file of experiment {}.\n'\
                   'The reason is : {}'.format(repr(usrdata), e))
-            for s in stack:
-                usrdata.to_logq(s, sep='')
-                print(s, sep='')
+            usrdata.to_logq(stack)
+            print(stack)
+            # for s in stack:
+            #     usrdata.to_logq(s, sep='')
+            #     print(s, sep='')
             usrdata.flush_log()
             print('Failure for file of experiment {}.\n'\
                   'The reason is : {}'.format(repr(usrdata), e))
