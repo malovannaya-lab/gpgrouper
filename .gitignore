@@ -21,3 +21,7 @@ htmlcov/
 .fuse*
 manual_tests/
 human_refseq*
+.cache
+build/
+dist/
+auto/

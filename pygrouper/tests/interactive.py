@@ -26,8 +26,8 @@ class Interactive(TestAreaTMT):
                 '--taxonid', '9606',
                 '--outdir', './testdata',
                 '--configfile', CONFIG_FILE,
-                # '--labeltype', 'TMT',
-                '--labeltype', 'none',
+                '--labeltype', 'TMT',
+                # '--labeltype', 'none',
         ]
         subprocess.call(call)
 

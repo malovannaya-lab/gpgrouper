@@ -13,8 +13,14 @@ package_version = calculate_version('./pygrouper/_version.py')
 setup(
     name='PyGrouper',
     version=package_version,
-    #py_modules=['pygrouper'],
+    py_modules=['pygrouper'],
     packages=find_packages(),
+    # packages=['pygrouper',
+    #           'pygrouper.pygrouper',
+    #           'pygrouper.cli',
+    #           'pygrouper.auto_grouper',
+    #           'pygrouper.tests',
+    # ],
     install_requires=[
         'Click',
         'RefProtDB>=0.1.1'
@@ -23,7 +29,7 @@ setup(
     [console_scripts]
     pygrouper=pygrouper.cli:cli
     """,
-    package_data={
-        'pygrouper': ['base_config.ini']
-    }
+    # package_data={
+    #     'pygrouper': ['base_config.ini']
+    # }
 )

@@ -1060,10 +1060,7 @@ def grouper(usrdata, outdir='', database=None,
         # ==========Select only peptides flagged  with good quality=========== #
         temp_df = select_good_peptides(usrdata.df, labelix)
         if usrdata.labeltype == 'TMT':
-            if usrdata.quant_source.strip() == 'AUC':
-                tmt_area_col = 'PrecursorArea'  # we always use Precursor Area
-            elif usrdata.quant_source.strip() == 'Intensity':
-                tmt_area_col = 'Intensity'
+            tmt_area_col = 'PrecursorArea'  # we always use Precursor Area
             temp_df, area_col = redistribute_area_tmt(temp_df, label,
                                                       labeltypes,
                                                       area_col=tmt_area_col)
@@ -1179,7 +1176,6 @@ def grouper(usrdata, outdir='', database=None,
                                                         .astype(np.integer))
                       )
         )
-        # TODO : Make this valid for AUC and Intensity based quantification
         # usrdata.df['PrecursorArea_split'] = usrdata.df['PrecursorArea']
                               # didn't get a rank gets a rank of 0
     msg = 'Peptide ranking complete for {}.'.format(usrdata.datafile)
@@ -1321,9 +1317,19 @@ def column_identifier(df, aliases):
                 break
     return column_names
 
+# Idea
+# REQUIRED_HEADERS = ['Sequence', 'Modifications', 'PrecursorArea',
+#                     'Charge', 'IonScore', 'q_value', 'PEP', 'SpectrumFile',
+#                     'RTmin', 'DeltaMassPPM']
+# def check_required_headers(df):
+#     if not all(x in df.columns for x in REQUIRED_HEADERS):
+#         missing = [x for x in REQUIRED_HEADERS if x not in df.columns]
+#         fmt = 'Invalid input file, missing {}'.format(', '.join(missing))
+#         raise ValueError(fmt)
+
+
 def set_up(usrdatas, column_aliases):
     """Set up the usrdata class for analysis
-
     Read data, rename columns (if appropriate), populate base data"""
     for usrdata in usrdatas:
         usrdata.read_csv(sep='\t')  # read from the stored psms file
@@ -1333,11 +1339,17 @@ def set_up(usrdatas, column_aliases):
                                        for k,v in standard_names.items()},
                               inplace=True
             )
-        if 'PrecursorArea' not in usrdata.df.columns and usrdata.quant_source == 'AUC' and 'Intensity' in usrdata.df.columns:
-            # explicitly rename as MaxQuant referrs to the PSM area as Intensity
-            usrdata.df.rename(columns={'Intensity': 'PrecursorArea'}, inplace=True)
         # usrdata.df = usrdata.populate_base_data()
         usrdata.populate_base_data()
+        if 'DeltaMassPPM' not in usrdata.df:
+            usrdata.df['DeltaMassPPM'] = 0
+        if 'SpectrumFile' not in usrdata.df:
+            usrdata.df['SpectrumFile'] = 'file1.raw'
+        if 'RTmin' not in usrdata.df:
+            usrdata.df['RTmin'] = 0
+        # check_required_headers(usrdata.df)
+
+
         if 'MissedCleavages' not in usrdata.df.columns:
             usrdata.df['MissedCleavages'] =\
                                         usrdata.df.apply(lambda x:\
@@ -1374,7 +1386,8 @@ def rename_refseq_cols(df, filename):
 
 
 def main(usrdatas=[], fullpeptread=False, inputdir='', outputdir='', refs=dict(),
-         rawfilepath=None, column_aliases=dict(), gid_ignore_file='', labels=dict()):
+         rawfilepath=None, column_aliases=dict(), gid_ignore_file='', labels=dict(),
+         raise_on_error=False):
     """
     refs :: dict of taxonIDs -> refseq file names
     """
@@ -1423,31 +1436,8 @@ def main(usrdatas=[], fullpeptread=False, inputdir='', outputdir='', refs=dict()
 
             logging.warn('Failure for file of experiment {}.\n'\
                          'The reason is : {}'.format(repr(usrdata), e))
-            raise  # usually don't need to raise, will kill the script. Re-enable
-                   #if need to debug and find where errors are
+            if raise_on_error:
+                raise  # usually don't need to raise, will kill the script. Re-enable
+                       # if need to debug and find where errors are
     print('Time taken : {}\n'.format(datetime.now() - startTime))
     return usrdatas
-
-    # ============== Load refseq and start matching peptides ================ #
-    logging.info('Time taken : {}.\n\n'.format(datetime.now() - startTime))
-    if not usedb:
-        return failed_exps
-    else:
-        if failed_exps:  # list of failed experiments, is empty if no failures
-
-            for failed in failed_exps:  # failed is a tuple with the datafile and
-                                        #then the reason for failure
-                usrdatas.remove(failed[0])  # remove all of the failed
-                                            #experiments so they won't go in log
-                conn = ispec.filedb_connect()
-                cursor = conn.cursor()
-                cursor.execute("""UPDATE iSPEC_ExperimentRuns
-                SET exprun_Grouper_FailedFLAG = ?
-                WHERE exprun_EXPRecNo= ? AND
-                exprun_EXPRunNo = ? AND
-                exprun_EXPSearchNo = ?
-                """, 1, exp_setup['EXPRecNo'],
-                                exp_setup['EXPRunNo'], exp_setup['EXPSearchNo'])
-                conn.commit()
-                failedlog.write('{} : failed grouping {},'\
-                                ' reason : {}\n'.format(datetime.now(), *failed))

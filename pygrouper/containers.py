@@ -5,8 +5,9 @@ import pandas as pd
 
 class UserData:
 
-    def __init__(self, recno=None, datafile=None, runno=1, searchno=1, no_taxa_redistrib=0, addedby='',
-                 indir = '.', outdir='.', rawfiledir='.', usedb=False, labeltype='none', quant_source=None,
+    def __init__(self, recno=None, datafile=None, runno=1, searchno=1, no_taxa_redistrib=0,
+                 addedby='', indir = '.', outdir='.', rawfiledir='.',
+                 labeltype='none', quant_source=None,
                  searchdb=None, taxonid=None):
         if recno is None:
             raise ValueError('Must supply record number (recno)')
@@ -14,12 +15,9 @@ class UserData:
         self.runno = runno
         self.searchno = searchno
         self.taxonid = taxonid
-        self.quant_source = quant_source
         self.added_by = addedby
-        self.techrepno = 1 # depreciated
         self.labeltype = labeltype
         self.no_taxa_redistrib = no_taxa_redistrib
-        self.usedb = usedb
         self.filtervalues = dict()
         self.indir = indir
         self.outdir = outdir

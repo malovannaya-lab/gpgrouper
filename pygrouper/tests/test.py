@@ -10,9 +10,14 @@ from click.testing import CliRunner
 import numpy as np
 import pandas as pd
 
-from pygrouper import pygrouper, auto_grouper
+from pygrouper import pygrouper
+# from pygrouper import auto_grouper
+
 from pygrouper import cli
+# from .. import cli
 from pygrouper.containers import UserData
+# from ..containers import UserData
+from RefProtDB.utils import _fasta_dict_from_file, fasta_dict_from_file
 
 
 stout = StringIO()  # capture all of the click.echos here
@@ -21,14 +26,18 @@ stout = StringIO()  # capture all of the click.echos here
 BASEDIR, _ = os.path.split(os.path.abspath(__file__))
 
 INPUT_DIR = os.path.join(BASEDIR, 'testdata/two_uniques')
-PSMS_FILE = os.path.join(BASEDIR,'testdata/two_uniques/test_input_all_02.tab')
+PSMS_FILE = os.path.join(BASEDIR, 'testdata/two_uniques/test_input_all_02.tab')
 OUTPUT_DIR = RAWFILE_DIR = INPUT_DIR
 # REFSEQ_FILE = os.path.join(BASEDIR, 'testdata/two_uniques/refseq_02.tab')
 REFSEQ_FILE = os.path.join(BASEDIR, 'testdata/two_uniques/refseq_02.fa')
 CONFIG_FILE = os.path.join(BASEDIR, '../pygrouper_config.ini')
 
+# REQUIRED_HEADERS = pygrouper.REQUIRED_HEADERS
+
+
 # usrdata = UserData(datafile=PSMS_FILE, indir=INPUT_DIR, outdir=OUTPUT_DIR, rawfiledir=RAWFILE_DIR,
                    # no_taxa_redistrib=0, labeltype='None', addedby='test', searchdb=REFSEQ_FILE)
+
 # devnull = open(os.devnull, 'w')
 
 class InputTest(unittest.TestCase):
@@ -44,15 +53,29 @@ class InputTest(unittest.TestCase):
     def tearDown(self):
         sys.stdout = self.stdout
         sys.stderr = self.stderr
+        for f in os.listdir('.') + os.listdir('./testdata/'):
+            if f.startswith('10101_1_1') or f.startswith('1_1_1'):
+                try:
+                    os.remove(f)
+                except (PermissionError, FileNotFoundError):
+                    pass
 
 
+    @mock.patch('pygrouper.pygrouper.main')
+    @mock.patch('sys.stdout', stdout)
+    def test_call_run(self, main):
+        self.longMessage = True
+        runner = CliRunner()
+        response = runner.invoke(cli.cli, ['run'])
+        self.assertEqual(response.exit_code, 1, msg=response.output)
 
     # @mock.patch('sys.stdout', devnull)
     @mock.patch('pygrouper.pygrouper.main')
     def test_call_run(self, main):
         self.longMessage = True
         runner = CliRunner()
-        response = runner.invoke(cli.cli, ['run', '--database', REFSEQ_FILE])
+        response = runner.invoke(cli.cli, ['run', '--database', REFSEQ_FILE,
+                                           '--psms-file', PSMS_FILE])
         self.assertEqual(response.exit_code, 0, msg=response.output)
 
     @mock.patch('pygrouper.pygrouper.main')
@@ -79,6 +102,25 @@ class InputTest(unittest.TestCase):
         ])
         self.assertEqual(len(main.call_args[-1]['usrdatas']), 2,
                          msg=response.exception)
+
+    def test_load_fasta(self):
+        with open(REFSEQ_FILE, 'r') as f:
+            total_records = f.read().count('>')
+        out = pygrouper.load_fasta(REFSEQ_FILE)
+        self.assertEqual(total_records, len(out))
+
+    def test_invalid_fasta(self):
+        orig = pygrouper.fasta_dict_from_file
+        pygrouper.__dict__['fasta_dict_from_file'] = _fasta_dict_from_file
+        fasta = StringIO()
+        fasta.write('>gi|1234\nXXXXXX')
+        fasta.seek(0)
+        try:
+            with self.assertRaises(ValueError):
+                pygrouper.load_fasta(fasta)
+        finally:
+            pygrouper.__dict__['fasta_dict_from_file'] = orig
+
 
 
 def get_sample_data():
@@ -111,6 +153,12 @@ class MatchTest(unittest.TestCase):
     def tearDown(self):
         sys.stdout = self.stdout
         sys.stderr = self.stderr
+        for f in os.listdir('.') + os.listdir('./testdata/'):
+            if f.startswith('10101_1_1') or f.startswith('1_1_1'):
+                try:
+                    os.remove(f)
+                except (PermissionError, FileNotFoundError):
+                    pass
 
     def test_called_match(self):
         "Test if match function gets called (stage_match is working properly)"
@@ -188,12 +236,20 @@ class TestMin(unittest.TestCase):
         sys.stderr = self.stderr
         os.remove(self.FASTA)
         os.remove(self.PSMS)
-        for f in os.listdir('.'):
-            if f.startswith('1_1_1'):
+        for f in os.listdir('.') + os.listdir('./testdata/'):
+            if f.startswith('1_1_1') or f.startswith("10101_1_1"):
                 try:
                     os.remove(f)
-                except PermissionError:
+                except (PermissionError, FileNotFoundError):
                     pass
+
+    # def test_invalid_file(self):
+    #     runner = CliRunner()
+    #     df = (pd.read_table(self.PSMS)
+    #           .drop(['PrecursorArea'], axis=1))
+
+    #     with self.assertRaises(ValueError):
+    #         pygrouper.check_required_headers(df)
 
     def test_minimum_cols(self):
         runner = CliRunner()
@@ -310,19 +366,13 @@ class TestAreaTMT(unittest.TestCase):
             fasta.write(fasta_file)
 
     def tearDown(self):
-        return
+        # return
         sys.stdout = self.stdout
         sys.stderr = self.stderr
         os.remove(self.FASTA)
         os.remove(self.PSMS)
-        for f in os.listdir('.'):
-            if f.startswith('10101_1_1'):
-                try:
-                    os.remove(f)
-                except PermissionError:
-                    pass
-        for f in os.listdir('./testdata'):
-            if f.startswith('10101_1_1'):
+        for f in os.listdir('.') + os.listdir('./testdata/'):
+            if f.startswith('10101_1_1') or f.startswith('1_1_1'):
                 try:
                     os.remove(f)
                 except (PermissionError, FileNotFoundError):
@@ -393,17 +443,12 @@ class TestFull(unittest.TestCase):
     def tearDown(self):
         sys.stdout = self.stdout
         sys.stderr = self.stderr
-        for f in os.listdir('.'):
-            if _logfile.match(f):
+        for f in os.listdir('.') + os.listdir(INPUT_DIR):
+            if _logfile.match(f) or f.startswith('1_1_1'):
                 try:
                     os.remove(f)
-                except PermissionError:
+                except (PermissionError, FileNotFoundError):
                     pass
-        for f in os.listdir(INPUT_DIR):
-            if f.startswith('1_1_1'):
-                # os.remove(os.path.join(INPUT_DIR, f))
-                pass
-
 
     def test_runthrough(self):
         # self.longMessage = True
@@ -459,15 +504,21 @@ class TestFull(unittest.TestCase):
             self.assertTrue(col in output.columns, msg='{} not found in data file'.format(col))
 
 
-    @mock.patch('pygrouper.auto_grouper._update_database')
-    def test_update_db(self, func):
-        """Test if update database is successfully called"""
-        sample_data = get_sample_data()
-        # print(sample_data)
-        auto_grouper.run_and_update(**sample_data)
-        self.assertEqual(func.call_count, 1)
+    # @mock.patch('pygrouper.auto_grouper._update_database')
+    # def test_update_db(self, func):
+    #     """Test if update database is successfully called"""
+    #     sample_data = get_sample_data()
+    #     # print(sample_data)
+    #     auto_grouper.run_and_update(**sample_data)
+    #     self.assertEqual(func.call_count, 1)
 
 
 
 if __name__ == '__main__':
     unittest.main()
+    for f in os.listdir('.') + os.listdir('./testdata/') + os.listdir('./testdata/two_uniques/'):
+        if f.startswith('10101_1_1') or f.startswith('1_1_1'):
+            # try:
+            os.remove(f)
+            # except (PermissionError, FileNotFoundError):
+            #     pass

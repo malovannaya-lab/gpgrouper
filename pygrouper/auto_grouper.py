@@ -165,7 +165,7 @@ def file_checker(INPUT_DIR, OUTPUT_DIR, maxqueue, **kwargs):
         recno = int(recno)  # int to remove decimal to match file name)
         runno = int(exp.exprun_EXPRunNo)
         searchno = int(exp.exprun_EXPSearchNo)
-        quant_source = exp.exprun_Search_QuantSource
+        # quant_source = exp.exprun_Search_QuantSource
         labeltype = exp.exprun_LabelType
         taxonid = exp.exprun_TaxonID
         addedby = exp.exprun_AddedBy
