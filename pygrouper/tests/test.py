@@ -53,12 +53,11 @@ class InputTest(unittest.TestCase):
     def tearDown(self):
         sys.stdout = self.stdout
         sys.stderr = self.stderr
-        for f in os.listdir('.') + os.listdir('./testdata/'):
-            if f.startswith('10101_1_1') or f.startswith('1_1_1'):
-                try:
-                    os.remove(f)
-                except (PermissionError, FileNotFoundError):
-                    pass
+        for dir_ in ('.', './testdata/', './testdata/two_uniques/'):
+            for f in os.listdir(dir_):
+                if f.startswith('10101_1_1') or f.startswith('1_1_1'):
+                    os.remove(os.path.join(dir_, f))
+
 
 
     @mock.patch('pygrouper.pygrouper.main')
@@ -153,12 +152,11 @@ class MatchTest(unittest.TestCase):
     def tearDown(self):
         sys.stdout = self.stdout
         sys.stderr = self.stderr
-        for f in os.listdir('.') + os.listdir('./testdata/'):
-            if f.startswith('10101_1_1') or f.startswith('1_1_1'):
-                try:
-                    os.remove(f)
-                except (PermissionError, FileNotFoundError):
-                    pass
+        for dir_ in ('.', './testdata/', './testdata/two_uniques/'):
+            for f in os.listdir(dir_):
+                if f.startswith('10101_1_1') or f.startswith('1_1_1'):
+                    os.remove(os.path.join(dir_, f))
+
 
     def test_called_match(self):
         "Test if match function gets called (stage_match is working properly)"
@@ -236,12 +234,10 @@ class TestMin(unittest.TestCase):
         sys.stderr = self.stderr
         os.remove(self.FASTA)
         os.remove(self.PSMS)
-        for f in os.listdir('.') + os.listdir('./testdata/'):
-            if f.startswith('1_1_1') or f.startswith("10101_1_1"):
-                try:
-                    os.remove(f)
-                except (PermissionError, FileNotFoundError):
-                    pass
+        for dir_ in ('.', './testdata/', './testdata/two_uniques/'):
+            for f in os.listdir(dir_):
+                if f.startswith('10101_1_1') or f.startswith('1_1_1'):
+                    os.remove(os.path.join(dir_, f))
 
     # def test_invalid_file(self):
     #     runner = CliRunner()
@@ -371,11 +367,17 @@ class TestAreaTMT(unittest.TestCase):
         sys.stderr = self.stderr
         os.remove(self.FASTA)
         os.remove(self.PSMS)
-        for f in os.listdir('.') + os.listdir('./testdata/'):
+        for dir_ in ('.', './testdata/', './testdata/two_uniques/'):
+            for f in os.listdir(dir_):
+                if f.startswith('10101_1_1') or f.startswith('1_1_1'):
+                    os.remove(os.path.join(dir_, f))
+
+
+        for f in os.listdir('.') + os.listdir('./testdata/') + os.listdir('./testdata/two_uniques'):
             if f.startswith('10101_1_1') or f.startswith('1_1_1'):
                 try:
                     os.remove(f)
-                except (PermissionError, FileNotFoundError):
+                except (FileNotFoundError):
                     pass
 
     def test_labelfree(self):
@@ -443,12 +445,10 @@ class TestFull(unittest.TestCase):
     def tearDown(self):
         sys.stdout = self.stdout
         sys.stderr = self.stderr
-        for f in os.listdir('.') + os.listdir(INPUT_DIR):
-            if _logfile.match(f) or f.startswith('1_1_1'):
-                try:
-                    os.remove(f)
-                except (PermissionError, FileNotFoundError):
-                    pass
+        for dir_ in ('.', './testdata/', './testdata/two_uniques/'):
+            for f in os.listdir(dir_):
+                if f.startswith('10101_1_1') or f.startswith('1_1_1'):
+                    os.remove(os.path.join(dir_, f))
 
     def test_runthrough(self):
         # self.longMessage = True
@@ -478,9 +478,11 @@ class TestFull(unittest.TestCase):
                      'SpectrumFile', 'AddedBy',
                      'oriFLAG',
                      'CreationTS', 'ModificationTS', 'GeneID',
-                     'GeneList', 'GeneCount', 'ProteinGI',
+                     'GeneList', 'GeneCount',
+                     # 'ProteinGI',
                      'ProteinList', 'ProteinCount',
-                     'HID', 'HIDList', 'HIDCount',
+                     # 'HID',
+                     'HIDList', 'HIDCount',
                      'TaxonID', 'TaxonIDList', 'TaxonCount',
                      'IDG', 'SequenceModi',
                      'SequenceModiCount', 'LabelFLAG',
@@ -488,6 +490,7 @@ class TestFull(unittest.TestCase):
                      'Peak_UseFLAG', 'SequenceArea', 'PrecursorArea_split',
                      'RazorArea',
                      'PrecursorArea_dstrAdj']
+
 
 
         runner = CliRunner()
@@ -517,6 +520,7 @@ class TestFull(unittest.TestCase):
 if __name__ == '__main__':
     unittest.main()
     for f in os.listdir('.') + os.listdir('./testdata/') + os.listdir('./testdata/two_uniques/'):
+        print(f)
         if f.startswith('10101_1_1') or f.startswith('1_1_1'):
             # try:
             os.remove(f)
