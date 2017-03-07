@@ -18,6 +18,8 @@ class Interactive(TestFull):
         sys.stdout = self.stdout
         sys.stderr = self.stderr
 
+    def tearDown(self):
+        pass
 
     def interact(self):
         self.setUp()

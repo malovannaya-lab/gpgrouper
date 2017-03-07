@@ -185,8 +185,8 @@ class MatchTest(unittest.TestCase):
         pygrouper.set_up(usrdatas, sample['column_aliases'])
         _ = pygrouper.match(usrdatas, sample['refs'])
         usrdata = usrdatas[-1]
-        outcols = ['GeneList', 'GeneCount', 'TaxonIDList', 'TaxonCount',
-                   'ProteinList', 'ProteinCount']
+        outcols = ['GeneIDs_All', 'GeneIDCount_All', 'TaxonIDs_All', 'TaxonIDCount_All',
+                   'ProteinGIs_All', 'ProteinGICount_All']
         for outcol in outcols:
             self.assertIn(outcol, usrdata.df.columns,
                           msg='Matcher not returning correct columns')
@@ -440,6 +440,8 @@ class TestFull(unittest.TestCase):
     def setUp(self):
         sys.stdout = StringIO()
         sys.stderr = StringIO()
+        # sys.stdout = self.stdout
+        # sys.stderr = self.stderr
 
 
     def tearDown(self):
@@ -466,32 +468,11 @@ class TestFull(unittest.TestCase):
                          )
     def test_proper_columns_psms(self):
 
-        data_cols = ['EXPRecNo', 'EXPRunNo', 'EXPSearchNo',
-                     'Sequence', 'PSMAmbiguity', 'Modifications',
-                     'ActivationType', 'DeltaScore', 'DeltaCn',
-                     'Rank', 'SearchEngineRank', 'PrecursorArea',
-                     'q_value', 'PEP', 'IonScore',
-                     'MissedCleavages', 'IsolationInterference', 'IonInjectTime',
-                     'Charge', 'mzDa', 'MHDa',
-                     'DeltaMassDa', 'DeltaMassPPM', 'RTmin',
-                     'FirstScan', 'MSOrder', 'MatchedIons',
-                     'SpectrumFile', 'AddedBy',
-                     'oriFLAG',
-                     'CreationTS', 'ModificationTS', 'GeneID',
-                     'GeneList', 'GeneCount',
-                     # 'ProteinGI',
-                     'ProteinList', 'ProteinCount',
-                     # 'HID',
-                     'HIDList', 'HIDCount',
-                     'TaxonID', 'TaxonIDList', 'TaxonCount',
-                     'IDG', 'SequenceModi',
-                     'SequenceModiCount', 'LabelFLAG',
-                     'PeptRank', 'AUC_UseFLAG', 'UseFLAG',
-                     'Peak_UseFLAG', 'SequenceArea', 'PrecursorArea_split',
-                     'RazorArea',
-                     'PrecursorArea_dstrAdj']
-
-
+        data_cols = pygrouper.DATA_COLS
+        try:
+            data_cols.remove('LastScan')
+        except ValueError:
+            pass
 
         runner = CliRunner()
         response = runner.invoke(cli.cli, ['run', '--database', REFSEQ_FILE,

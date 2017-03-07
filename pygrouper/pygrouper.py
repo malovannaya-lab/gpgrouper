@@ -53,7 +53,8 @@ labelflag = {'none': 0,  # hard coded number IDs for labels
 E2G_COLS = ['EXPRecNo', 'EXPRunNo', 'EXPSearchNo',
             'EXPLabelFLAG', 'AddedBy',
             'CreationTS', 'ModificationTS', 'TaxonID',
-            'GeneID',
+            'GeneID', 'ProteinGIs', 'ProteinRefs',
+            'HIDs', 'Description',
             'IDSet', 'IDGroup', 'IDGroup_u2g',
             'GPGroup', 'GPGroups_All', 'PSMs',
             'PSMs_u2g', 'PeptidePrint', 'PeptideCount',
@@ -75,15 +76,16 @@ DATA_COLS = ['EXPRecNo', 'EXPRunNo', 'EXPSearchNo',
              'SpectrumFile', 'AddedBy',
              'oriFLAG',
              'CreationTS', 'ModificationTS', 'GeneID',
-             'GeneList', 'GeneCount',
-             # 'ProteinGI',
-             'ProteinList', 'ProteinCount',
-             # 'HID',
-             'HIDList', 'HIDCount',
-             'TaxonID', 'TaxonIDList', 'TaxonCount',
-             'IDG', 'SequenceModi',
+             'GeneIDs_All', 'GeneIDCount_All',
+             'ProteinGIs',
+             'ProteinGIs_All', 'ProteinGICount_All',
+             'ProteinRefs',
+             'ProteinRefs_All', 'ProteinRefCount_All',
+             'HIDs', 'HIDCount_All',
+             'TaxonID', 'TaxonIDs_All', 'TaxonIDCount_All',
+             'PSM_IDG', 'SequenceModi',
              'SequenceModiCount', 'LabelFLAG',
-             'PeptRank', 'AUC_UseFLAG', 'UseFLAG',
+             'PeptRank', 'AUC_UseFLAG', 'PSM_UseFLAG',
              'Peak_UseFLAG', 'SequenceArea', 'PrecursorArea_split',
              'RazorArea',
              'PrecursorArea_dstrAdj']
@@ -153,7 +155,7 @@ def _spectra_summary(spectraf, data):
     PEP_max      = data.PEP.max()
     area_min     = data[data.PrecursorArea!=0].PrecursorArea.min()
     area_max     = data.PrecursorArea.max()
-    count    = len(data[data.UseFLAG==1])
+    count    = len(data[data.PSM_UseFLAG==1])
     dmass_median = data.DeltaMassPPM.median()
     return(RT_min, RT_max, IonScore_min, IonScore_max, q_min, q_max,
            PEP_min, PEP_max, area_min, area_max, count, dmass_median)
@@ -215,25 +217,27 @@ def get_gid_ignore_list(inputfile):
 
 def _extract_peptideinfo(row):
 
-    # row = database.loc[ix]
     if len(row) == 0:
         return ('', 0, '', 0, '', 0, '', 0, ())
     result = (
         # ','.join(row['GeneID'].dropna().unique()),
         ','.join(str(x) for x in set(row['geneid'])),
-        row['geneid'].nunique(dropna=True),
+        row['geneid'].replace('', np.nan).nunique(dropna=True),
 
         # ','.join(row['TaxonID'].dropna().unique()),
         ','.join(str(x) for x in set(row['taxon'])),
-        row['taxon'].nunique(dropna=True),
+        row['taxon'].replace('', np.nan).nunique(dropna=True),
 
         # ','.join(row['ProteinGI'].dropna().unique()),
         ','.join(str(x) for x in set(row['gi'])),
-        row['gi'].nunique(dropna=True),
+        row['gi'].replace('', np.nan).nunique(dropna=True),
+
+        ','.join(str(x) for x in set(row['ref'])),
+        row['ref'].replace('', np.nan).nunique(dropna=True),
 
         # ','.join(row['HomologeneID'].dropna().unique()),
         ','.join(str(x) for x in set(row['homologene'])),
-        row['homologene'].nunique(dropna=True),
+        row['homologene'].replace('', np.nan).nunique(dropna=True),
 
         tuple(row['capacity']),
           # row['capacity'].mean(),
@@ -255,47 +259,69 @@ def extract_peptideinfo(usrdata, database):
            )
 
     info = ixs.apply(lambda x : _extract_peptideinfo(database.loc[x]))
-    (usrdata.df['GeneList'],
-     usrdata.df['GeneCount'],
-     usrdata.df['TaxonIDList'],
-     usrdata.df['TaxonCount'],
-     usrdata.df['ProteinList'],
-     usrdata.df['ProteinCount'],
-     usrdata.df['HIDList'],
-     usrdata.df['HIDCount'],
+    (usrdata.df['GeneIDs_All'],
+     usrdata.df['GeneIDCount_All'],
+     usrdata.df['TaxonIDs_All'],
+     usrdata.df['TaxonIDCount_All'],
+     usrdata.df['ProteinGIs_All'],
+     usrdata.df['ProteinGICount_All'],
+     usrdata.df['ProteinRefs_All'],
+     usrdata.df['ProteinRefCount_All'],
+     usrdata.df['HIDs'],
+     usrdata.df['HIDCount_All'],
      usrdata.df['GeneCapacities']) = zip(*info)
-    usrdata.df['TaxonIDList'] = usrdata.df['TaxonIDList'].dropna().astype(str)
-    usrdata.df['HIDList'] = usrdata.df['HIDList'].fillna('')
+    usrdata.df['TaxonIDs_All'] = usrdata.df['TaxonIDs_All'].dropna().astype(str)
+    usrdata.df['HIDs'] = usrdata.df['HIDs'].fillna('')
 
     return 0
+
+def gene_mapper(df, other_col=None):
+
+    if other_col is None or other_col not in df.columns:
+        raise ValueError("Must specify other column")
+    groupdf = (df[['geneid', other_col]]
+               .drop_duplicates()
+               .groupby('geneid')
+    )
+    d = {k: ','.join(v) for k, v in groupdf[other_col]}
+
+    return d
 
 def gene_taxon_mapper(df):
     """Returns a dictionary with mapping:
     gene -> taxon
     Input is the metadata extracted previously"""
-    return  (df[['geneid', 'taxon']]
-             .set_index('geneid')
-             .pipe(lambda x: pd.Series(data=x.taxon, index=x.index))
-    ).to_dict()
+    return gene_mapper(df, 'taxon')
 
 def gene_symbol_mapper(df):
     """Returns a dictionary with mapping:
     gene -> taxon
     Input is the metadata extracted previously"""
-    return  (df[['geneid', 'symbol']]
-             .groupby('geneid')
-             .apply(lambda x: ','.join(set(x['symbol'])))
-    ).to_dict()
-
+    return gene_mapper(df, 'symbol')
 
 def gene_desc_mapper(df):
     """Returns a dictionary with mapping:
     gene -> taxon
     Input is the metadata extracted previously"""
-    return  (df[['geneid', 'description']]
-             .groupby('geneid')
-             .apply(lambda x: ','.join(set(x['description'])))
-    ).to_dict()
+    return gene_mapper(df, 'description')
+
+def gene_hid_mapper(df):
+    """Returns a dictionary with mapping:
+    gene -> taxon
+    Input is the metadata extracted previously"""
+    return gene_mapper(df, 'homologene')
+
+def gene_protgi_mapper(df):
+    """Returns a dictionary with mapping:
+    gene -> taxon
+    Input is the metadata extracted previously"""
+    return gene_mapper(df, 'gi')
+
+def gene_protref_mapper(df):
+    """Returns a dictionary with mapping:
+    gene -> taxon
+    Input is the metadata extracted previously"""
+    return gene_mapper(df, 'ref')
 
 
 
@@ -303,11 +329,11 @@ def gene_desc_mapper(df):
 def assign_IDG(df, filtervalues=None):
     filtervalues = filtervalues or dict()
     ion_score_bins = filtervalues.get('ion_score_bins', (10, 20, 30))
-    df['IDG'] = pd.cut(df['IonScore'],
+    df['PSM_IDG'] = pd.cut(df['IonScore'],
                                bins=(0, *ion_score_bins, np.inf),
                                labels=[7, 5, 3, 1], include_lowest=True,
                                right=False).astype('int')
-    df.loc[ df['q_value'] > .01, 'IDG' ] += 1
+    df.loc[ df['q_value'] > .01, 'PSM_IDG' ] += 1
     return df
 
 def make_seqlower(usrdata, col='Sequence'):
@@ -363,7 +389,7 @@ def auc_reflagger(df):
     """
     #usrdata['Sequence_set'] = usrdata['Sequence'].apply(lambda x: tuple(set(list(x))))
     no_dups = (df.sort_values(by=['SequenceModi', 'Charge', 'SequenceArea',
-                                  'IDG', 'IonScore', 'PEP', 'q_value'],
+                                  'PSM_IDG', 'IonScore', 'PEP', 'q_value'],
                               ascending=[1,1,0,1,0,1,1])
                .drop_duplicates(subset=['SequenceArea', 'Charge', 'SequenceModi',])
                .assign(AUC_reflagger = True)
@@ -403,7 +429,7 @@ def split_on_geneid(df):
     unique peptides unique for its particular geneid later.
     """
     oriflag = lambda x: 1 if x[-1] == 0 else 0
-    glstsplitter = (df['GeneList'].str.split(',')
+    glstsplitter = (df['GeneIDs_All'].str.split(',')
                     .apply(pd.Series, 1).stack()
                     .to_frame(name='GeneID')
                     .assign(oriFLAG= lambda x: x.index.map(oriflag))
@@ -422,7 +448,7 @@ def rank_peptides(df, area_col, ranks_only=False):
     """
     df = df.sort_values(by=['GeneID', area_col,
                             'SequenceModi',
-                            'Charge', 'IDG', 'IonScore', 'PEP',
+                            'Charge', 'PSM_IDG', 'IonScore', 'PEP',
                             'q_value'],
                         ascending=[1, 0, 0, 1, 1, 0, 1, 1])
     if not ranks_only:  # don't reset index for just the ranks
@@ -431,7 +457,7 @@ def rank_peptides(df, area_col, ranks_only=False):
     df[area_col].fillna(0, inplace=True)  # must do this to compare
     #nans
     ranks = (df[ (df.AUC_UseFLAG == 1) &
-                 (df.UseFLAG == 1) &
+                 (df.PSM_UseFLAG == 1) &
                  (df.Peak_UseFLAG == 1) ]
              .groupby(['GeneID', 'LabelFLAG'])
              .cumcount() + 1)  # add 1 to start the peptide rank at 1, not 0
@@ -446,31 +472,31 @@ def flag_AUC_PSM(df, fv):
     if fv['pep'] =='all' : fv['pep'] = float('inf')
     if fv['idg'] =='all' : fv['idg'] = float('inf')
     df['AUC_UseFLAG'] = 1
-    df['UseFLAG'] = 1
+    df['PSM_UseFLAG'] = 1
     df.loc[(df['Charge'] < fv['zmin']) | (df['Charge'] > fv['zmax']),
-           ['AUC_UseFLAG', 'UseFLAG']] = 0
+           ['AUC_UseFLAG', 'PSM_UseFLAG']] = 0
 
     df.loc[df['SequenceModiCount'] > fv['modi'],
-           ['AUC_UseFLAG', 'UseFLAG']] = 0
+           ['AUC_UseFLAG', 'PSM_UseFLAG']] = 0
 
     df.loc[(df['IonScore'].isnull() & df['q_value'].isnull()),
-           ['AUC_UseFLAG', 'UseFLAG']] = 1, 0
+           ['AUC_UseFLAG', 'PSM_UseFLAG']] = 1, 0
 
     df.loc[df['IonScore'] < fv['ion_score'],
-           ['AUC_UseFLAG', 'UseFLAG']] = 0
+           ['AUC_UseFLAG', 'PSM_UseFLAG']] = 0
 
     df.loc[df['q_value'] > fv['qvalue'],
-           ['AUC_UseFLAG', 'UseFLAG']] = 0
+           ['AUC_UseFLAG', 'PSM_UseFLAG']] = 0
 
     df.loc[df['PEP'] > fv['pep'],
-           ['AUC_UseFLAG', 'UseFLAG']] = 0
-    df.loc[df['IDG'] > fv['idg'],
-           ['AUC_UseFLAG', 'UseFLAG']] = 0
+           ['AUC_UseFLAG', 'PSM_UseFLAG']] = 0
+    df.loc[df['PSM_IDG'] > fv['idg'],
+           ['AUC_UseFLAG', 'PSM_UseFLAG']] = 0
 
     df.loc[(df['Peak_UseFLAG'] == 0) & (df['PSMAmbiguity'].str.lower()=='unambiguous'),
-           ['AUC_UseFLAG', 'UseFLAG']] = 1
+           ['AUC_UseFLAG', 'PSM_UseFLAG']] = 1
     df.loc[(df['Peak_UseFLAG'] == 0) & (df['PSMAmbiguity'].str.lower()!='unambiguous'),
-           ['AUC_UseFLAG', 'UseFLAG']] = 0
+           ['AUC_UseFLAG', 'PSM_UseFLAG']] = 0
 
     df.loc[ df['AUC_reflagger'] == 0, 'AUC_UseFLAG'] = 0
     return df
@@ -498,10 +524,10 @@ def multi_taxon_splitter(taxon_ids, usrdata, gid_ignore_list, area_col):
             #(~usrdata._data_tTaxonIDList.str.contains('|'.join(all_others)))&
             (usrdata['AUC_UseFLAG'] == 1) &
             (usrdata['TaxonID'] == str(taxon)) &
-            (usrdata['TaxonCount'] == 1) &
+            (usrdata['TaxonIDCount_All'] == 1) &
             (~usrdata['GeneID'].isin(gid_ignore_list))
         ]
-        taxon_totals[taxon] = (uniq_taxon[area_col] / uniq_taxon['GeneCount']).sum()
+        taxon_totals[taxon] = (uniq_taxon[area_col] / uniq_taxon['GeneIDCount_All']).sum()
 
     tot_unique = sum(taxon_totals.values())  #sum of all unique
         # now compute ratio:
@@ -528,8 +554,8 @@ def create_df(inputdf, label, inputcol='GeneID'):
 
 def select_good_peptides(usrdata, labelix):
     """Selects peptides of a given label with the correct flag and at least one genecount"""
-    temp_df = usrdata[(usrdata['UseFLAG'] == 1) &
-                      (usrdata['GeneCount'] > 0)].copy()  # should keep WL's
+    temp_df = usrdata[(usrdata['PSM_UseFLAG'] == 1) &
+                      (usrdata['GeneIDCount_All'] > 0)].copy()  # should keep WL's
     temp_df['LabelFLAG'] = labelix
     return temp_df
 
@@ -577,8 +603,8 @@ def get_peptides_for_gene(genes_df, temp_df):
     )
     full['PeptideSet'] = full.apply(lambda x : frozenset(x['PeptideSet']), axis=1)
 
-    q_uniq = 'GeneCount == 1'
-    q_strict = 'IDG < 4'
+    q_uniq = 'GeneIDCount_All == 1'
+    q_strict = 'PSM_IDG < 4'
     q_strict_u = '{} & {}'.format(q_uniq, q_strict)
 
     uniq = (temp_df.query(q_uniq)
@@ -603,18 +629,18 @@ def get_peptides_for_gene(genes_df, temp_df):
     return genes_df
 
 def get_psms_for_gene(genes_df, temp_df):
-    psmflag = 'UseFLAG'
+    psmflag = 'PSM_UseFLAG'
 
     total = temp_df.groupby('GeneID')[psmflag].sum()
     total.name = 'PSMs'
 
-    q_uniq = 'GeneCount == 1'
+    q_uniq = 'GeneIDCount_All == 1'
     total_u2g = (temp_df.query(q_uniq)
                  .groupby('GeneID')[psmflag]
                  .sum())
     total_u2g.name = 'PSMs_u2g'
 
-    q_strict = 'IDG < 4'
+    q_strict = 'PSM_IDG < 4'
     total_s = (temp_df.query(q_strict)
                .groupby('GeneID')[psmflag]
                .sum())
@@ -644,7 +670,7 @@ def calculate_full_areas(genes_df, temp_df, area_col, normalize):
     full.name = 'AreaSum_max'
 
     full_adj = (temp_df.query(qstring)
-                .assign(gpAdj = lambda x: x[area_col] / x['GeneCount'])
+                .assign(gpAdj = lambda x: x[area_col] / x['GeneIDCount_All'])
                 .groupby('GeneID')['gpAdj']  # temp column
                 .sum()/normalize
                 )
@@ -653,7 +679,7 @@ def calculate_full_areas(genes_df, temp_df, area_col, normalize):
     # strict = temp_df.query(qstring_s).groupby('GeneID')[area_col].sum()
     # strict.name = ''
 
-    qstring_u = qstring + ' & GeneCount == 1'
+    qstring_u = qstring + ' & GeneIDCount_All == 1'
     uniq = temp_df.query(qstring_u).groupby('GeneID')[area_col].sum()/normalize
     uniq.name = 'AreaSum_u2g_all'
 
@@ -693,7 +719,7 @@ def _distribute_area(inputdata, genes_df, area_col, taxon_totals=None, taxon_red
 
     if u2g_area != 0 :
         totArea = 0
-        gene_list = inputdata.GeneList.split(',')
+        gene_list = inputdata.GeneIDs_All.split(',')
         all_u2gareas = (genes_df[genes_df['GeneID'].isin(gene_list)]
                         .AreaSum_u2g_all)
         if len(all_u2gareas) > 1 and any(x == 0 for x in all_u2gareas):
@@ -726,7 +752,7 @@ def _distribute_area(inputdata, genes_df, area_col, taxon_totals=None, taxon_red
 def distribute_area(temp_df, genes_df, area_col, taxon_totals, taxon_redistribute=True):
    """Distribute psm area based on unique gene product area"""
 
-   q = 'AUC_UseFLAG == 1 & GeneCount > 1'
+   q = 'AUC_UseFLAG == 1 & GeneIDCount_All > 1'
    distarea = 'PrecursorArea_dstrAdj'
    temp_df[distarea] = 0
    temp_df[distarea] = (temp_df.query(q)
@@ -737,7 +763,7 @@ def distribute_area(temp_df, genes_df, area_col, taxon_totals, taxon_redistribut
                                                         taxon_redistribute),
                             axis=1)
    )
-   one_id = temp_df.GeneCount == 1
+   one_id = temp_df.GeneIDCount_All == 1
    temp_df.loc[ one_id , distarea ] = temp_df.loc[ one_id, area_col ]
    temp_df[distarea].fillna(0, inplace=True)
 
@@ -747,18 +773,18 @@ def distribute_area(temp_df, genes_df, area_col, taxon_totals, taxon_redistribut
 def _assign_gene_sets(genes_df,genes_df_all, temp_df ):
     IDquery, Pquery = genes_df[['GeneID','PeptideSet']]
 
-    if any(temp_df[temp_df.GeneID==IDquery]['GeneCount']==1):
+    if any(temp_df[temp_df.GeneID==IDquery]['GeneIDCount_All']==1):
         idset = 1
     elif not any(genes_df_all.PeptideSet.values > Pquery):
         idset = 2
     elif any(genes_df_all.PeptideSet.values > Pquery):
         idset = 3
     try:
-        idgroup = min(temp_df[temp_df.GeneID == IDquery].IDG)
+        idgroup = min(temp_df[temp_df.GeneID == IDquery].PSM_IDG)
     except ValueError:
         idgroup = 0
     try :
-        idgroup_u2g  = min(temp_df[(temp_df.GeneID == IDquery) & (temp_df.GeneCount == 1)].IDG)
+        idgroup_u2g  = min(temp_df[(temp_df.GeneID == IDquery) & (temp_df.GeneIDCount_All == 1)].PSM_IDG)
     except ValueError :
         idgroup_u2g = 0
 
@@ -803,11 +829,11 @@ def assign_gene_sets(genes_df, temp_df):
     genes_df['IDSet'] = genes_df['IDSet'].fillna(1).astype(np.int8)
     # if u2g count greater than 0 then set 1
     gpg = (temp_df.groupby('GeneID')
-           .IDG.min()
+           .PSM_IDG.min()
            .rename('IDGroup'))
-    gpg_u2g = (temp_df.query('GeneCount==1')
+    gpg_u2g = (temp_df.query('GeneIDCount_All==1')
                .groupby('GeneID')
-               .IDG.min()
+               .PSM_IDG.min()
                .rename('IDGroup_u2g'))
     gpgs = (pd.concat([gpg, gpg_u2g], axis=1).fillna(0).astype(np.int8)
             .assign(GeneID = lambda x: x.index)
@@ -852,13 +878,13 @@ def calculate_gene_razorarea(genes_df, temp_df, normalize):
             return 0
 
     temp_df['RazorArea'] = 0
-    q = 'AUC_UseFLAG == 1 & GeneCount > 1'
+    q = 'AUC_UseFLAG == 1 & GeneIDCount_All > 1'
     temp_df['RazorArea'] = (temp_df.query(q)
                                 .apply(razor_area,
                                        args=(genes_df,),
                                        axis=1
                                 ))
-    one_id = temp_df.GeneCount == 1
+    one_id = temp_df.GeneIDCount_All == 1
     temp_df.loc[ one_id , 'RazorArea' ] = temp_df.loc[ one_id,
                                                            'SequenceArea' ]
     result = temp_df.groupby('GeneID')['RazorArea'].sum() / normalize
@@ -899,9 +925,9 @@ def set_gene_gpgroups(genes_df, temp_df):
     genes_df.loc[set1_gpgs.index, 'GPGroup'] = set1_gpgs
 
 
-    # (temp_df[['Sequence', 'GeneList']]
+    # (temp_df[['Sequence', 'GeneIDs_All']]
     #  .drop_duplicates('Sequence')
-    #  .assign(geneids = lambda x: (x['GeneList'].str.split(',')))
+    #  .assign(geneids = lambda x: (x['GeneIDs_All'].str.split(',')))
     # )
 
 
@@ -1013,6 +1039,9 @@ def grouper(usrdata, outdir='', database=None,
     gene_taxon_dict = gene_taxon_mapper(database)
     gene_symbol_dict = gene_symbol_mapper(database)
     gene_desc_dict = gene_desc_mapper(database)
+    gene_hid_dict = gene_hid_mapper(database)
+    gene_protgi_dict = gene_protgi_mapper(database)
+    gene_protref_dict = gene_protref_mapper(database)
 
     # ==================== Populate gene info ================================ #
 
@@ -1024,9 +1053,9 @@ def grouper(usrdata, outdir='', database=None,
                                     usrdata.taxonid))
     logging.info('Starting Grouper for exp number'\
                  '{}'.format(repr(usrdata)))
-    nomatches = usrdata.df[usrdata.df['GeneCount'] == 0].Sequence  # select all
+    nomatches = usrdata.df[usrdata.df['GeneIDCount_All'] == 0].Sequence  # select all
     #PSMs that didn't get a match to the refseq peptidome
-    matched_psms = len(usrdata.df[usrdata.df['GeneCount'] != 0])
+    matched_psms = len(usrdata.df[usrdata.df['GeneIDCount_All'] != 0])
     unmatched_psms = len(nomatches)
     usrdata.to_logq('{} | Total identified PSMs : {}'.format(time.ctime(),
                                                              matched_psms))
@@ -1040,7 +1069,7 @@ def grouper(usrdata, outdir='', database=None,
                   .assign(sequence_lower = lambda x: x['Sequence'].str.lower())
                   .sort_values(by=['SpectrumFile', area_col,
                                    'Sequence', 'Modifications',
-                                   'Charge', 'IDG', 'IonScore', 'PEP',
+                                   'Charge', 'PSM_IDG', 'IonScore', 'PEP',
                                    'q_value'],
                                ascending=[0, 0, 1, 1, 1, 1, 0, 1, 1])
                   .pipe(redundant_peaks)  # remove ambiguous peaks
@@ -1051,6 +1080,8 @@ def grouper(usrdata, outdir='', database=None,
                   .assign(TaxonID = lambda x: x['GeneID'].map(gene_taxon_dict),
                           Symbol = lambda x: x['GeneID'].map(gene_symbol_dict),
                           Description = lambda x: x['GeneID'].map(gene_desc_dict),
+                          ProteinGIs = lambda x: x['GeneID'].map(gene_protgi_dict),
+                          ProteinRefs = lambda x: x['GeneID'].map(gene_protref_dict),
                   )
     )
     # ======================== Plugin for multiple taxons  ===================== #
@@ -1120,6 +1151,9 @@ def grouper(usrdata, outdir='', database=None,
                     .pipe(set_gene_gpgroups, temp_df)
                     .assign(Symbol = lambda x: x['GeneID'].map(gene_symbol_dict),
                             Description = lambda x: x['GeneID'].map(gene_desc_dict),
+                            HIDs = lambda x: x['GeneID'].map(gene_hid_dict),
+                            ProteinGIs = lambda x: x['GeneID'].map(gene_protgi_dict),
+                            ProteinRefs = lambda x: x['GeneID'].map(gene_protref_dict),
                     )
         )
 
@@ -1168,7 +1202,7 @@ def grouper(usrdata, outdir='', database=None,
         return
 
     usrdata.df['ModificationTS'] = datetime.now().strftime("%m/%d/%Y %H:%M:%S")
-    #usrdata.df['HIDList'] = ''  # will be populated later
+    #usrdata.df['HIDs'] = ''  # will be populated later
     #usrdata.df['HIDCount'] = ''  # will be populated later
 
 
@@ -1195,7 +1229,7 @@ def grouper(usrdata, outdir='', database=None,
                                                            .fillna(0)
                                                            .astype(np.integer)),
                                  ModificationTS = now,
-                                 HIDList = '',  # will be populated later
+                                 HIDs = '',  # will be populated later
                                  HIDCount = ''  # will be populated later
                       )
         )
