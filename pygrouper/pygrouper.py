@@ -218,7 +218,7 @@ def get_gid_ignore_list(inputfile):
 def _extract_peptideinfo(row):
 
     if len(row) == 0:
-        return ('', 0, '', 0, '', 0, '', 0, ())
+        return ('', 0, '', 0, '', 0, '', 0, '', 0, ())
     result = (
         # ','.join(row['GeneID'].dropna().unique()),
         SEP.join(str(x) for x in set(row['geneid'])),
