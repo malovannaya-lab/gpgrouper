@@ -37,6 +37,8 @@ logfilename = program_title.replace(' ', '_') + '.log'
 logging.basicConfig(filename=logfilename, level=logging.DEBUG)
 logging.info('{}: Initiating {}'.format(datetime.now(), program_title))
 
+SEP = ';'
+
 labelflag = {'none': 0,  # hard coded number IDs for labels
              'TMT_126': 1260,
              'TMT_127_C': 1270,
@@ -200,8 +202,6 @@ def spectra_summary(usrdata):
 
     msfdata['RawFileSize'], msfdata['RawFileTS'] = zip(*rawfile_info)
 
-    msfdata.rename(columns={c: 'msf_'+c for c in msfdata.columns}, inplace=True)
-
     return msfdata
 
 def get_gid_ignore_list(inputfile):
@@ -221,22 +221,22 @@ def _extract_peptideinfo(row):
         return ('', 0, '', 0, '', 0, '', 0, ())
     result = (
         # ','.join(row['GeneID'].dropna().unique()),
-        ','.join(str(x) for x in set(row['geneid'])),
+        SEP.join(str(x) for x in set(row['geneid'])),
         row['geneid'].replace('', np.nan).nunique(dropna=True),
 
         # ','.join(row['TaxonID'].dropna().unique()),
-        ','.join(str(x) for x in set(row['taxon'])),
+        SEP.join(str(x) for x in set(row['taxon'])),
         row['taxon'].replace('', np.nan).nunique(dropna=True),
 
         # ','.join(row['ProteinGI'].dropna().unique()),
-        ','.join(str(x) for x in set(row['gi'])),
+        SEP.join(str(x) for x in set(row['gi'])),
         row['gi'].replace('', np.nan).nunique(dropna=True),
 
-        ','.join(str(x) for x in set(row['ref'])),
+        SEP.join(str(x) for x in set(row['ref'])),
         row['ref'].replace('', np.nan).nunique(dropna=True),
 
         # ','.join(row['HomologeneID'].dropna().unique()),
-        ','.join(str(x) for x in set(row['homologene'])),
+        SEP.join(str(x) for x in set(row['homologene'])),
         row['homologene'].replace('', np.nan).nunique(dropna=True),
 
         tuple(row['capacity']),
@@ -283,7 +283,8 @@ def gene_mapper(df, other_col=None):
                .drop_duplicates()
                .groupby('geneid')
     )
-    d = {k: ','.join(v) for k, v in groupdf[other_col]}
+
+    d = {k: SEP.join(filter(None, v)) for k, v in groupdf[other_col]}
 
     return d
 
@@ -429,7 +430,7 @@ def split_on_geneid(df):
     unique peptides unique for its particular geneid later.
     """
     oriflag = lambda x: 1 if x[-1] == 0 else 0
-    glstsplitter = (df['GeneIDs_All'].str.split(',')
+    glstsplitter = (df['GeneIDs_All'].str.split(SEP)
                     .apply(pd.Series, 1).stack()
                     .to_frame(name='GeneID')
                     .assign(oriFLAG= lambda x: x.index.map(oriflag))
@@ -509,8 +510,8 @@ def gene_taxon_map(usrdata, gene_taxon_dict):
 def get_all_taxons(taxonidlist):
     """Return a set of all taxonids from
     usrdata.TaxonIDList"""
-    taxon_ids = set(','.join(x for x in taxonidlist
-                             if x.strip()).split(','))
+    taxon_ids = set(SEP.join(x for x in taxonidlist
+                             if x.strip()).split(SEP))
     return taxon_ids
 
 def multi_taxon_splitter(taxon_ids, usrdata, gid_ignore_list, area_col):
@@ -719,7 +720,7 @@ def _distribute_area(inputdata, genes_df, area_col, taxon_totals=None, taxon_red
 
     if u2g_area != 0 :
         totArea = 0
-        gene_list = inputdata.GeneIDs_All.split(',')
+        gene_list = inputdata.GeneIDs_All.split(SEP)
         all_u2gareas = (genes_df[genes_df['GeneID'].isin(gene_list)]
                         .AreaSum_u2g_all)
         if len(all_u2gareas) > 1 and any(x == 0 for x in all_u2gareas):
@@ -857,7 +858,7 @@ def calculate_gene_razorarea(genes_df, temp_df, normalize):
     """Calculate razor area for each gene product"""
 
     separate_groups = lambda gpg_all : set(float(x.strip()) for z in
-                                           (y.split(',') for y in gpg_all.values)
+                                           (y.split(SEP) for y in gpg_all.values)
                                            for x in z
     )
 
@@ -946,14 +947,14 @@ def set_gene_gpgroups(genes_df, temp_df):
         gpgs = set()
         for pept in gene_pept_mapping.get(gid):
             gpgs |= pept_group_mapping.get(pept)
-        return ','.join(str(int(x)) for x in sorted(gpgs))
+        return SEP.join(str(int(x)) for x in sorted(gpgs))
 
     genes_df['GPGroups_All'] = genes_df.apply(lambda x: gpg_all(x['GeneID'],
                                                                     gene_pept_mapping,
                                                                     pept_group_mapping),
     axis=1)
 
-    genes_df['GPGroup'] = genes_df['GPGroup'].fillna(0).astype(np.int8)
+    genes_df['GPGroup'] = genes_df['GPGroup'].fillna(0).astype(np.int)
     # genes_df['GPGroup'].replace(to_replace='', value=float('NaN'),
     #                                 inplace=True)  # can't sort int and
     #strings, convert all strings to NaN
@@ -1175,8 +1176,8 @@ def grouper(usrdata, outdir='', database=None,
                             EXPRunNo = usrdata.runno,
                             EXPSearchNo = usrdata.searchno,
                             AddedBy = usrdata.added_by,
-                            Creation_TS = now,
-                            Modification_TS = now)
+                            CreationTS = now,
+                            ModificationTS = now)
         )
 
         # =============================================================#

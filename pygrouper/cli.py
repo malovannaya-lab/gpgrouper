@@ -227,10 +227,10 @@ def run(autorun, contaminants, database, enzyme, interval, ion_score, ion_score_
                 usrdata.filtervalues['ion_score_bins'] = ion_score_bins
                 usrdata.filtervalues['qvalue']         = qvalue
                 usrdata.filtervalues['pep']            = pep
-                usrdata.filtervalues['idg']            = idg
-                usrdata.filtervalues['zmin']           = zmin
-                usrdata.filtervalues['zmax']           = zmax
-                usrdata.filtervalues['modi']           = modi
+                usrdata.filtervalues['idg']            = int(idg)
+                usrdata.filtervalues['zmin']           = int(zmin)
+                usrdata.filtervalues['zmax']           = int(zmax)
+                usrdata.filtervalues['modi']           = int(modi)
 
 
             usrdatas.append(usrdata)
