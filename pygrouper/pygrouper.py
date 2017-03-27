@@ -1178,6 +1178,7 @@ def grouper(usrdata, outdir='', database=None,
                             AddedBy = usrdata.added_by,
                             CreationTS = now,
                             ModificationTS = now)
+                    .sort_values(by=['IDSet', 'GPGroup'])
         )
 
         # =============================================================#
@@ -1401,7 +1402,10 @@ def set_up(usrdatas, column_aliases):
     """Set up the usrdata class for analysis
     Read data, rename columns (if appropriate), populate base data"""
     for usrdata in usrdatas:
-        usrdata.read_csv(sep='\t')  # read from the stored psms file
+        EXIT_CODE = usrdata.read_csv(sep='\t')  # read from the stored psms file
+        if EXIT_CODE != 0:
+            print('Error with reading {!r}'.format(usrdata))
+            continue
         if column_aliases:
             standard_names = column_identifier(usrdata.df, column_aliases)
             usrdata.df.rename(columns={v: k
@@ -1478,11 +1482,19 @@ def main(usrdatas=[], fullpeptread=False, inputdir='', outputdir='', refs=dict()
 
     # first set the modifications. Importantly fills in X with the predicted amino acid
     set_up(usrdatas, column_aliases)
+    # for ud in usrdatas:
+    #     print(ud, ud.EXIT_CODE)
+    if all(usrdata.EXIT_CODE != 0 for usrdata in usrdatas):
+        return usrdatas
 
-    databases = match(usrdatas, refs)
+    databases = match([x for x in usrdatas if x.EXIT_CODE == 0], refs)
+    if all(usrdata.EXIT_CODE != 0 for usrdata in usrdatas):
+        return usrdatas
 
     # failed_exps = []
     for usrdata in usrdatas:
+        if usrdata.EXIT_CODE != 0:
+            continue
         try:
             grouper(usrdata,
                     database=databases[usrdata.taxonid],

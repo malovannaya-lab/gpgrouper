@@ -29,7 +29,7 @@ class UserData:
         self.original_columns = None
         self.LOGFILE = os.path.join(outdir, self.output_name(ext='log'))
         self._LOGSTACK = list()
-        self.EXIT_CODE = None
+        self.EXIT_CODE = 0
         self.ERROR = None
 
 
@@ -74,9 +74,16 @@ class UserData:
     def read_csv(self, *args, **kwargs):
         """Uses pandas read_csv function to read an input file
         args and kwargs are passed to this function"""
-        self.df = pd.read_csv(self.full_path(), *args, **kwargs)
-        self.original_columns = self.df.columns.values
-        return self
+        try:
+            self.df = pd.read_csv(self.full_path(), *args, **kwargs)
+            self.original_columns = self.df.columns.values
+        except Exception as e:
+            self.EXIT_CODE = 1
+            return 1
+        if len(self.df) == 0:
+            self.EXIT_CODE = 1
+            return 2
+        return 0
 
     def output_name(self, *suffix, ext='tab'):
         """generate an appropriate output file name
