@@ -844,7 +844,8 @@ def assign_gene_sets(genes_df, temp_df):
 
 def calculate_gene_dstrarea(genes_df, temp_df, normalize=1):
     """Calculate distributed area for each gene product"""
-    result = (temp_df.groupby('GeneID')['PrecursorArea_dstrAdj']
+    result = (temp_df.query('AUC_UseFLAG == 1')
+              .groupby('GeneID')['PrecursorArea_dstrAdj']
               .sum()
               .divide(normalize)
               .to_frame(name='AreaSum_dstrAdj')
