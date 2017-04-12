@@ -50,6 +50,14 @@ labelflag = {'none': 0,  # hard coded number IDs for labels
              'TMT_130_C': 1300,
              'TMT_130_N': 1301,
              'TMT_131': 1310,
+             'iTRAQ_114': 113,
+             'iTRAQ_114': 114,
+             'iTRAQ_115': 115,
+             'iTRAQ_116': 116,
+             'iTRAQ_117': 117,
+             'iTRAQ_118': 118,
+             'iTRAQ_119': 119,
+             'iTRAQ_121': 121,
 }
 
 E2G_COLS = ['EXPRecNo', 'EXPRunNo', 'EXPSearchNo',
@@ -971,10 +979,11 @@ def get_labels(usrdata, labels, labeltype='none'):
     included_labels = [label for label in mylabels if label in usrdata.columns]
     return included_labels
 
-def redistribute_area_tmt(temp_df, label, labeltypes, area_col):
-    """for tmt"""
+def redistribute_area_isobar(temp_df, label, labeltypes, area_col, labeltype):
+    """for tmt/itraq"""
     # with_reporter = temp_df[temp_df['QuanUsage'] == 'Use']
-    with_reporter = temp_df[ temp_df['SequenceModi'].str.contains('.*tmt.*')]
+    q = '.*{}.*'.format(labeltype.lower())
+    with_reporter = temp_df[ temp_df['SequenceModi'].str.contains(q)]
     reporter_area = with_reporter[label] * with_reporter[area_col] / with_reporter[labeltypes].sum(1)
     new_area_col = '' + area_col + '_split'
     reporter_area.name = new_area_col
@@ -982,8 +991,8 @@ def redistribute_area_tmt(temp_df, label, labeltypes, area_col):
     temp_df[new_area_col].fillna(temp_df[area_col], inplace=True)
     return temp_df, new_area_col
 
-def concat_tmt_e2gs(rec, run, search, outdir, cols=None):
-    pat = re.compile('^{}_{}_{}_TMT_\d+_e2g.tab'.format(rec, run, search))
+def concat_isobar_e2gs(rec, run, search, outdir, cols=None, labeltype=None):
+    pat = re.compile('^{}_{}_{}_{}_\d+_e2g.tab'.format(rec, run, search, labeltype))
     files = list()
     for entry in os.scandir(outdir):
         if entry.is_file() and pat.search(entry.name):
@@ -992,10 +1001,10 @@ def concat_tmt_e2gs(rec, run, search, outdir, cols=None):
         warn('No output for {}_{}_{}'.format(rec, run, search))
         return
     df = pd.concat([pd.read_table(f) for f in files])
-    outf = '{}_{}_{}_TMT_all_e2g.tab'.format(rec, run, search)
+    outf = '{}_{}_{}_{}_all_e2g.tab'.format(rec, run, search, labeltype)
     df.to_csv(os.path.join(outdir, outf), columns=cols,
                     index=False, encoding='utf-8', sep='\t')
-    print('Export of TMT e2g file : {}'.format(outf))
+    print('Export of {} e2g file : {}'.format(labeltype, outf))
 
 # from ._orig_code import *
 # from ._orig_code import (extract_peptideinfo, _extract_peptideinfo,
@@ -1086,6 +1095,9 @@ def grouper(usrdata, outdir='', database=None,
                           ProteinRefs = lambda x: x['GeneID'].map(gene_protref_dict),
                   )
     )
+
+    labeltypes = get_labels(usrdata.df, labels, usrdata.labeltype)
+    additional_labels = list()
     # ======================== Plugin for multiple taxons  ===================== #
     taxon_ids = usrdata.df['TaxonID'].dropna().unique()
     taxon_totals = dict()
@@ -1098,6 +1110,9 @@ def grouper(usrdata, outdir='', database=None,
                                             gid_ignore_list, area_col)
         print('Multiple taxons found, redistributing areas...')
         usrdata.to_logq('{} | Multiple taxons found, redistributing areas.'.format(time.ctime()))
+        for taxon, ratio in taxon_totals.items():
+            print('For the full data : {} = {}'.format(taxon, ratio))
+            usrdata.to_logq('For the full data : {} = {}'.format(taxon, ratio))
 
     # none/SILAC loop
     # labeltypes = ['nolabel', 'heavy']  # right now only using nolabel, but in
@@ -1107,13 +1122,11 @@ def grouper(usrdata, outdir='', database=None,
     gpgcount, genecount, ibaqtot, = 0, 0, 0
 
 
-    labeltypes = get_labels(usrdata.df, labels, usrdata.labeltype)
-    additional_labels = list()
 
     orig_area_col = 'SequenceArea'
     # Don't use the aggregated SequenceArea for TMT experiments
-    if usrdata.labeltype == 'TMT':
-        tmtoutput = pd.DataFrame()  # instead of merging, we will concat
+    if usrdata.labeltype in ('TMT', 'iTRAQ'):
+        isobar_output = pd.DataFrame()  # instead of merging, we will concat
     for label in labeltypes:  # increase the range to go through more label types
         labelix = labelflag.get(label, 0)
         area_col = orig_area_col
@@ -1121,11 +1134,20 @@ def grouper(usrdata, outdir='', database=None,
             time.ctime(), label))
         # ==========Select only peptides flagged  with good quality=========== #
         temp_df = select_good_peptides(usrdata.df, labelix)
-        if usrdata.labeltype == 'TMT':
-            tmt_area_col = 'PrecursorArea'  # we always use Precursor Area
-            temp_df, area_col = redistribute_area_tmt(temp_df, label,
-                                                      labeltypes,
-                                                      area_col=tmt_area_col)
+        if usrdata.labeltype in ('TMT', 'iTRAQ'):
+            isobar_area_col = 'PrecursorArea'  # we always use Precursor Area
+            temp_df, area_col = redistribute_area_isobar(temp_df, label,
+                                                         labeltypes,
+                                                         area_col=isobar_area_col,
+                                                         labeltype=usrdata.labeltype)
+            if len(taxon_ids) > 1 and not usrdata.no_taxa_redistrib:  # more than 1 taxon id
+                print('Calculating taxon ratios for label {}'.format(label))
+                usrdata.to_logq('{} | Calculating taxon ratios for label{}.'.format(time.ctime(), label))
+                taxon_totals = multi_taxon_splitter(taxon_ids, temp_df,
+                                                    gid_ignore_list, area_col='PrecursorArea_split')
+                for taxon, ratio in taxon_totals.items():
+                    print('For label {} : {} = {}'.format(label, taxon, ratio))
+                    usrdata.to_logq('For label {} : {} = {}'.format(label, taxon, ratio))
         elif usrdata.labeltype == 'SILAC':
             raise NotImplementedError('No support for SILAC experiments yet.')
         # ==================================================================== #
@@ -1187,8 +1209,8 @@ def grouper(usrdata, outdir='', database=None,
         genecount += len(genes_df)
         ibaqtot += genes_df[~genes_df.GeneID.isin(
             gid_ignore_list)].iBAQ_dstrAdj.sum()
-        if usrdata.labeltype == 'TMT':
-            tmtoutput = pd.concat([tmtoutput, temp_df])
+        if usrdata.labeltype in ('TMT', 'iTRAQ'):
+            isobar_output = pd.concat([isobar_output, temp_df])
         genes_df.to_csv(os.path.join(usrdata.outdir, genedata_out), columns=E2G_COLS,
                         index=False, encoding='utf-8', sep='\t')
         usrdata.to_logq('{} | Export of genetable for labeltype {}'\
@@ -1213,21 +1235,26 @@ def grouper(usrdata, outdir='', database=None,
     dstr_area = 'PrecursorArea_dstrAdj'
     area_col_to_use = dstr_area if dstr_area in usrdata.df.columns else orig_area_col
     data_cols = DATA_COLS
-    if usrdata.labeltype == 'TMT':
-        data_cols = DATA_COLS + ['TMT_126', 'TMT_127_N', 'TMT_127_C', 'TMT_128_N',
-                                 'TMT_128_C', 'TMT_129_N', 'TMT_129_C', 'TMT_130_N',
-                                 'TMT_130_C', 'TMT_131', 'QuanInfo', 'QuanUsage']
-        tmtoutput.reset_index(inplace=True)
+    if usrdata.labeltype in ('TMT', 'iTRAQ'):
+        if usrdata.labeltype == 'TMT':
+            data_cols = DATA_COLS + ['TMT_126', 'TMT_127_N', 'TMT_127_C', 'TMT_128_N',
+                                     'TMT_128_C', 'TMT_129_N', 'TMT_129_C', 'TMT_130_N',
+                                     'TMT_130_C', 'TMT_131', 'QuanInfo', 'QuanUsage']
+        elif usrdata.labeltype == 'iTRAQ':
+            data_cols = DATA_COLS + ['iTRAQ_114', 'iTRAQ_115', 'iTRAQ_116', 'iTRAQ_117',
+                                     'QuanInfo', 'QuanUsage']
+
+        isobar_output.reset_index(inplace=True)
         rank_df = pd.DataFrame()
-        for label in tmtoutput.LabelFLAG.unique():
+        for label in isobar_output.LabelFLAG.unique():
             q = 'LabelFLAG == @label'
-            tmtrank = rank_peptides(tmtoutput.query(q),
-                                    area_col=area_col_to_use,
-                                    ranks_only=True)
-            rank_df = pd.concat([rank_df, tmtrank.to_frame()])
+            isobar_rank = rank_peptides(isobar_output.query(q),
+                                        area_col=area_col_to_use,
+                                        ranks_only=True)
+            rank_df = pd.concat([rank_df, isobar_rank.to_frame()])
         now = datetime.now().strftime("%m/%d/%Y %H:%M:%S")
 
-        tmtoutput = (tmtoutput.join(rank_df, how='left')
+        isobar_output = (isobar_output.join(rank_df, how='left')
                          .assign(PeptRank = lambda x: (x['PeptRank']
                                                            .fillna(0)
                                                            .astype(np.integer)),
@@ -1259,16 +1286,16 @@ def grouper(usrdata, outdir='', database=None,
     msfdata = spectra_summary(usrdata)
     msfdata.to_csv(os.path.join(usrdata.outdir, msfname), index=False, sep='\t')
 
-    if usrdata.labeltype == 'TMT':
-        if not all(x in tmtoutput.columns.values for x in data_cols):
+    if usrdata.labeltype in ('TMT', 'iTRAQ'):
+        if not all(x in isobar_output.columns.values for x in data_cols):
             print('Potential error, not all columns filled.')
-            print([x for x in data_cols if x not in tmtoutput.columns.values])
-            data_cols = [x for x in data_cols if x in tmtoutput.columns.values]
-        concat_tmt_e2gs(usrdata.recno, usrdata.runno, usrdata.searchno,
-                        usrdata.outdir, cols=E2G_COLS)
+            print([x for x in data_cols if x not in isobar_output.columns.values])
+            data_cols = [x for x in data_cols if x in isobar_output.columns.values]
+        concat_isobar_e2gs(usrdata.recno, usrdata.runno, usrdata.searchno,
+                           usrdata.outdir, cols=E2G_COLS, labeltype=usrdata.labeltype)
         # usrdata.df = pd.merge(usrdata.df, temp_df, how='left')
-        tmtoutput.to_csv(os.path.join(usrdata.outdir, usrdata_out), columns=data_cols,
-                          index=False, encoding='utf-8', sep='\t')
+        isobar_output.to_csv(os.path.join(usrdata.outdir, usrdata_out), columns=data_cols,
+                             index=False, encoding='utf-8', sep='\t')
     else:
         if not all(x in usrdata.df.columns.values for x in data_cols):
             print('Potential error, not all columns filled.')
