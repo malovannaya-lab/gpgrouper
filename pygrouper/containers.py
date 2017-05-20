@@ -31,6 +31,7 @@ class UserData:
         self._LOGSTACK = list()
         self.EXIT_CODE = 0
         self.ERROR = None
+        self.taxon_ratio_totals = dict()
 
 
     def __repr__(self):

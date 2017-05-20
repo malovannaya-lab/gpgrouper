@@ -170,16 +170,7 @@ def run(autorun, contaminants, database, enzyme, interval, ion_score, ion_score_
     column_aliases = config.column_aliases
     gid_ignore_file = contaminants or config.contaminants
     if autorun:
-        warnings.simplefilter('always', DeprecationWarning)
-        warnings.warn('''Autorun is depreciated in v0.1.028 and will be removed in a future release,
-        please use autogrouper''',
-                      DeprecationWarning)
-        auto_grouper.interval_check(interval, INPUT_DIR, OUTPUT_DIR,
-                                    max_files, rawfilepath=RAWFILE_DIR,
-                                    refs=refseqs,
-                                    column_aliases=column_aliases,
-                                    gid_ignore_file=gid_ignore_file,
-                                    labels=LABELS,)
+        raise DeprecationWarning('Autorun is depreciated. Please use autogrouper')
     else:
         usrdatas = list()
         if not taxonid:

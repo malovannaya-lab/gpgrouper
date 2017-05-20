@@ -1110,6 +1110,7 @@ def grouper(usrdata, outdir='', database=None,
                                             gid_ignore_list, area_col)
         print('Multiple taxons found, redistributing areas...')
         usrdata.to_logq('{} | Multiple taxons found, redistributing areas.'.format(time.ctime()))
+        usrdata.taxon_ratio_totals.update(taxon_totals)
         for taxon, ratio in taxon_totals.items():
             print('For the full data : {} = {}'.format(taxon, ratio))
             usrdata.to_logq('For the full data : {} = {}'.format(taxon, ratio))
@@ -1279,7 +1280,7 @@ def grouper(usrdata, outdir='', database=None,
 
     export_metadata(program_title=program_title, usrdata=usrdata,
                     matched_psms=matched_psms, unmatched_psms=unmatched_psms,
-                    usrfile=usrfile, taxon_totals=taxon_totals,
+                    usrfile=usrfile, taxon_totals=usrdata.taxon_ratio_totals,
                     outname=usrdata.output_name('metadata', ext='json'), outpath=usrdata.outdir)
 
     msfname = usrdata.output_name('msf', ext='tab')
