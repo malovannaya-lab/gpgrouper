@@ -730,6 +730,7 @@ def _distribute_area(inputdata, genes_df, area_col, taxon_totals=None, taxon_red
         totArea = 0
         gene_list = inputdata.GeneIDs_All.split(SEP)
         all_u2gareas = (genes_df[genes_df['GeneID'].isin(gene_list)]
+                        .query('PeptideCount_u2g > 0')  # all geneids with at least 1 unique pept
                         .AreaSum_u2g_all)
         if len(all_u2gareas) > 1 and any(x == 0 for x in all_u2gareas):
             # special case with multiple u2g peptides but not all have areas, rare but does happen
