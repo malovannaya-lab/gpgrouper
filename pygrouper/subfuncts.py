@@ -97,7 +97,8 @@ def protease(seq,minlen = 0, cutsites=[], exceptions=[], miscuts=2):
                     else:
                         no_met.append(c)
         merged_list.append(''.join(no_met))
-    frags.append(frags[0][1:]) # chop off methionine
+    if len(frags) > 1:
+        frags.append(frags[0][1:]) # chop off methionine
     nomiscuts_len = len([  x for x in frags if len(x) >= minlen  ])
     return [ x for x in frags+merged_list if len(x) >= minlen ], nomiscuts_len
 
