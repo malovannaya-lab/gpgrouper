@@ -177,15 +177,15 @@ def run(autorun, contaminants, database, enzyme, interval, ion_score, ion_score_
             taxonid = click.prompt('Enter taxon id', default=9606, type=int,)
         for ix, psmfile in enumerate(psms_file):
             if record_no:
-                rec = record_no[ix]
+                recno = record_no[ix]
                 try:
-                    run = run_no[ix]
+                    runno = run_no[ix]
                 except IndexError:
-                    run = 1
+                    runno = 1
                 try:
-                    search = search_no[ix]
+                    searchno = search_no[ix]
                 except IndexError:
-                    search = 1
+                    searchno = 1
             else:
                 try:
                     rec, run, search = find_rec_run_search(psmfile)

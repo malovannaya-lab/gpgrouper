@@ -98,12 +98,21 @@ class UserData:
 
     def populate_base_data(self):
         """Populate dataframe with base data prior to grouping"""
-        self.df['EXPRecNo'] = self.recno
-        self.df['EXPRunNo'] = self.runno
-        self.df['EXPSearchNo'] = self.searchno
+
+        self.categorical_assign('EXPRecNo', self.recno)
+        self.categorical_assign('EXPRunNo', self.runno)
+        self.categorical_assign('EXPSearchNo', self.searchno)
+        self.categorical_assign('CreationTS', datetime.now().strftime("%m/%d/%Y) %H:%M:%S"))
+        self.categorical_assign('AddedBy', self.added_by)
+        # self.categorical_assign('metadatainfo', '')  # not sure if this is okay
+
+        # self.df['EXPRecNo'] = self._categorical_assign(self.recno)
+        # self.df['EXPRunNo'] = self._categorical_assign(self.runno)
+        # self.df['EXPSearchNo'] = self._categorical_assign(self.searchno)
+        # self.df['CreationTS'] = self._categorical_assign(datetime.now().strftime("%m/%d/%Y) %H:%M:%S"))
+        # self.df['AddedBy'] = self._categorical_assign(self.added_by)
+
         # self.df['psm_EXPTechRepNo'] = self.techrepno
-        self.df['CreationTS'] = datetime.now().strftime("%m/%d/%Y %H:%M:%S")
-        self.df['AddedBy'] = self.added_by
         # self.df['psm_TaxonID'] = self.taxonid
         #self.df['psm_GeneList'] = ''
         #self.df['psm_ProteinList'] = ''
@@ -120,3 +129,13 @@ class UserData:
     @property
     def filterstamp(self):
         return 'is{ion_score}_qv{qvalue}_pep{pep}_idg{idg}_z{zmin}to{zmax}_mo{modi}_is_bins{ion_score_bins}'.format(**self.filtervalues)
+
+    def categorical_assign(self, name, value, **kwargs):
+        """
+        Assign a static value to a new column.
+        Saves memory by using pandas Categorical dtype.
+        :kwargs: passed to pd.Series.astype
+        """
+        self.df[name] = value
+        self.df[name] = self.df[name].astype('category', **kwargs)
+        return self

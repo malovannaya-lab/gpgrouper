@@ -266,20 +266,28 @@ def extract_peptideinfo(usrdata, database):
            # .to_frame()
            )
 
-    info = ixs.apply(lambda x : _extract_peptideinfo(database.loc[x]))
-    (usrdata.df['GeneIDs_All'],
-     usrdata.df['GeneIDCount_All'],
-     usrdata.df['TaxonIDs_All'],
-     usrdata.df['TaxonIDCount_All'],
-     usrdata.df['ProteinGIs_All'],
-     usrdata.df['ProteinGICount_All'],
-     usrdata.df['ProteinRefs_All'],
-     usrdata.df['ProteinRefCount_All'],
-     usrdata.df['HIDs'],
-     usrdata.df['HIDCount_All'],
-     usrdata.df['GeneCapacities']) = zip(*info)
-    usrdata.df['TaxonIDs_All'] = usrdata.df['TaxonIDs_All'].dropna().astype(str)
-    usrdata.df['HIDs'] = usrdata.df['HIDs'].fillna('')
+    info = ixs.apply(lambda x : _extract_peptideinfo(database.loc[x])).apply(pd.Series)
+    info.columns = ['GeneIDs_All', 'GeneIDCount_All', 'TaxonIDs_All', 'TaxonIDCount_All', 'ProteinGIs_All',
+                    'ProteinGICount_All', 'ProteinRefs_All', 'ProteinRefCount_All', 'HIDs', 'HIDCount_All',
+                    'GeneCapacities']
+    for col in ('TaxonIDs_All', 'TaxonIDCount_All', 'ProteinGIs_All', 'ProteinGICount_All',
+                'ProteinRefs_All', 'ProteinRefCount_All', 'HIDs', 'HIDCount_All'):
+        info[col] = info[col].astype('category')
+
+    usrdata.df = usrdata.df.join(info)
+    # (usrdata.df['GeneIDs_All'],
+    #  usrdata.df['GeneIDCount_All'],
+    #  usrdata.df['TaxonIDs_All'],
+    #  usrdata.df['TaxonIDCount_All'],
+    #  usrdata.df['ProteinGIs_All'],
+    #  usrdata.df['ProteinGICount_All'],
+    #  usrdata.df['ProteinRefs_All'],
+    #  usrdata.df['ProteinRefCount_All'],
+    #  usrdata.df['HIDs'],
+    #  usrdata.df['HIDCount_All'],
+    #  usrdata.df['GeneCapacities']) = zip(*info)
+    # usrdata.df['TaxonIDs_All'] = usrdata.df['TaxonIDs_All'].dropna().astype(str)
+    # usrdata.df['HIDs'] = usrdata.df['HIDs'].fillna('')
 
     return 0
 
@@ -922,7 +930,8 @@ def set_gene_gpgroups(genes_df, temp_df):
 
     next_gpg = len(set1_gpgs) + 1
     set2_filtered = genes_df.query('IDSet==2')
-    if len(set2_filtered) > 0 :
+    if len(set2_filtered) > 0:
+    # if len(set2_filts = (set2_filtered
         set2s = (set2_filtered
                  .groupby('PeptideSet')
                  .first()
@@ -1031,9 +1040,7 @@ def grouper(usrdata, outdir='', database=None,
     #import RefseqInfo
     usrfile = usrdata.datafile
     # file with entry of gene ids to ignore for normalizations
-    #gid_ignore_file = 'pygrouper_geneignore.txt'
     gid_ignore_list = []
-
     usrdata_out = usrdata.output_name('psms', ext='tab')
     if gid_ignore_file is not None and os.path.isfile(gid_ignore_file):
         print('Using gene filter file for normalization.')
@@ -1442,14 +1449,22 @@ def set_up(usrdatas, column_aliases):
                                        for k,v in standard_names.items()},
                               inplace=True
             )
+            redundant_cols = [x for x in usrdata.df.columns if x not in standard_names.keys()]
+            # print(usrdata.df.memory_usage().sum())
+            usrdata.df = usrdata.df.drop(redundant_cols, axis=1)
+            # print(usrdata.df.memory_usage().sum())
+
         # usrdata.df = usrdata.populate_base_data()
         usrdata.populate_base_data()
         if 'DeltaMassPPM' not in usrdata.df:
             usrdata.df['DeltaMassPPM'] = 0
         if 'SpectrumFile' not in usrdata.df:
-            usrdata.df['SpectrumFile'] = 'file1.raw'
+            usrdata.df['SpectrumFile'] = None
         if 'RTmin' not in usrdata.df:
             usrdata.df['RTmin'] = 0
+        if 'PEP' not in usrdata.df.columns:
+            usrdata.df['PEP'] = 0  # not trivial to make a category due to sorting
+            # usrdata.categorical_assign('PEP', 0, ordered=True)
         # check_required_headers(usrdata.df)
 
 
@@ -1460,9 +1475,14 @@ def set_up(usrdatas, column_aliases):
                                                                            targets=('K', 'R')),
                                                          axis=1)
         if not 'q_value' in usrdata.df.columns:
-            usrdata.df['q_value'] = usrdata.df['PEP'] / 10  # rough approximation
+            try:
+                usrdata.df['q_value'] = usrdata.df['PEP'] / 10  # rough approximation
+            except KeyError:
+                warn('No q_value available')
+                usrdata.df['q_value'] = 0
         if not 'PSMAmbiguity' in usrdata.df.columns:
-            usrdata.df['PSMAmbiguity'] = 'Unambiguous'
+            # usrdata.df['PSMAmbiguity'] = 'Unambiguous'
+            usrdata.categorical_assign('PSMAmbiguity', 'Umambiguous')  # okay?
         if not usrdata.pipeline == 'MQ':  # MaxQuant already has modifications
             usrdata.df = set_modifications(usrdata.df)
         else:
@@ -1470,7 +1490,8 @@ def set_up(usrdatas, column_aliases):
             usrdata.df.rename(columns={'Modified sequence': 'SequenceModi'},
                               inplace=True)
             usrdata.df['SequenceModiCount'] = count_modis_maxquant(usrdata.df)
-            usrdata.df['LabelFLAG'] = 0  #TODO: handle this properly
+            usrdata.categorical_assign('LabelFlag', 0) #TODO: handle this properly
+            # usrdata.df['LabelFLAG'] = 0  #TODO: handle this properly
     return
 
 def rename_refseq_cols(df, filename):
