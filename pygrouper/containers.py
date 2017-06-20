@@ -8,7 +8,7 @@ class UserData:
     def __init__(self, recno=None, datafile=None, runno=1, searchno=1, no_taxa_redistrib=0,
                  addedby='', indir = '.', outdir='.', rawfiledir='.',
                  labeltype='none', quant_source=None,
-                 searchdb=None, taxonid=None):
+                 searchdb=None, taxonid=None, miscuts=2):
         if recno is None:
             raise ValueError('Must supply record number (recno)')
         self.recno = recno
@@ -32,6 +32,11 @@ class UserData:
         self.EXIT_CODE = 0
         self.ERROR = None
         self.taxon_ratio_totals = dict()
+        self.miscuts = miscuts
+
+    @property
+    def taxon_miscut_id(self):
+        return hash(self.taxonid) + hash(self.miscuts)
 
 
     def __repr__(self):

@@ -1,8 +1,10 @@
 #===============================================================================#
 # PyGrouper - Alex Saltzman
 import re, os, sys, time
+import itertools
 import json
 import logging
+from time import sleep
 from collections import defaultdict
 from functools import partial
 from math import ceil
@@ -184,7 +186,8 @@ def spectra_summary(usrdata):
         then 'not found' is returned for those columns
     """
     msfdata = pd.DataFrame()
-    msfdata['RawFileName']       = list(set(usrdata.df.SpectrumFile.tolist()))
+    # msfdata['RawFileName']    = list(set(usrdata.df.SpectrumFile.tolist()))
+    msfdata['RawFileName']    = sorted(usrdata.df.SpectrumFile.unique())
     msfdata['EXPRecNo']       = usrdata.recno
     msfdata['EXPRunNo']       = usrdata.runno
     msfdata['EXPSearchNo']    = usrdata.searchno
@@ -1360,7 +1363,7 @@ def load_fasta(refseq_file):
     return df
 
 
-def _match(usrdatas, refseq_file):
+def _match(usrdatas, refseq_file, miscuts=2):
     print('Using peptidome {} '.format(refseq_file))
     # database = pd.read_table(refseq_file, dtype=str)
     # rename_refseq_cols(database, refseq_file)
@@ -1373,7 +1376,9 @@ def _match(usrdatas, refseq_file):
         counter += 1
         fragments, fraglen = protease(row.sequence, minlen=7,
                                       cutsites=['K', 'R'],
-                                      exceptions=['P'])
+                                      exceptions=['P'],
+                                      miscuts=miscuts
+        )
         database.loc[ix, 'capacity'] = fraglen
         for fragment in fragments: # store location in the DataFrame for the peptide's parent
             prot[fragment].append(ix)
@@ -1404,13 +1409,21 @@ def match(usrdatas, refseqs):
     """
     inputdata_refseqs = set([usrdata.taxonid for usrdata in usrdatas])
     databases = dict()
-    for organism in refseqs:
-        if any(x == int(organism) for x in inputdata_refseqs):
-                                        # check if we even need to read the
-                                        # peptidome for that organism
-            database = _match([usrdata for usrdata in usrdatas if usrdata.taxonid==organism],
-                              refseqs[organism])
-            databases[organism] = database
+    sortfunc = lambda x: x.taxon_miscut_id
+    usrdata_sorted = sorted(usrdatas, key=sortfunc)
+    for k, g in itertools.groupby(usrdata_sorted, key=sortfunc):
+        group = list(g)
+        taxonid = group[0].taxonid
+        miscuts = group[0].miscuts
+        database = _match(group, refseqs[taxonid], miscuts=miscuts)
+        databases[taxonid] = database
+    # for organism in refseqs:
+    #     if any(x == int(organism) for x in inputdata_refseqs):
+    #                                     # check if we even need to read the
+    #                                     # peptidome for that organism
+    #         database = _match([usrdata for usrdata in usrdatas if usrdata.taxonid==organism],
+    #                           refseqs[organism])
+    #         databases[organism] = database
 
     return databases
 

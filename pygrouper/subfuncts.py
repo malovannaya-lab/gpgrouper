@@ -146,7 +146,7 @@ def seq_modi(sequence, modifications, to_count):
     Sometimes N-terminal modifications are present, this should be considered the same as a modification at the first amino acid.
 
     modifications is a 1-based index of amino acid and modification delimited by semicolon (; ):
-        M1(Oxidation) is first amino acid methionine Oxidized
+    M1(Oxidation) is first amino acid methionine Oxidized
 
     '''
     #TODO : have separate collections for labeled and non-labeled modifications

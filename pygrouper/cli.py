@@ -79,7 +79,8 @@ DEFAULTS = {'max_files': 99, 'pep': 1.0, 'enzyme': 'trypsin', 'configfile': None
             'quant_source': 'AUC', 'outdir': None, 'zmax': 6, 'ion_score': 7.0,
             'ion_score_bins': (10.0, 20.0, 30.0),
             'qvalue': 0.05, 'idg': 9, 'autorun': False, 'name': 'shiro', 'modi': 4, 'zmin': 2,
-            'no_taxa_redistrib': False, 'labeltype': 'none', 'pipeline': 'PD'}
+            'no_taxa_redistrib': False, 'labeltype': 'none', 'pipeline': 'PD',
+            'miscuts': 2}
 
 @cli.command(context_settings=CONTEXT_SETTINGS)
 @click.option('-a', '--autorun', is_flag=True,
@@ -102,8 +103,8 @@ DEFAULTS = {'max_files': 99, 'pep': 1.0, 'enzyme': 'trypsin', 'configfile': None
               help='The three (ascending) IonScore cutoffs used to place PSMs in quality bins.')
 @click.option('-l', '--labeltype', type=click.Choice(['none', 'SILAC', 'iTRAQ', 'TMT']),
               default=DEFAULTS['labeltype'], show_default=True, help='Type of label for this experiment.')
-@click.option('-m', '--max-files', type=int, default=DEFAULTS['max_files'],
-              help='(Autorun only) Maximum number of experiments to queue for autorun')
+@click.option('-m', '--miscuts', type=int, default=DEFAULTS['miscuts'],
+              help='Number of allowed miscuts', show_default=True)
 @click.option('--modi', type=int, default=DEFAULTS['modi'], show_default=True,
               help='Maximum modifications to allow on one peptide')
 @click.option('-n', '--name', type=str, default=getuser(), show_default=True,
@@ -145,7 +146,7 @@ DEFAULTS = {'max_files': 99, 'pep': 1.0, 'enzyme': 'trypsin', 'configfile': None
 @click.option('--search-no', type=int, multiple=True,
               help='search numbers for the corresponding PSM files')
 def run(autorun, contaminants, database, enzyme, interval, ion_score, ion_score_bins,
-        labeltype, max_files, modi, name, no_taxa_redistrib, outdir, psms_file,
+        labeltype, miscuts, modi, name, no_taxa_redistrib, outdir, psms_file,
         pipeline, idg, pep, qvalue, quant_source,
         rawfiledir, configfile, taxonid, zmin, zmax,
         record_no, run_no, search_no):
@@ -197,7 +198,7 @@ def run(autorun, contaminants, database, enzyme, interval, ion_score, ion_score_
                                datafile=psmfile, indir=INPUT_DIR, outdir=OUTPUT_DIR,
                                rawfiledir=RAWFILE_DIR, no_taxa_redistrib=no_taxa_redistrib,
                                labeltype=labeltype, addedby=name,
-                               searchdb=database)
+                               searchdb=database, miscuts=miscuts)
             refseqs[taxonid] = database
             INPUT_DIR, usrfile = os.path.split(Path(psmfile).resolve().__str__())
             usrdata.indir, usrdata.datafile = INPUT_DIR, usrfile
