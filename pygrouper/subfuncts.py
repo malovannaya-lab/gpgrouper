@@ -154,7 +154,8 @@ def seq_modi(sequence, modifications, to_count):
     seqlist = list(sequence)
     modi_len = 0  # default length is zero, can change
     label = 0  # default label = 0, can change
-    if not any(c for c in sequence if (c.islower() or c == 'X')): # check if any modifications to deal with
+    # if not any(c for c in sequence if (c.islower() or c == 'X')): # check if any modifications to deal with
+    if not any(c == 'X' for c in sequence) and not modifications: # check if any modifications to deal with
         return sequence, sequence, 0, label
     modkeys = inside_paren.findall(modifications)
     modi_len = len([x for x in modkeys if any(mod in x for mod in to_count)])
@@ -164,7 +165,7 @@ def seq_modi(sequence, modifications, to_count):
     modpos = [0 if x.lower() == 'n-term' else int(x)-1 for x in modpos] # n terminal is at first position
     mod_dict = defaultdict(list)
     for (key,value) in zip(modpos, modkeys):
-        mod_dict[key].append(value)
+        mod_dict[key].append(value.lower())
     for key, values in mod_dict.items():
         mod_dict[key] = sorted(values)
     for ix, s in enumerate(sequence.upper()):

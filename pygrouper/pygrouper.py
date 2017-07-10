@@ -488,7 +488,8 @@ def rank_peptides(df, area_col, ranks_only=False):
     return df
 
 
-def flag_AUC_PSM(df, fv):
+def flag_AUC_PSM(df, fv, contaminant_label='__CONTAMINANT__'):
+
     if fv['pep'] =='all' : fv['pep'] = float('inf')
     if fv['idg'] =='all' : fv['idg'] = float('inf')
     df['AUC_UseFLAG'] = 1
@@ -519,6 +520,9 @@ def flag_AUC_PSM(df, fv):
            ['AUC_UseFLAG', 'PSM_UseFLAG']] = 0
 
     df.loc[ df['AUC_reflagger'] == 0, 'AUC_UseFLAG'] = 0
+
+    df.loc[ df['GeneIDs_All'].str.contains(contaminant_label), ['AUC_UseFLAG', 'PSM_UseFLAG'] ] = 0, 0
+
     return df
 
 def gene_taxon_map(usrdata, gene_taxon_dict):
@@ -573,7 +577,9 @@ def create_df(inputdf, label, inputcol='GeneID'):
                          'EXPLabelFLAG': labelflag.get(label, 0)})
 
 def select_good_peptides(usrdata, labelix):
-    """Selects peptides of a given label with the correct flag and at least one genecount"""
+    """Selects peptides of a given label with the correct flag and at least one genecount
+    The LabelFLAG is set here for TMT/iTRAQ/SILAC data.
+    """
     temp_df = usrdata[(usrdata['PSM_UseFLAG'] == 1) &
                       (usrdata['GeneIDCount_All'] > 0)].copy()  # should keep WL's
     temp_df['LabelFLAG'] = labelix
@@ -619,7 +625,7 @@ def get_peptides_for_gene(genes_df, temp_df):
     s_u2g_op = {'PeptideCount_S_u2g': 'nunique'}
     full = (temp_df.groupby('GeneID')['sequence_lower']
             .agg(full_op)
-            .assign(PeptidePrint = lambda x: x['PeptideSet'].str.join('_'))
+            .assign(PeptidePrint = lambda x: x['PeptideSet'].apply(sorted).str.join('_'))
     )
     full['PeptideSet'] = full.apply(lambda x : frozenset(x['PeptideSet']), axis=1)
 
@@ -1023,7 +1029,8 @@ def concat_isobar_e2gs(rec, run, search, outdir, cols=None, labeltype=None):
 # from ._orig_code import (extract_peptideinfo, _extract_peptideinfo,
 #                          _peptidome_matcher, peptidome_matcher)
 def grouper(usrdata, outdir='', database=None,
-            gid_ignore_file='', labels=dict()):
+            gid_ignore_file='', labels=dict(),
+            contaminant_label='__CONTAMINANT__'):
     """Function to group a psm file from PD after Mascot Search"""
 
     def print_log_msg(df_or_None=None, msg='', *args, **kwargs):
@@ -1097,7 +1104,7 @@ def grouper(usrdata, outdir='', database=None,
                   .pipe(redundant_peaks)  # remove ambiguous peaks
                   .pipe(sum_area)
                   .pipe(auc_reflagger)  # remove duplicate sequence areas
-                  .pipe(flag_AUC_PSM, usrdata.filtervalues)
+                  .pipe(flag_AUC_PSM, usrdata.filtervalues, contaminant_label=contaminant_label)
                   .pipe(split_on_geneid)
                   .assign(TaxonID = lambda x: x['GeneID'].map(gene_taxon_dict),
                           Symbol = lambda x: x['GeneID'].map(gene_symbol_dict),
@@ -1110,7 +1117,7 @@ def grouper(usrdata, outdir='', database=None,
     labeltypes = get_labels(usrdata.df, labels, usrdata.labeltype)
     additional_labels = list()
     # ======================== Plugin for multiple taxons  ===================== #
-    taxon_ids = usrdata.df['TaxonID'].dropna().unique()
+    taxon_ids = usrdata.df['TaxonID'].replace(['0', 0], np.nan).dropna().unique()
     taxon_totals = dict()
     # print(taxon_ids)
     if len(taxon_ids) == 1 or usrdata.no_taxa_redistrib:  # just 1 taxon id present
@@ -1146,6 +1153,9 @@ def grouper(usrdata, outdir='', database=None,
             time.ctime(), label))
         # ==========Select only peptides flagged  with good quality=========== #
         temp_df = select_good_peptides(usrdata.df, labelix)
+        if len(temp_df) == 0:  # only do if we actually have peptides selected
+            print('No good peptides found for {}'.format(labelix))
+            continue
         if usrdata.labeltype in ('TMT', 'iTRAQ'):
             isobar_area_col = 'PrecursorArea'  # we always use Precursor Area
             temp_df, area_col = redistribute_area_isobar(temp_df, label,
@@ -1163,8 +1173,6 @@ def grouper(usrdata, outdir='', database=None,
         elif usrdata.labeltype == 'SILAC':
             raise NotImplementedError('No support for SILAC experiments yet.')
         # ==================================================================== #
-        if len(temp_df) == 0:  # only do if we actually have peptides selected
-            continue
 
         genedata_out = usrdata.output_name(labelix, 'e2g', ext='tab')
         print('{}: Populating gene table for {}.'.format(datetime.now(),
@@ -1332,7 +1340,7 @@ def set_modifications(usrdata):
                   'Acetyl': 'ace', 'GlyGly' : 'gg', 'Label:13C(6)' : 'lab',
                   'Label:13C(6)+GlyGly' : 'labgg',
                   '\)\(': ':'}
-    modis_abbrev = usrdata.Modifications.replace(regex=to_replace)
+    modis_abbrev = usrdata.Modifications.replace(regex=to_replace).fillna('')
     modis_abbrev.name = 'Modifications_abbrev'
     usrdata = usrdata.join(modis_abbrev)
     modifications = usrdata.apply(lambda x :
@@ -1524,7 +1532,7 @@ def rename_refseq_cols(df, filename):
 
 def main(usrdatas=[], fullpeptread=False, inputdir='', outputdir='', refs=dict(),
          rawfilepath=None, column_aliases=dict(), gid_ignore_file='', labels=dict(),
-         raise_on_error=False):
+         raise_on_error=False, contaminant_label='__CONTAMINANT__'):
     """
     refs :: dict of taxonIDs -> refseq file names
     """
@@ -1562,7 +1570,8 @@ def main(usrdatas=[], fullpeptread=False, inputdir='', outputdir='', refs=dict()
         try:
             grouper(usrdata,
                     database=databases[usrdata.taxonid],
-                    gid_ignore_file=gid_ignore_file, labels=labels)
+                    gid_ignore_file=gid_ignore_file, labels=labels,
+                    contaminant_label=contaminant_label)
             usrdata.EXIT_CODE = 0
         except Exception as e:  # catch and store all exceptions, won't crash
                                 # the whole program at least

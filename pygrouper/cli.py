@@ -86,7 +86,9 @@ DEFAULTS = {'max_files': 99, 'pep': 1.0, 'enzyme': 'trypsin', 'configfile': None
 @click.option('-a', '--autorun', is_flag=True,
               help='Run automatically by scanning directory and connecting to iSPEC database.')
 @click.option('-c', '--contaminants', type=click.Path(exists=True, dir_okay=False),
-              help='Contaminants file of IDs to ignore when calculating with multiple taxa.')
+              help='Contaminants file of IDs to ignore when calculating with multiple taxa')
+@click.option('--contaminant-label', default='__CONTAMINANT__', show_default=True,
+              help='Contaminant label within FASTA file')
 @click.option('-d', '--database', type=click.Path(exists=True, dir_okay=False),
               help='Database file to use. Ignored with autorun.')
 @click.option('-e', '--enzyme', type=click.Choice(['trypsin', 'trypsin/p', 'chymotrypsin',
@@ -145,7 +147,7 @@ DEFAULTS = {'max_files': 99, 'pep': 1.0, 'enzyme': 'trypsin', 'configfile': None
               help='run numbers for the corresponding PSM files')
 @click.option('--search-no', type=int, multiple=True,
               help='search numbers for the corresponding PSM files')
-def run(autorun, contaminants, database, enzyme, interval, ion_score, ion_score_bins,
+def run(autorun, contaminants, contaminant_label, database, enzyme, interval, ion_score, ion_score_bins,
         labeltype, miscuts, modi, name, no_taxa_redistrib, outdir, psms_file,
         pipeline, idg, pep, qvalue, quant_source,
         rawfiledir, configfile, taxonid, zmin, zmax,
@@ -229,7 +231,7 @@ def run(autorun, contaminants, database, enzyme, interval, ion_score, ion_score_
         pygrouper.main(usrdatas=usrdatas,
                        inputdir=INPUT_DIR, outputdir=OUTPUT_DIR,
                        refs=refseqs, column_aliases=column_aliases,
-                       gid_ignore_file=contaminants, labels=LABELS)
+                       gid_ignore_file=contaminants, labels=LABELS, contaminant_label=contaminant_label)
 
 def find_rec_run_search(target):
     "Try to get record, run, and search numbers with regex of a target string with pattern \d+_\d+_\d+"
