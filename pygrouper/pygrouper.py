@@ -1423,7 +1423,17 @@ def match(usrdatas, refseqs):
         group = list(g)
         taxonid = group[0].taxonid
         miscuts = group[0].miscuts
-        database = _match(group, refseqs[taxonid], miscuts=miscuts)
+        refseq = refseqs.get(taxonid)
+
+        if refseq is None:
+            err = 'No refseq file available for {}'.format(taxonid)
+            warn(err)
+            for u in group:
+                u.ERROR = err
+                u.EXIT_CODE = 1
+            continue
+
+        database = _match(group, refseq, miscuts=miscuts)
         databases[taxonid] = database
     # for organism in refseqs:
     #     if any(x == int(organism) for x in inputdata_refseqs):
