@@ -796,40 +796,53 @@ def distribute_area(temp_df, genes_df, area_col, taxon_totals, taxon_redistribut
 
    return
 
+def _set2_or_3(row, genes_df):
 
-def _assign_gene_sets(genes_df,genes_df_all, temp_df ):
-    IDquery, Pquery = genes_df[['GeneID','PeptideSet']]
-
-    if any(temp_df[temp_df.GeneID==IDquery]['GeneIDCount_All']==1):
-        idset = 1
-    elif not any(genes_df_all.PeptideSet.values > Pquery):
-        idset = 2
-    elif any(genes_df_all.PeptideSet.values > Pquery):
-        idset = 3
-    try:
-        idgroup = min(temp_df[temp_df.GeneID == IDquery].PSM_IDG)
-    except ValueError:
-        idgroup = 0
-    try :
-        idgroup_u2g  = min(temp_df[(temp_df.GeneID == IDquery) & (temp_df.GeneIDCount_All == 1)].PSM_IDG)
-    except ValueError :
-        idgroup_u2g = 0
-
-    return idset, idgroup, idgroup_u2g
-
-def assign_gene_sets(genes_df, temp_df):
-    """Assign IDSet and IDGroup"""
-    genesets = genes_df.apply(_assign_gene_sets, args=(genes_df, temp_df,), axis=1)
-    (genes_df['IDSet'], genes_df['IDGroup'],
-     genes_df['IDGroup_u2g']) = zip(*genesets)
-
-    return genes_df
-
-def _set2_or_3(row, allsets):
     peptset = row.PeptideSet
+    allsets = genes_df.PeptideSet.unique()
+
     if any(peptset < allsets):
         return 3
-    return 2
+
+    # check if is set 3 across multiple genes, or is set2
+    gid = row.GeneID
+
+    # sel = genes_df[ (genes_df.IDSet == 1) &
+    #                 (genes_df.PeptideSet & peptset) ].query('GeneID != @gid')
+
+    sel = genes_df[(genes_df.PeptideSet & peptset) ].query('GeneID != @gid')
+    sel_idset1 = sel.query('IDSet == 1')
+
+    in_pop = sel.PeptideSet
+    in_pop_set1 = sel_idset1.PeptideSet
+
+    in_row = sel.apply( lambda x: peptset - x['PeptideSet'], axis=1 )
+
+    if all(in_row.apply(len) == 0):  # is a subset of something
+        return 3
+
+    in_pop_all = set(in_pop.apply(tuple).apply(pd.Series).stack().unique())
+
+    if not in_pop_set1.empty:
+        in_pop_all_set1 = set(in_pop_set1.apply(tuple).apply(pd.Series).stack().unique())
+    else:
+        in_pop_all_set1 = set()
+
+    diff = (peptset - in_pop_all)  # check if is not a subset of anything
+
+    diff_idset1 = (peptset - in_pop_all_set1)  # check if is not a subset of set1 ids
+
+    if len( diff_idset1 ) == 0:  # is a subset of idset1 ids
+        return 3
+
+    elif len( diff ) > 0: # is not a subset of anything
+        return 2
+
+    else:
+        if any(sel.query('IDSet != 1').PeptideSet == peptset):
+            return 2  # shares all peptides with another, and is not a subset of anything
+
+    return 3
 
 class _DummyDataFrame:
     def eat_args(self, *args, **kwargs):
@@ -849,11 +862,13 @@ def check_length_in_pipe(df):
 
 def assign_gene_sets(genes_df, temp_df):
     all_ = genes_df.PeptideSet.unique()
-    genes_df['IDSet'] = (genes_df.query('PeptideCount_u2g == 0')
+    genes_df.loc[genes_df.PeptideCount_u2g > 0, 'IDSet'] = 1
+    genes_df.loc[genes_df.PeptideCount_u2g == 0, 'IDSet'] = \
+                            (genes_df.query('PeptideCount_u2g == 0')
                              .pipe(check_length_in_pipe)
-                             .apply(_set2_or_3, args=(all_,),
+                             .apply(_set2_or_3, args=(genes_df,),
                                     axis=1))
-    genes_df['IDSet'] = genes_df['IDSet'].fillna(1).astype(np.int8)
+    genes_df['IDSet'] = genes_df['IDSet'].fillna(3).astype(np.int8)
     # if u2g count greater than 0 then set 1
     gpg = (temp_df.groupby('GeneID')
            .PSM_IDG.min()
