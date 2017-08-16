@@ -1491,11 +1491,15 @@ def set_up(usrdatas, column_aliases):
             continue
         if column_aliases:
             standard_names = column_identifier(usrdata.df, column_aliases)
+            protected_names = ('Modified sequence')
             usrdata.df.rename(columns={v: k
                                        for k,v in standard_names.items()},
                               inplace=True
             )
-            redundant_cols = [x for x in usrdata.df.columns if x not in standard_names.keys()]
+            redundant_cols = [x for x in usrdata.df.columns if
+                              (x not in standard_names.keys() and
+                               x not in protected_names)
+            ]
             # print(usrdata.df.memory_usage().sum())
             usrdata.df = usrdata.df.drop(redundant_cols, axis=1)
             # print(usrdata.df.memory_usage().sum())
