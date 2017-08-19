@@ -100,7 +100,7 @@ DATA_COLS = ['EXPRecNo', 'EXPRunNo', 'EXPSearchNo',
              'SequenceModiCount', 'LabelFLAG',
              'PeptRank', 'AUC_UseFLAG', 'PSM_UseFLAG',
              'Peak_UseFLAG', 'SequenceArea', 'PrecursorArea_split',
-             'RazorArea',
+             # 'RazorArea',
              'PrecursorArea_dstrAdj']
 
 try:
@@ -111,8 +111,8 @@ except ImportError:
 
 
 def _apply_df(input_args):
-    df, func, func_args, kwargs = input_args
-    return df.apply(func, args=(func_args), **kwargs)
+    df, func, i, func_args, kwargs = input_args
+    return i, df.apply(func, args=(func_args), **kwargs)
 
 def apply_by_multiprocessing(df, func, workers=1, func_args=None, **kwargs):
     """
@@ -122,17 +122,21 @@ def apply_by_multiprocessing(df, func, workers=1, func_args=None, **kwargs):
         func_args = tuple()
 
     if workers == 1 or not hasattr(os, 'fork'):
-        return _apply_df((df, func, func_args, kwargs,))
+        result = _apply_df((df, func, 0, func_args, kwargs,))
+        return result[1]
 
 
     pool = multiprocessing.Pool(processes=workers)
     with multiprocessing.Pool(processes=workers) as pool:
 
-        result = pool.map(_apply_df, [(d, func, func_args, kwargs,)
-                                      for d in np.array_split(df, workers)])
+        result = pool.map(_apply_df, [(d, func, i, func_args, kwargs,)
+                                      for i, d in enumerate(np.array_split(df, workers))]
+        )
         # pool.close()
 
-    return pd.concat(result)
+    result = sorted(result, key=lambda x: x[0])
+
+    return pd.concat([x[1] for x in result])
 
 
 def quick_save(df,name='df_snapshot.p', path=None, q=False):
