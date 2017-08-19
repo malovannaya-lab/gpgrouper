@@ -60,9 +60,11 @@ def rolling_window(seq,length_of_window):
             break
         yield tuple(window)
 
-def protease(seq,minlen = 0, cutsites=[], exceptions=[], miscuts=2):
+def protease(seq,minlen = 0, cutsites=tuple(), exceptions=None, miscuts=2):
     frags = []
     chop = ''
+    if exceptions is None:
+        exceptions = tuple()
     while seq:
         cuts = [seq.find(x) for x in cutsites]
         if len(cuts) > 0 :

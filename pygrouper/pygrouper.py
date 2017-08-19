@@ -12,6 +12,7 @@ from warnings import warn
 from configparser import ConfigParser
 from itertools import repeat
 import traceback
+import multiprocessing
 
 import numpy as np
 import pandas as pd
@@ -107,6 +108,32 @@ try:
     imagetitle = True
 except ImportError:
     imagetitle = False
+
+
+def _apply_df(input_args):
+    df, func, func_args, kwargs = input_args
+    return df.apply(func, args=(func_args), **kwargs)
+
+def apply_by_multiprocessing(df, func, workers=1, func_args=None, **kwargs):
+    """
+    Spawns multiple processes if has os.fork and workers > 1
+    """
+    if func_args is None:
+        func_args = tuple()
+
+    if workers == 1 or not hasattr(os, 'fork'):
+        return _apply_df((df, func, func_args, kwargs,))
+
+
+    pool = multiprocessing.Pool(processes=workers)
+    with multiprocessing.Pool(processes=workers) as pool:
+
+        result = pool.map(_apply_df, [(d, func, func_args, kwargs,)
+                                      for d in np.array_split(df, workers)])
+        # pool.close()
+
+    return pd.concat(result)
+
 
 def quick_save(df,name='df_snapshot.p', path=None, q=False):
     import pickle
@@ -226,7 +253,7 @@ def get_gid_ignore_list(inputfile):
     return [x.strip() for x in open(inputfile, 'r') if
             not x.strip().startswith('#')]
 
-def _extract_peptideinfo(row):
+def _format_peptideinfo(row):
 
     if len(row) == 0:
         return ('', 0, '', 0, '', 0, '', 0, '', 0, ())
@@ -256,6 +283,9 @@ def _extract_peptideinfo(row):
     )
     return result
 
+def _extract_peptideinfo(row, database):
+    return _format_peptideinfo(database.loc[row])
+
 def extract_peptideinfo(usrdata, database):
     filter_int = partial(filter, lambda x : x.isdigit())
     to_int = partial(map, int)
@@ -269,7 +299,13 @@ def extract_peptideinfo(usrdata, database):
            # .to_frame()
            )
 
-    info = ixs.apply(lambda x : _extract_peptideinfo(database.loc[x])).apply(pd.Series)
+    # info = ixs.apply(lambda x : _format_peptideinfo(database.loc[x])).apply(pd.Series)
+    info = ixs.pipe(apply_by_multiprocessing,
+                    _extract_peptideinfo,
+                    func_args=(database,),
+                    workers=WORKERS,
+    ).apply(pd.Series)
+
     info.columns = ['GeneIDs_All', 'GeneIDCount_All', 'TaxonIDs_All', 'TaxonIDCount_All', 'ProteinGIs_All',
                     'ProteinGICount_All', 'ProteinRefs_All', 'ProteinRefCount_All', 'HIDs', 'HIDCount_All',
                     'GeneCapacities']
@@ -782,13 +818,20 @@ def distribute_area(temp_df, genes_df, area_col, taxon_totals, taxon_redistribut
    q = 'AUC_UseFLAG == 1 & GeneIDCount_All > 1'
    distarea = 'PrecursorArea_dstrAdj'
    temp_df[distarea] = 0
+   # temp_df[distarea] = (temp_df.query(q)
+   #                      .apply(
+   #                          _distribute_area, args=(genes_df,
+   #                                                      area_col,
+   #                                                      taxon_totals,
+   #                                                      taxon_redistribute),
+   #                          axis=1)
+   # )
    temp_df[distarea] = (temp_df.query(q)
-                        .apply(
-                            _distribute_area, args=(genes_df,
-                                                        area_col,
-                                                        taxon_totals,
-                                                        taxon_redistribute),
-                            axis=1)
+                        .pipe(apply_by_multiprocessing,
+                              _distribute_area,
+                              workers=WORKERS,
+                              func_args=(genes_df, area_col, taxon_totals, taxon_redistribute),
+                              axis=1)
    )
    one_id = temp_df.GeneIDCount_All == 1
    temp_df.loc[ one_id , distarea ] = temp_df.loc[ one_id, area_col ]
@@ -796,10 +839,10 @@ def distribute_area(temp_df, genes_df, area_col, taxon_totals, taxon_redistribut
 
    return
 
-def _set2_or_3(row, genes_df):
+def _set2_or_3(row, genes_df, allsets):
 
     peptset = row.PeptideSet
-    allsets = genes_df.PeptideSet.unique()
+    # allsets = genes_df.PeptideSet.unique()  # calculate outside this function for performance boost
 
     if any(peptset < allsets):
         return 3
@@ -817,9 +860,6 @@ def _set2_or_3(row, genes_df):
     in_pop_set1 = sel_idset1.PeptideSet
 
     in_row = sel.apply( lambda x: peptset - x['PeptideSet'], axis=1 )
-
-    if all(in_row.apply(len) == 0):  # is a subset of something
-        return 3
 
     in_pop_all = set(in_pop.apply(tuple).apply(pd.Series).stack().unique())
 
@@ -839,8 +879,34 @@ def _set2_or_3(row, genes_df):
         return 2
 
     else:
-        if any(sel.query('IDSet != 1').PeptideSet == peptset):
+
+        sel_not_idset1 = sel.query('IDSet != 1')
+
+        if any(sel_not_idset1.PeptideSet == peptset):
             return 2  # shares all peptides with another, and is not a subset of anything
+
+        # need to check if is a subset of everything combined, but not a subset of one thing
+        # ex:
+        #        PEPTIDES
+        # row    =  A   B
+        # match1 =  A
+        # match2 =      B
+        if (all( (peptset - sel.PeptideSet).apply(bool) ) and
+            not all( (sel_not_idset1.PeptideSet - peptset).apply(bool) )
+        ):
+            return 2
+        else:
+            pept_lengths = sel_not_idset1.PeptideSet.apply(len)
+            if len(peptset) >= pept_lengths.max():
+                return 2
+            else:
+                return 3
+
+            # len_shared = sel_not_idset1.PeptideSet.apply(lambda x: x & peptset).apply(len)
+            # max_shared = len_shared.max()
+            # all_shared_pepts = (set([x for y in sel_not_idset1.PeptideSet.values for x in y])
+            #                     & peptset)
+
 
     return 3
 
@@ -862,12 +928,15 @@ def check_length_in_pipe(df):
 
 def assign_gene_sets(genes_df, temp_df):
     all_ = genes_df.PeptideSet.unique()
+    allsets = genes_df.PeptideSet.unique()
     genes_df.loc[genes_df.PeptideCount_u2g > 0, 'IDSet'] = 1
     genes_df.loc[genes_df.PeptideCount_u2g == 0, 'IDSet'] = \
                             (genes_df.query('PeptideCount_u2g == 0')
                              .pipe(check_length_in_pipe)
-                             .apply(_set2_or_3, args=(genes_df,),
-                                    axis=1))
+                             # .apply(_set2_or_3, args=(genes_df, allsets), axis=1))
+                             .pipe(apply_by_multiprocessing, _set2_or_3, genes_df=genes_df, allsets=allsets,
+                                   axis=1, workers=WORKERS)
+                            )
     genes_df['IDSet'] = genes_df['IDSet'].fillna(3).astype(np.int8)
     # if u2g count greater than 0 then set 1
     gpg = (temp_df.groupby('GeneID')
@@ -989,6 +1058,9 @@ def set_gene_gpgroups(genes_df, temp_df):
     def gpg_all(gid, gene_pept_mapping, pept_group_mapping):
         gpgs = set()
         for pept in gene_pept_mapping.get(gid):
+            mapping = pept_group_mapping.get(pept)
+            if mapping is None:
+                continue
             gpgs |= pept_group_mapping.get(pept)
         return SEP.join(str(int(x)) for x in sorted(gpgs))
 
@@ -996,6 +1068,12 @@ def set_gene_gpgroups(genes_df, temp_df):
                                                                     gene_pept_mapping,
                                                                     pept_group_mapping),
     axis=1)
+    # do not need to multiprocess this
+    # genes_df['GPGroups_All'] = genes_df.GeneID.pipe(apply_by_multiprocessing,
+    #                                                 gpg_all,
+    #                                                 func_args=(gene_pept_mapping, pept_group_mapping),
+    #                                                 workers=WORKERS,
+    # )
 
     genes_df['GPGroup'] = genes_df['GPGroup'].fillna(0).astype(np.int)
     # genes_df['GPGroup'].replace(to_replace='', value=float('NaN'),
@@ -1224,7 +1302,7 @@ def grouper(usrdata, outdir='', database=None,
         now = datetime.now().strftime("%m/%d/%Y %H:%M:%S")
         genes_df = (genes_df
                     .pipe(calculate_gene_dstrarea, temp_df, normalize)
-                    .pipe(calculate_gene_razorarea, temp_df, normalize)
+                    # .pipe(calculate_gene_razorarea, temp_df, normalize)
                     .assign(iBAQ_dstrAdj = lambda x:
                             np.divide(x['AreaSum_dstrAdj'],
                                       x['GeneCapacity']))
@@ -1385,9 +1463,17 @@ def load_fasta(refseq_file):
         df[col] = ''
     return df
 
+ENZYME = {'trypsin': dict(cutsites=('K', 'R'), exceptions=None),
+          'trypsin/P': dict(cutsites=('K', 'R'), exceptions=('P',)),
+}
+# TODO: add the rest
+ # 'trypsin/P', 'chymotrypsin', 'LysC', 'LysN', 'GluC', 'ArgC' 'AspN',}
 
-def _match(usrdatas, refseq_file, miscuts=2):
-    print('Using peptidome {} '.format(refseq_file))
+def _match(usrdatas, refseq_file, miscuts=2, enzyme='trypsin/P'):
+
+    enzyme_rule = ENZYME[enzyme]
+    print('Using peptidome {} with rule {}'.format(refseq_file, enzyme))
+
     # database = pd.read_table(refseq_file, dtype=str)
     # rename_refseq_cols(database, refseq_file)
     database = load_fasta(refseq_file)
@@ -1398,8 +1484,9 @@ def _match(usrdatas, refseq_file, miscuts=2):
     for ix, row in database.iterrows():
         counter += 1
         fragments, fraglen = protease(row.sequence, minlen=7,
-                                      cutsites=['K', 'R'],
-                                      exceptions=['P'],
+                                      **enzyme_rule,
+                                      # cutsites=['K', 'R'],
+                                      # exceptions=['P'],
                                       miscuts=miscuts
         )
         database.loc[ix, 'capacity'] = fraglen
@@ -1425,7 +1512,7 @@ def _match(usrdatas, refseq_file, miscuts=2):
 
     return database
 
-def match(usrdatas, refseqs):
+def match(usrdatas, refseqs, enzyme='trypsin/P'):
     """
     Match psms with fasta database
     Input is list of UserData objects and an optional dictionary of refseqs
@@ -1448,7 +1535,7 @@ def match(usrdatas, refseqs):
                 u.EXIT_CODE = 1
             continue
 
-        database = _match(group, refseq, miscuts=miscuts)
+        database = _match(group, refseq, miscuts=miscuts, enzyme=enzyme)
         databases[taxonid] = database
     # for organism in refseqs:
     #     if any(x == int(organism) for x in inputdata_refseqs):
@@ -1558,14 +1645,17 @@ def rename_refseq_cols(df, filename):
         to_rename[matched_col[0]] = header
     df.rename(columns=to_rename, inplace=True)
 
+WORKERS = 1
 
 def main(usrdatas=[], fullpeptread=False, inputdir='', outputdir='', refs=dict(),
          rawfilepath=None, column_aliases=dict(), gid_ignore_file='', labels=dict(),
-         raise_on_error=False, contaminant_label='__CONTAMINANT__'):
+         raise_on_error=False, contaminant_label='__CONTAMINANT__', enzyme='trypsin/P', workers=1):
     """
     refs :: dict of taxonIDs -> refseq file names
     """
     # ====================Configuration Setup / Loading======================= #
+    global WORKERS
+    WORKERS = workers
     if imagetitle:
         fancyprint(program_title, 12)  # ascii rt
         #  fancyprint('Malovannaya lab',10)  #
@@ -1588,7 +1678,7 @@ def main(usrdatas=[], fullpeptread=False, inputdir='', outputdir='', refs=dict()
     if all(usrdata.EXIT_CODE != 0 for usrdata in usrdatas):
         return usrdatas
 
-    databases = match([x for x in usrdatas if x.EXIT_CODE == 0], refs)
+    databases = match([x for x in usrdatas if x.EXIT_CODE == 0], refs, enzyme=enzyme)
     if all(usrdata.EXIT_CODE != 0 for usrdata in usrdatas):
         return usrdatas
 
