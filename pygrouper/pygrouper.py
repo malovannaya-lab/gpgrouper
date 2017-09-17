@@ -659,12 +659,11 @@ def get_gene_info(genes_df, database, col='GeneID'):
 
 
 def get_peptides_for_gene(genes_df, temp_df):
-    full_op = {'PeptideSet': 'unique', 'PeptideCount': 'nunique'}
-    strict_op = {'PeptideCount_S': 'nunique'}
-    u2g_op = {'PeptideCount_u2g': 'nunique'}
-    s_u2g_op = {'PeptideCount_S_u2g': 'nunique'}
+
     full = (temp_df.groupby('GeneID')['sequence_lower']
-            .agg(full_op)
+            .agg((lambda x: frozenset(x), 'nunique'))
+            .rename(columns={'<lambda>': 'PeptideSet', 'nunique': 'PeptideCount'})
+            # .agg(full_op)
             .assign(PeptidePrint = lambda x: x['PeptideSet'].apply(sorted).str.join('_'))
     )
     full['PeptideSet'] = full.apply(lambda x : frozenset(x['PeptideSet']), axis=1)
@@ -675,15 +674,18 @@ def get_peptides_for_gene(genes_df, temp_df):
 
     uniq = (temp_df.query(q_uniq)
             .groupby('GeneID')['sequence_lower']
-            .agg(u2g_op))
+            .agg('nunique')
+            .to_frame('PeptideCount_u2g'))
 
     strict = (temp_df.query(q_strict)
               .groupby('GeneID')['sequence_lower']
-              .agg(strict_op))
+              .agg('nunique')
+              .to_frame('PeptideCount_S'))
 
     s_u2g= (temp_df.query(q_strict_u)
             .groupby('GeneID')['sequence_lower']
-            .agg(s_u2g_op))
+            .agg('nunique')
+            .to_frame('PeptideCount_S_u2g'))
 
     result = pd.concat((full, uniq, strict, s_u2g), copy=False, axis=1).fillna(0)
     ints = ['' + x for x in ('PeptideCount', 'PeptideCount_u2g', 'PeptideCount_S',
