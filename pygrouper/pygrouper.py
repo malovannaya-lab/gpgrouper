@@ -633,17 +633,26 @@ def get_peptides_for_gene(genes_df, temp_df):
     q_strict = 'PSM_IDG < 4'
     q_strict_u = '{} & {}'.format(q_uniq, q_strict)
 
-    uniq = (temp_df.query(q_uniq)
-            .groupby('GeneID')['sequence_lower']
-            .agg(u2g_op))
+    try:
+        uniq = (temp_df.query(q_uniq)
+                .groupby('GeneID')['sequence_lower']
+                .agg(u2g_op))
+    except IndexError:
+        uniq = pd.DataFrame(columns=['PeptideCount_u2g'])
 
-    strict = (temp_df.query(q_strict)
-              .groupby('GeneID')['sequence_lower']
-              .agg(strict_op))
+    try:
+        strict = (temp_df.query(q_strict)
+                  .groupby('GeneID')['sequence_lower']
+                  .agg(strict_op))
+    except IndexError:
+        strict = pd.DataFrame(columns=['PeptideCount_S'])
 
-    s_u2g= (temp_df.query(q_strict_u)
-            .groupby('GeneID')['sequence_lower']
-            .agg(s_u2g_op))
+    try:
+        s_u2g = (temp_df.query(q_strict_u)
+                 .groupby('GeneID')['sequence_lower']
+                 .agg(s_u2g_op))
+    except IndexError:
+        s_u2g = pd.DataFrame(columns=['PeptideCount_S_u2g'])
 
     result = pd.concat((full, uniq, strict, s_u2g), copy=False, axis=1).fillna(0)
     ints = ['' + x for x in ('PeptideCount', 'PeptideCount_u2g', 'PeptideCount_S',
@@ -1266,7 +1275,10 @@ def grouper(usrdata, outdir='', database=None,
 
         isobar_output.reset_index(inplace=True)
         rank_df = pd.DataFrame()
-        for label in isobar_output.LabelFLAG.unique():
+        if 'LabelFLAG' not in isobar_output:
+            isobar_output['LabelFLAG'] = np.nan
+            isobar_output['PeptRank'] = 0
+        for label in isobar_output.LabelFLAG.dropna().unique():
             q = 'LabelFLAG == @label'
             isobar_rank = rank_peptides(isobar_output.query(q),
                                         area_col=area_col_to_use,
@@ -1372,6 +1384,7 @@ def load_fasta(refseq_file):
 
 
 def _match(usrdatas, refseq_file, miscuts=2):
+
     print('Using peptidome {} '.format(refseq_file))
     # database = pd.read_table(refseq_file, dtype=str)
     # rename_refseq_cols(database, refseq_file)
@@ -1480,7 +1493,8 @@ def set_up(usrdatas, column_aliases):
                                        for k,v in standard_names.items()},
                               inplace=True
             )
-            redundant_cols = [x for x in usrdata.df.columns if x not in standard_names.keys()]
+            protected = ('Modified sequence', )
+            redundant_cols = [x for x in usrdata.df.columns if x not in standard_names.keys() and x not in protected]
             # print(usrdata.df.memory_usage().sum())
             usrdata.df = usrdata.df.drop(redundant_cols, axis=1)
             # print(usrdata.df.memory_usage().sum())
