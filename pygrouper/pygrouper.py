@@ -528,7 +528,7 @@ def rank_peptides(df, area_col, ranks_only=False):
     return df
 
 
-def flag_AUC_PSM(df, fv, contaminant_label='__CONTAMINANT__'):
+def flag_AUC_PSM(df, fv, contaminant_label='__CONTAMINANT__', phospho=False):
 
     if fv['pep'] =='all' : fv['pep'] = float('inf')
     if fv['idg'] =='all' : fv['idg'] = float('inf')
@@ -562,6 +562,9 @@ def flag_AUC_PSM(df, fv, contaminant_label='__CONTAMINANT__'):
     df.loc[ df['AUC_reflagger'] == 0, 'AUC_UseFLAG'] = 0
 
     df.loc[ df['GeneIDs_All'].str.contains(contaminant_label), ['AUC_UseFLAG', 'PSM_UseFLAG'] ] = 0, 0
+
+    if phospho:
+        df.loc[ ~df['SequenceModi'].str.contains('pho', case=False), 'AUC_UseFLAG'] = 0
 
     return df
 
@@ -828,7 +831,9 @@ def _distribute_area(inputdata, genes_df, area_col, taxon_totals=None, taxon_red
     return distArea
 
 def distribute_area(temp_df, genes_df, area_col, taxon_totals, taxon_redistribute=True):
-   """Distribute psm area based on unique gene product area"""
+   """Distribute psm area based on unique gene product area
+   Checks for AUC_UseFLAG==1 for whether or not to use each peak for quantification
+   """
 
    q = 'AUC_UseFLAG == 1 & GeneIDCount_All > 1'
    distarea = 'PrecursorArea_dstrAdj'
@@ -848,7 +853,7 @@ def distribute_area(temp_df, genes_df, area_col, taxon_totals, taxon_redistribut
                               func_args=(genes_df, area_col, taxon_totals, taxon_redistribute),
                               axis=1)
    )
-   one_id = temp_df.GeneIDCount_All == 1
+   one_id = (temp_df.GeneIDCount_All == 1) & (temp_df.AUC_UseFLAG == 1)
    temp_df.loc[ one_id , distarea ] = temp_df.loc[ one_id, area_col ]
    temp_df[distarea].fillna(0, inplace=True)
 
@@ -1212,7 +1217,8 @@ def grouper(usrdata, outdir='', database=None,
                   .pipe(redundant_peaks)  # remove ambiguous peaks
                   .pipe(sum_area)
                   .pipe(auc_reflagger)  # remove duplicate sequence areas
-                  .pipe(flag_AUC_PSM, usrdata.filtervalues, contaminant_label=contaminant_label)
+                  .pipe(flag_AUC_PSM, usrdata.filtervalues, contaminant_label=contaminant_label,
+                        phospho=usrdata.phospho)
                   .pipe(split_on_geneid)
                   .assign(TaxonID = lambda x: x['GeneID'].map(gene_taxon_dict),
                           Symbol = lambda x: x['GeneID'].map(gene_symbol_dict),
@@ -1221,7 +1227,6 @@ def grouper(usrdata, outdir='', database=None,
                           ProteinRefs = lambda x: x['GeneID'].map(gene_protref_dict),
                   )
     )
-
     labeltypes = get_labels(usrdata.df, labels, usrdata.labeltype)
     additional_labels = list()
     # ======================== Plugin for multiple taxons  ===================== #

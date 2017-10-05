@@ -129,6 +129,8 @@ DEFAULTS = {'max_files': 99, 'pep': 1.0, 'enzyme': 'trypsin/P', 'configfile': No
 @click.option('-p', '--psms-file', type=click.Path(exists=True, dir_okay=False),
               multiple=True,
               help='Tab deliminated file of psms to be grouped')
+@click.option('--phospho', is_flag=True, default=False, show_default=True,
+              help="Only use phospho-modified peptides for quantification")
 @click.option('--pipeline', type=click.Choice(['PD', 'MQ']), show_default=True,
               help='Pipeline used for generating PSM file.')
 @click.option('--idg', type=int, default=DEFAULTS['idg'], show_default=True,
@@ -161,11 +163,10 @@ DEFAULTS = {'max_files': 99, 'pep': 1.0, 'enzyme': 'trypsin/P', 'configfile': No
 @click.option('--workers', type=int, callback=validate_cores, default=1, show_default=True,
               help="""Number of workers to use when multiprocessing is appropriate.
               Has no effect if the OS cannot fork""")
-def run(autorun, contaminants, contaminant_label, database, enzyme, interval, ion_score, ion_score_bins,
-        labeltype, miscuts, modi, name, no_taxa_redistrib, outdir, psms_file,
-        pipeline, idg, pep, qvalue, quant_source,
-        rawfiledir, configfile, taxonid, zmin, zmax,
-        record_no, run_no, search_no, workers):
+def run(autorun, contaminants, contaminant_label, database, enzyme, interval, ion_score,
+        ion_score_bins, labeltype, miscuts, modi, name, no_taxa_redistrib, outdir, psms_file,
+        pipeline, idg, pep, qvalue, quant_source, rawfiledir, configfile, taxonid, zmin, zmax,
+        phospho, record_no, run_no, search_no, workers):
     """Run PyGrouper"""
 
     if not all([database, psms_file]) and not autorun:
@@ -183,7 +184,9 @@ def run(autorun, contaminants, contaminant_label, database, enzyme, interval, io
     refseqs = config.refseqs
     filtervalues = config.filtervalues
     if filtervalues:
-        click.echo('Using predefined config file')
+        s = ', '.join(['ion_score', 'ion_score_bins', 'qvalue', 'pep',
+                   'idg', 'zmin', 'zmax', 'modi'])
+        click.echo('Using predefined config file. Specifying any of {} via a flag will have no effect'.format(s))
     column_aliases = config.column_aliases
     gid_ignore_file = contaminants or config.contaminants
     if autorun:
@@ -213,7 +216,7 @@ def run(autorun, contaminants, contaminant_label, database, enzyme, interval, io
             usrdata = UserData(recno=recno, runno=runno, searchno=searchno, taxonid=taxonid,
                                datafile=psmfile, indir=INPUT_DIR, outdir=OUTPUT_DIR,
                                rawfiledir=RAWFILE_DIR, no_taxa_redistrib=no_taxa_redistrib,
-                               labeltype=labeltype, addedby=name,
+                               labeltype=labeltype, addedby=name, phospho=phospho,
                                searchdb=database, miscuts=miscuts)
             refseqs[taxonid] = database
             INPUT_DIR, usrfile = os.path.split(Path(psmfile).resolve().__str__())
@@ -242,13 +245,14 @@ def run(autorun, contaminants, contaminant_label, database, enzyme, interval, io
 
 
             usrdatas.append(usrdata)
-        pygrouper.main(usrdatas=usrdatas,
-                       inputdir=INPUT_DIR, outputdir=OUTPUT_DIR,
-                       refs=refseqs, column_aliases=column_aliases,
-                       gid_ignore_file=contaminants, labels=LABELS, contaminant_label=contaminant_label,
-                       enzyme=enzyme,
-                       workers=workers
-        )
+        ret = pygrouper.main(usrdatas=usrdatas, inputdir=INPUT_DIR, outputdir=OUTPUT_DIR,
+                             refs=refseqs, column_aliases=column_aliases,
+                             gid_ignore_file=contaminants, labels=LABELS,
+                             contaminant_label=contaminant_label, enzyme=enzyme, workers=workers )
+        if not all(x.EXIT_CODE==0 for x in ret):
+            raise RuntimeError(
+                '\n'.join([x.ERROR for x in ret])
+            )
 
 def find_rec_run_search(target):
     "Try to get record, run, and search numbers with regex of a target string with pattern \d+_\d+_\d+"

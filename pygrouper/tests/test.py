@@ -340,7 +340,7 @@ class TestAreaTMT(unittest.TestCase):
         n = 5
 
         d = dict(Sequence       = ['aAAAAAAK', 'bBBBBBBK', 'bBBBBBBK',
-                                   'cBACBACBAK', 'aBCABCABCK'],
+                                   'cBACBACBAK', 'aBCaBCABCK'],
                  Modifications  = ['N-Term(TMT6plex)'] * n,
                  PrecursorArea  = [np.multiply(x, np.power(10, 2))
                                    for x in [100, 100, 100, 80, 20]],
@@ -354,6 +354,7 @@ class TestAreaTMT(unittest.TestCase):
                  TMT_126        = [2, 2, 2, 4, 4],
                  TMT_131        = [4, 4, 4, 4, 4]
         )
+        d['Modifications'][-1] += '; A4(Phospho)'
 
         df = pd.DataFrame(d)
         df.to_csv(self.PSMS, sep='\t', index=False)
@@ -379,6 +380,36 @@ class TestAreaTMT(unittest.TestCase):
                     os.remove(f)
                 except (FileNotFoundError):
                     pass
+
+    def test_phospho(self):
+        runner = CliRunner()
+        response = runner.invoke(cli.cli, ['run', '--database', self.FASTA,
+                                           '--psms-file', self.PSMS,
+                                           '--taxonid', 9606,
+                                           '--outdir', './testdata',
+                                           '--configfile', CONFIG_FILE,
+                                           '--labeltype', 'none',
+                                           '--phospho'
+                                           ])
+
+        # print full traceback if there is a failure
+        self.assertEqual(0, response.exit_code,
+                         msg='\n{}\n{!r}'.format(''.join(traceback.format_tb(response.exc_info[-1])),
+                                                                             response.exc_info[1])
+                         )
+
+        df = pd.read_table('./testdata/10101_1_1_none_0_e2g.tab').fillna(0)
+        self.assertGreater( df.query('GeneID==999').AreaSum_dstrAdj.values[0], 0)
+
+        for gid in df.GeneID.unique():  # rest should be zero
+            if gid == 999:
+                continue
+            self.assertEqual(df.loc[df.GeneID==gid, 'AreaSum_dstrAdj'].values[0],
+                               0)
+
+            self.assertGreater(df.loc[df.GeneID==gid, 'PeptideCount'].values[0],
+                               0)
+
 
     def test_labelfree(self):
         runner = CliRunner()
