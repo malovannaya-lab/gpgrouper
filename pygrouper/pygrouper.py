@@ -564,7 +564,7 @@ def flag_AUC_PSM(df, fv, contaminant_label='__CONTAMINANT__', phospho=False):
     df.loc[ df['GeneIDs_All'].str.contains(contaminant_label), ['AUC_UseFLAG', 'PSM_UseFLAG'] ] = 0, 0
 
     if phospho:
-        df.loc[ ~df['SequenceModi'].str.contains('pho', case=False), 'AUC_UseFLAG'] = 0
+        df.loc[ ~df['SequenceModi'].str.contains('pho', case=False), ['AUC_UseFLAG', 'PSM_UseFLAG'] ] = 0, 0
 
     return df
 

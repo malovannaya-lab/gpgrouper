@@ -134,7 +134,10 @@ class UserData:
 
     @property
     def filterstamp(self):
-        return 'is{ion_score}_qv{qvalue}_pep{pep}_idg{idg}_z{zmin}to{zmax}_mo{modi}_is_bins{ion_score_bins}'.format(**self.filtervalues)
+        s = 'is{ion_score}_qv{qvalue}_pep{pep}_idg{idg}_z{zmin}to{zmax}_mo{modi}_is_bins{ion_score_bins}'.format(**self.filtervalues)
+        if self.phospho:
+            s += '_phospho_only'
+        return s
 
     def categorical_assign(self, name, value, **kwargs):
         """
