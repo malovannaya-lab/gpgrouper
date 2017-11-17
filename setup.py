@@ -32,4 +32,21 @@ setup(
     # package_data={
     #     'pygrouper': ['base_config.ini']
     # }
+
+    description='Gene level peptide grouping and quantification of bottom up proteomics data',
+    license='GPL-3.0',
+    classifiers=[
+        'Intended Audience :: Proteomics',
+        'Operating System :: POSIX :: Linux',
+        'Programming Language :: Python',
+        'Programming Language :: Python :: 2.7',
+        'Programming Language :: Python :: 3.4',
+        'Programming Language :: Python :: 3.5',
+        'Programming Language :: Python :: 3.6',
+    ],
+    url='https://github.com/asalt/pygrouper',
+    author='Alexander Saltzman',
+    author_email='saltzman@bcm.edu,'
+
+
 )

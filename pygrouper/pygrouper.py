@@ -69,13 +69,14 @@ E2G_COLS = ['EXPRecNo', 'EXPRunNo', 'EXPSearchNo',
             'GeneID', 'ProteinGIs', 'ProteinRefs',
             'HIDs', 'Description',
             'IDSet', 'IDGroup', 'IDGroup_u2g',
+            'SRA',
             'GPGroup', 'GPGroups_All', 'PSMs',
             'PSMs_u2g', 'PeptidePrint', 'PeptideCount',
             'PeptideCount_u2g', 'PeptideCount_S',
-            'PeptideCount_S_u2g', 'AreaSum_gpcAdj',
+            'PeptideCount_S_u2g',
             'AreaSum_u2g_0', 'AreaSum_u2g_all',
             'AreaSum_max', 'AreaSum_dstrAdj',
-            'GeneCapacity', 'AreaSum_razor', 'iBAQ_dstrAdj']
+            'GeneCapacity', 'iBAQ_dstrAdj']
 
 DATA_COLS = ['EXPRecNo', 'EXPRunNo', 'EXPSearchNo',
              'Sequence', 'PSMAmbiguity', 'Modifications',
@@ -102,6 +103,7 @@ DATA_COLS = ['EXPRecNo', 'EXPRunNo', 'EXPSearchNo',
              'Peak_UseFLAG', 'SequenceArea', 'PrecursorArea_split',
              # 'RazorArea',
              'PrecursorArea_dstrAdj']
+_EXTRA_COLS = ['LastScan', 'MSOrder', 'MatchedIons']  # these columns are not required to be in the output data columns
 
 try:
     from PIL import Image, ImageFont, ImageDraw
@@ -749,12 +751,13 @@ def calculate_full_areas(genes_df, temp_df, area_col, normalize):
     full = temp_df.query(qstring).groupby('GeneID')[area_col].sum()/normalize
     full.name = 'AreaSum_max'
 
-    full_adj = (temp_df.query(qstring)
-                .assign(gpAdj = lambda x: x[area_col] / x['GeneIDCount_All'])
-                .groupby('GeneID')['gpAdj']  # temp column
-                .sum()/normalize
-                )
-    full_adj.name = 'AreaSum_gpcAdj'
+    # full_adj = (temp_df.query(qstring)
+    #             .assign(gpAdj = lambda x: x[area_col] / x['GeneIDCount_All'])
+    #             .groupby('GeneID')['gpAdj']  # temp column
+    #             .sum()/normalize
+    #             )
+    # full_adj.name = 'AreaSum_gpcAdj'
+
     # qstring_s = qstring + ' & IDG < 4'
     # strict = temp_df.query(qstring_s).groupby('GeneID')[area_col].sum()
     # strict.name = ''
@@ -766,7 +769,7 @@ def calculate_full_areas(genes_df, temp_df, area_col, normalize):
     qstring_u0 = qstring_u + ' & MissedCleavages == 0'
     uniq_0 = temp_df.query(qstring_u0).groupby('GeneID')[area_col].sum()/normalize
     uniq_0.name = 'AreaSum_u2g_0'
-    result = pd.concat( (full, full_adj, uniq, uniq_0), copy=False, axis=1) .fillna(0)
+    result = pd.concat( (full, uniq, uniq_0), copy=False, axis=1) .fillna(0)
     genes_df = genes_df.merge(result, how='left',
                               left_on='GeneID', right_index=True)
     return genes_df
@@ -1138,6 +1141,27 @@ def concat_isobar_e2gs(rec, run, search, outdir, cols=None, labeltype=None):
                     index=False, encoding='utf-8', sep='\t')
     print('Export of {} e2g file : {}'.format(labeltype, outf))
 
+def assign_sra(df):
+
+    df['SRA'] = 'A'
+    df['SRA'] = df['SRA'].astype('category', categories=('S', 'R', 'A'))
+
+    df.loc[ (df['IDSet'] == 1) &
+            (df['IDGroup_u2g'] <= 3), 'SRA'] = 'S'
+
+    df.loc[ (df['IDSet'] == 2) &
+            (df['IDGroup'] <= 3), 'SRA'] = 'S'
+
+    df.loc[ (df['IDSet'] == 1) &
+            (df['SRA'] != 'S') &
+            (df['IDGroup_u2g'] <= 5), 'SRA'] = 'R'
+
+    df.loc[ (df['IDSet'] == 2) &
+            (df['SRA'] != 'S') &
+            (df['IDGroup'] <= 5), 'SRA'] = 'R'
+
+    return df
+
 # from ._orig_code import *
 # from ._orig_code import (extract_peptideinfo, _extract_peptideinfo,
 #                          _peptidome_matcher, peptidome_matcher)
@@ -1312,6 +1336,7 @@ def grouper(usrdata, outdir='', database=None,
                             ProteinGIs = lambda x: x['GeneID'].map(gene_protgi_dict),
                             ProteinRefs = lambda x: x['GeneID'].map(gene_protref_dict),
                     )
+                    .pipe(assign_sra)
         )
 
 
@@ -1423,20 +1448,20 @@ def grouper(usrdata, outdir='', database=None,
     msfdata.to_csv(os.path.join(usrdata.outdir, msfname), index=False, sep='\t')
 
     if usrdata.labeltype in ('TMT', 'iTRAQ'):
-        if not all(x in isobar_output.columns.values for x in data_cols):
+        if not all(x in isobar_output.columns.values for x in set(data_cols) - set(_EXTRA_COLS)):
             print('Potential error, not all columns filled.')
             print([x for x in data_cols if x not in isobar_output.columns.values])
-            data_cols = [x for x in data_cols if x in isobar_output.columns.values]
+        data_cols = [x for x in data_cols if x in isobar_output.columns.values]
         concat_isobar_e2gs(usrdata.recno, usrdata.runno, usrdata.searchno,
                            usrdata.outdir, cols=E2G_COLS, labeltype=usrdata.labeltype)
         # usrdata.df = pd.merge(usrdata.df, temp_df, how='left')
         isobar_output.to_csv(os.path.join(usrdata.outdir, usrdata_out), columns=data_cols,
                              index=False, encoding='utf-8', sep='\t')
     else:
-        if not all(x in usrdata.df.columns.values for x in data_cols):
+        if not all(x in usrdata.df.columns.values for x in set(data_cols) - set(_EXTRA_COLS)):
             print('Potential error, not all columns filled.')
             print([x for x in data_cols if x not in usrdata.df.columns.values])
-            data_cols = [x for x in data_cols if x in usrdata.df.columns.values]
+        data_cols = [x for x in data_cols if x in usrdata.df.columns.values]
         usrdata.df.to_csv(os.path.join(usrdata.outdir, usrdata_out), columns=data_cols,
                           index=False, encoding='utf-8', sep='\t')
 
