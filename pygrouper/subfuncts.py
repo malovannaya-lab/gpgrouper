@@ -5,8 +5,11 @@ import csv
 import numpy as np
 from datetime import datetime
 from collections import namedtuple, defaultdict, OrderedDict, deque
-from configparser import ConfigParser
-from statistics import mean
+import six
+if six.PY3:
+    from configparser import ConfigParser
+elif six.PY2:
+    from ConfigParser import ConfigParser
 import logging
 import json
 from collections import defaultdict

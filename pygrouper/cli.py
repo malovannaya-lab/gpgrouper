@@ -1,18 +1,25 @@
+from __future__ import print_function
+
 import os
 import sys
 import re
 import shutil
-from itertools import zip_longest
+import six
+if six.PY3:
+    from itertools import zip_longest
+    from configparser import ConfigParser
+elif six.PY2:
+    from itertools import izip_longest as zip_longest
+    from ConfigParser import ConfigParser
 from getpass import getuser
-from pathlib import Path
+# from pathlib import Path
 from datetime import datetime
-from configparser import ConfigParser
 import multiprocessing
 import warnings
 
 import click
 
-from . import subfuncts, auto_grouper, pygrouper, _version
+from . import subfuncts, pygrouper, _version
 from .containers import UserData
 from .parse_config import parse_configfile, find_configfile, Config
 
@@ -46,7 +53,10 @@ class Config(object):
         self.fastadb = None
         self.contaminants = None
 
-parser = ConfigParser(comment_prefixes=(';')) # allow number sign to be read in configfile
+if six.PY3:
+    parser = ConfigParser(comment_prefixes=(';')) # allow number sign to be read in configfile
+elif six.PY2:
+    parser = ConfigParser() # allow number sign to be read in configfile
 parser.optionxform = str
 
 @click.group(name='main')
@@ -219,7 +229,8 @@ def run(autorun, contaminants, contaminant_label, database, enzyme, interval, io
                                labeltype=labeltype, addedby=name, phospho=phospho,
                                searchdb=database, miscuts=miscuts)
             refseqs[taxonid] = database
-            INPUT_DIR, usrfile = os.path.split(Path(psmfile).resolve().__str__())
+            # INPUT_DIR, usrfile = os.path.split(Path(psmfile).resolve().__str__())
+            INPUT_DIR, usrfile = os.path.split(os.path.abspath(psmfile))
             usrdata.indir, usrdata.datafile = INPUT_DIR, usrfile
             usrdata.outdir = OUTPUT_DIR or Path(OUTPUT_DIR).resolve().__str__()
             # later on expected that datafile is separated from path
@@ -250,6 +261,10 @@ def run(autorun, contaminants, contaminant_label, database, enzyme, interval, io
                              gid_ignore_file=contaminants, labels=LABELS,
                              contaminant_label=contaminant_label, enzyme=enzyme, workers=workers )
         if not all(x.EXIT_CODE==0 for x in ret):
+            # import ipdb; ipdb.set_trace()
+            for x in ret:
+                x.flush_log()
+
             raise RuntimeError(
                 '\n'.join([x.ERROR for x in ret])
             )

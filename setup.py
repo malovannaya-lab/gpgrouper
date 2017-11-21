@@ -1,4 +1,4 @@
-
+import os
 from setuptools import setup, find_packages
 def calculate_version(inputfile):
     version_list =  [x.split('\'')[1] for x in open(inputfile, 'r')
@@ -8,7 +8,10 @@ def calculate_version(inputfile):
     else:
         return '1.0'
 
-package_version = calculate_version('./pygrouper/_version.py')
+_version_f = os.path.join(os.path.split(os.path.abspath(__file__))[0],
+                          'pygrouper', '_version.py'
+)
+package_version = calculate_version(_version_f)
 
 setup(
     name='PyGrouper',
@@ -23,7 +26,11 @@ setup(
     # ],
     install_requires=[
         'Click',
-        'RefProtDB>=0.1.1'
+        'RefProtDB>=0.1.1',
+        'numpy',
+        'pandas',
+        'mock',
+
     ],
     entry_points="""
     [console_scripts]

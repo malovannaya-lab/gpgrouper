@@ -25,3 +25,4 @@ human_refseq*
 build/
 dist/
 auto/
+venv2/

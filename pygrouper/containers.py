@@ -1,7 +1,12 @@
 """Container for each experiment, has a dataframe and metadata"""
 import os
 from datetime import datetime
+import traceback
+
 import pandas as pd
+
+
+from . import _version
 
 class UserData:
 
@@ -35,6 +40,9 @@ class UserData:
         self.miscuts = miscuts
         self.phospho = phospho
 
+        with open(self.LOGFILE, 'w') as f:
+            f.write('{} PyGrouper {}'.format(datetime.now(), _version.__version__))
+
     @property
     def taxon_miscut_id(self):
         return hash(self.taxonid) + hash(self.miscuts)
@@ -48,23 +56,25 @@ class UserData:
             return True
         return False
 
-    def to_log(self, *messages, sep='\n'):
+    def to_log(self, message):
         if self._LOGSTACK:  # flush
-            messages = (*self._LOGSTACK, *messages)
+            messages = self._LOGSTACK + (messages,)
+        else:
+            messages = (message,)
         with open(self.LOGFILE, 'w+') as f:
             for message in messages:
                 f.write(message)
-                f.write(sep)
+                # f.write(sep)
+                f.write('\n')
 
-    def to_logq(self, *messages, sep='\n'):
-        for message in messages:
-            self._LOGSTACK.append(message+sep)
+    def to_logq(self, message):
+        self._LOGSTACK.append(message+'\n')
         return self
 
     def flush_log(self):
         if self._LOGSTACK:
             stack, self._LOGSTACK = self._LOGSTACK, list()
-            self.to_log(*stack)
+            self.to_log('\n'.join(stack))
         return self
 
 
@@ -85,6 +95,9 @@ class UserData:
             self.df = pd.read_csv(self.full_path(), *args, **kwargs)
             self.original_columns = self.df.columns.values
         except Exception as e:
+            # self.to_log(''.join(traceback.format_exc()))
+            self.to_log(traceback.format_exc())
+            self.ERROR = traceback.format_exc()
             self.EXIT_CODE = 1
             return 1
         if len(self.df) == 0:
@@ -92,10 +105,10 @@ class UserData:
             return 2
         return 0
 
-    def output_name(self, *suffix, ext='tab'):
+    def output_name(self, suffix=None, ext='tab'):
         """generate an appropriate output file name
         returns rec_run_search_labeltype_filetype.tab"""
-        suffix = '_'.join([str(ix) for ix in suffix])
+        # suffix = '_'.join([str(ix) for ix in suffix])
         return '{!r}_{}{}.{}'.format(self,
                                      self.labeltype,
                                      '_' + suffix if suffix else '',

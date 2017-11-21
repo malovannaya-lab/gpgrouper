@@ -1,5 +1,10 @@
 import os
-from configparser import ConfigParser
+
+import six
+if six.PY3:
+    from configparser import ConfigParser
+elif six.PY2:
+    from ConfigParser import ConfigParser
 from getpass import getuser
 
 
@@ -23,7 +28,10 @@ class Config(object):
         self.fastadb = None
         self.contaminants = None
 
-parser = ConfigParser(comment_prefixes=(';')) # allow number sign to be read in configfile
+if six.PY3:
+    parser = ConfigParser(comment_prefixes=(';')) # allow number sign to be read in configfile
+elif six.PY2:
+    parser = ConfigParser() # allow number sign to be read in configfile
 parser.optionxform = str
 
 
@@ -57,19 +65,28 @@ def parse_configfile(config_file=None, user=None):
     config.rawfiledir = parser.get('directories', 'rawfiledir')
     config.contaminants = parser.get('directories', 'contaminants')
 
-    fv_section = parser['filter values']
-    filtervalues = {'ion_score': fv_section.getfloat('ion score'),
-                    'qvalue': fv_section.getfloat('q value'),
-                    'pep': fv_section.getfloat('PEP'),
-                    'idg': fv_section.getfloat('IDG'),
-                    'zmin': fv_section.getint('charge_min'),
-                    'zmax': fv_section.getint('charge_max'),
-                    'modi': fv_section.getint('max modis'),
+    # fv_section = parser['filter values']
+    # filtervalues = {'ion_score': fv_section.getfloat('ion score'),
+    #                 'qvalue': fv_section.getfloat('q value'),
+    #                 'pep': fv_section.getfloat('PEP'),
+    #                 'idg': fv_section.getfloat('IDG'),
+    #                 'zmin': fv_section.getint('charge_min'),
+    #                 'zmax': fv_section.getint('charge_max'),
+    #                 'modi': fv_section.getint('max modis'),
+    #                 }
+    filtervalues = {'ion_score': parser.getfloat('filter values', 'ion score'),
+                    'qvalue':    parser.getfloat('filter values', 'q value'),
+                    'pep':       parser.getfloat('filter values', 'PEP'),
+                    'idg':       parser.getfloat('filter values', 'IDG'),
+                    'zmin':      parser.getint('filter values', 'charge_min'),
+                    'zmax':      parser.getint('filter values', 'charge_max'),
+                    'modi':      parser.getint('filter values', 'max modis'),
                     }
     config.filtervalues = filtervalues
 
     column_aliases = dict()
-    for column in parser['column names']:
+    # for column in parser['column names']:
+    for column, _ in parser.items('column names'):
         column_aliases[column] = [x.strip() for x in
                                   parser.get('column names', column).splitlines() if x]
     config.column_aliases = column_aliases
@@ -80,7 +97,7 @@ def parse_configfile(config_file=None, user=None):
     config.refseqs = refseqs
 
     labels = dict()
-    for label in parser['labels']:
+    for label, _ in parser.items('labels'):
         labels[label] = [x.strip() for x in
                          parser.get('labels', label).splitlines() if x]
     config.labels = labels

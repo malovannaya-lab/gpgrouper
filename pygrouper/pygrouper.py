@@ -1,5 +1,7 @@
 #===============================================================================#
 # PyGrouper - Alex Saltzman
+from __future__ import print_function
+
 import re, os, sys, time
 import itertools
 import json
@@ -9,20 +11,25 @@ from collections import defaultdict
 from functools import partial
 from math import ceil
 from warnings import warn
-from configparser import ConfigParser
+import six
+if six.PY3:
+    from configparser import ConfigParser
+elif six.PY2:
+    from ConfigParser import ConfigParser
 from itertools import repeat
 import traceback
 import multiprocessing
 
 import numpy as np
 import pandas as pd
+from pandas.api.types import CategoricalDtype
 
 from RefProtDB.utils import fasta_dict_from_file
 
 from . import _version
 from .subfuncts import *
 
-from ._orig_code import timed
+# from ._orig_code import timed
 pd.set_option(
     "display.width", 170,
     "display.max_columns", 500,
@@ -345,7 +352,7 @@ def gene_mapper(df, other_col=None):
                .groupby('geneid')
     )
 
-    d = {k: SEP.join(filter(None, v)) for k, v in groupdf[other_col]}
+    d = {k: SEP.join(filter(None, str(v))) for k, v in groupdf[other_col]}
 
     return d
 
@@ -392,7 +399,8 @@ def assign_IDG(df, filtervalues=None):
     filtervalues = filtervalues or dict()
     ion_score_bins = filtervalues.get('ion_score_bins', (10, 20, 30))
     df['PSM_IDG'] = pd.cut(df['IonScore'],
-                               bins=(0, *ion_score_bins, np.inf),
+                               # bins=(0, *ion_score_bins, np.inf),
+                               bins=(0,) + tuple(ion_score_bins) + (np.inf,),
                                labels=[7, 5, 3, 1], include_lowest=True,
                                right=False).astype('int')
     df.loc[ df['q_value'] > .01, 'PSM_IDG' ] += 1
@@ -657,6 +665,7 @@ def get_gene_info(genes_df, database, col='GeneID'):
                                      capacity_mean = 'GeneCapacity'
                 ))
     )
+    geneinfo.index = geneinfo.index.astype(str)
     out = genes_df.merge(geneinfo, how='left', left_on='GeneID', right_index=True)
     return out
 
@@ -866,9 +875,12 @@ def _set2_or_3(row, genes_df, allsets):
 
     peptset = row.PeptideSet
     # allsets = genes_df.PeptideSet.unique()  # calculate outside this function for performance boost
+    if six.PY2 and any(set(peptset) < x for x in allsets):
+            return 3
 
-    if any(peptset < allsets):
+    elif six.PY3 and any(peptset < allsets):
         return 3
+
 
     # check if is set 3 across multiple genes, or is set2
     gid = row.GeneID
@@ -1144,7 +1156,11 @@ def concat_isobar_e2gs(rec, run, search, outdir, cols=None, labeltype=None):
 def assign_sra(df):
 
     df['SRA'] = 'A'
-    df['SRA'] = df['SRA'].astype('category', categories=('S', 'R', 'A'))
+    # cat_type = CategoricalDtype(categories=['S', 'R', 'A'],
+    #                             ordered=True)
+    # df['SRA'] = df['SRA'].astype(cat_type)
+    df['SRA'] = df['SRA'].astype('category', categories=['S', 'R', 'A'],
+                                 ordered=True)
 
     df.loc[ (df['IDSet'] == 1) &
             (df['IDGroup_u2g'] <= 3), 'SRA'] = 'S'
@@ -1311,7 +1327,7 @@ def grouper(usrdata, outdir='', database=None,
             raise NotImplementedError('No support for SILAC experiments yet.')
         # ==================================================================== #
 
-        genedata_out = usrdata.output_name(labelix, 'e2g', ext='tab')
+        genedata_out = usrdata.output_name(str(labelix)+'_e2g', ext='tab')
         print('{}: Populating gene table for {}.'.format(datetime.now(),
                                                          usrdata.datafile))
 
@@ -1465,8 +1481,8 @@ def grouper(usrdata, outdir='', database=None,
         usrdata.df.to_csv(os.path.join(usrdata.outdir, usrdata_out), columns=data_cols,
                           index=False, encoding='utf-8', sep='\t')
 
-    usrdata.to_logq('{} | Export of datatable completed.'.format(time.ctime()),
-                    'Successful grouping of file completed.')
+    usrdata.to_logq('{} | Export of datatable completed.'.format(time.ctime())+
+                    '\nSuccessful grouping of file completed.')
     usrdata.flush_log()
 
     print('Successful grouping of {} completed.\n'.format(repr(usrdata)))
@@ -1499,8 +1515,26 @@ def load_fasta(refseq_file):
     REQUIRED_COLS = ('geneid', 'sequence')
     ADDITIONAL_COLS = ('description', 'gi', 'homologene', 'ref', 'taxon', 'symbol')
     gen = fasta_dict_from_file(refseq_file)
-    df = (pd.DataFrame.from_dict(gen)
-          .replace(np.nan, '')
+
+    # routine for converting things to integer if possible, else leave as string
+    l = []
+    for g in gen:
+        if 'geneid' not in g:
+            continue
+        if g['geneid'] == '' or (isinstance(g['geneid'], (int, float)) and g['geneid'].isnull()):
+            continue
+        for k,v in g.items():
+            if g[k] == 'nan':
+                g[k] = -1
+            try:
+                g[k] = int(v)
+                g['']
+            except Exception as e:
+                pass
+        l.append(g)
+    # end
+    df = (pd.DataFrame.from_dict(l)
+          # .replace(np.nan, '')
     )
     if not all(x in df.columns for x in REQUIRED_COLS):
         missing = ', '.join(x for x in REQUIRED_COLS if x not in df.columns)
@@ -1520,7 +1554,7 @@ ENZYME = {'trypsin': dict(cutsites=('K', 'R'), exceptions=None),
 def _match(usrdatas, refseq_file, miscuts=2, enzyme='trypsin/P'):
 
     enzyme_rule = ENZYME[enzyme]
-    print('Using peptidome {} with rule {}'.format(refseq_file, enzyme))
+    print(u'Using peptidome {} with rule {}'.format(refseq_file, enzyme))
 
     # database = pd.read_table(refseq_file, dtype=str)
     # rename_refseq_cols(database, refseq_file)
@@ -1532,10 +1566,10 @@ def _match(usrdatas, refseq_file, miscuts=2, enzyme='trypsin/P'):
     for ix, row in database.iterrows():
         counter += 1
         fragments, fraglen = protease(row.sequence, minlen=7,
-                                      **enzyme_rule,
                                       # cutsites=['K', 'R'],
                                       # exceptions=['P'],
-                                      miscuts=miscuts
+                                      miscuts=miscuts,
+                                      **enzyme_rule
         )
         database.loc[ix, 'capacity'] = fraglen
         for fragment in fragments: # store location in the DataFrame for the peptide's parent
