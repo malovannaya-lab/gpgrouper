@@ -423,7 +423,7 @@ class TestAreaTMT(unittest.TestCase):
                                            '--configfile', CONFIG_FILE,
                                            '--labeltype', 'none',
                                            ])
-
+        logf = open('./testdata/10101_1_1_none.log').read()
         # print full traceback if there is a failure
         self.assertEqual(0, response.exit_code,
                          msg='\n{}\n{!r}'.format(''.join(traceback.format_tb(response.exc_info[-1])),
@@ -440,9 +440,11 @@ class TestAreaTMT(unittest.TestCase):
             tot = len(subdf)
 
             # all(subdf[dstrAdj]==(subdf[maxarea]*self.ratios[str(tid)])/tot),
-            msg = '\n'+str(subdf[[dstrAdj, maxarea]]) +'\n' +\
+            msg = '\n'+str(subdf[['GeneID', 'TaxonID', 'IDSet', dstrAdj, maxarea]]) +'\n' +\
                   str(subdf[maxarea]*self.ratios[str(tid)]/tot) +\
-                  '\n'+ str(self.ratios[str(tid)])
+                  '\n'+ str(self.ratios[str(tid)]) +\
+                  '\n'+ logf
+                  # '\n' + str(df) +\
             # self.assertEqual(True,
             #                  all(subdf[dstrAdj]==(subdf[maxarea]*self.ratios[str(tid)])/tot),
             #                  msg=msg
@@ -451,7 +453,8 @@ class TestAreaTMT(unittest.TestCase):
             np.testing.assert_almost_equal(
                 subdf[dstrAdj],
                 (subdf[maxarea]*self.ratios[str(tid)]/tot).values,
-                decimal=7
+                decimal=7,
+                err_msg=msg,
                              # msg='\n'+str(subdf[[dstrAdj, maxarea]]) +'\n'+ str(self.ratios[str(tid)])
                              # msg=subdf
                              # msg=self.ratios[str(tid)]

@@ -352,7 +352,8 @@ def gene_mapper(df, other_col=None):
                .groupby('geneid')
     )
 
-    d = {k: SEP.join(filter(None, str(v))) for k, v in groupdf[other_col]}
+    # d = {k: SEP.join(filter(None, str(v))) for k, v in groupdf[other_col]}
+    d = {k: SEP.join(filter(None, map(str, v))) for k, v in groupdf[other_col]}
 
     return d
 
@@ -509,6 +510,7 @@ def split_on_geneid(df):
                                                            # multi-index
     df = (df.join(glstsplitter)
           .reset_index())
+    df['GeneID'] = df.GeneID.astype(int)
     return df
 
 def rank_peptides(df, area_col, ranks_only=False):
@@ -666,6 +668,7 @@ def get_gene_info(genes_df, database, col='GeneID'):
                 ))
     )
     geneinfo.index = geneinfo.index.astype(str)
+    # geneinfo['TaxonID'] = geneinfo.TaxonID.astype(str)
     out = genes_df.merge(geneinfo, how='left', left_on='GeneID', right_index=True)
     return out
 
@@ -1247,6 +1250,7 @@ def grouper(usrdata, outdir='', database=None,
         logging.warning('No match for sequence {} in {}'.format(missing_seq,
                                                                 usrfile))
         # Store all of these sequences in the big log file, not per experiment.
+    # usrdata.df = (usrdata.df.pipe(split_multiplexed)
     usrdata.df = (usrdata.df.pipe(assign_IDG, filtervalues=usrdata.filtervalues)
                   .assign(sequence_lower = lambda x: x['Sequence'].str.lower())
                   .sort_values(by=['SpectrumFile', area_col,
@@ -1272,7 +1276,8 @@ def grouper(usrdata, outdir='', database=None,
     # ======================== Plugin for multiple taxons  ===================== #
     taxon_ids = usrdata.df['TaxonID'].replace(['0', 0], np.nan).dropna().unique()
     taxon_totals = dict()
-    # print(taxon_ids)
+    usrdata.to_logq("TaxonIDs: {}".format(len(taxon_ids)))
+    # usrdata.to_logq(str(usrdata.df))
     if len(taxon_ids) == 1 or usrdata.no_taxa_redistrib:  # just 1 taxon id present
         for tid in taxon_ids: # taxon_ids is a set
             taxon_totals[tid] = 1
