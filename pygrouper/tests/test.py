@@ -518,7 +518,7 @@ class TestFull(unittest.TestCase):
                                            '--configfile', CONFIG_FILE,
                                            ])
         # output = pd.read_table(os.path.join(INPUT_DIR, '1_1_1_none_0_e2g.tab'))
-        output = pd.read_table(os.path.join(INPUT_DIR, '1_1_1_none_psms.tab'))
+        output = pd.read_table(os.path.join(INPUT_DIR, '1_1_1_none_0_psms.tab'))
         # print(output.columns)
         for col in data_cols:
             self.assertTrue(col in output.columns, msg='{} not found in data file'.format(col))
