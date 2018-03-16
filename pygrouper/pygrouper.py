@@ -19,6 +19,7 @@ elif six.PY2:
 from itertools import repeat
 import traceback
 import multiprocessing
+from copy import deepcopy as copy
 
 import numpy as np
 import pandas as pd
@@ -76,8 +77,10 @@ E2G_COLS = ['EXPRecNo', 'EXPRunNo', 'EXPSearchNo',
             'CreationTS', 'ModificationTS', 'TaxonID',
             'GeneID', 'ProteinGIs', 'ProteinRefs',
             'HIDs', 'Description',
+            'ProteinGI_GIDGroups', 'ProteinRef_GIDGroups',
+            'ProteinGI_GIDGroupCount', 'ProteinRef_GIDGroupCount',
             'IDSet', 'IDGroup', 'IDGroup_u2g',
-            'SRA',
+            'SRA', 'Coverage', 'Coverage_u2g',
             'GPGroup', 'GPGroups_All', 'PSMs',
             'PSMs_u2g', 'PeptidePrint', 'PeptideCount',
             'PeptideCount_u2g', 'PeptideCount_S',
@@ -268,7 +271,6 @@ def get_gid_ignore_list(inputfile):
             not x.strip().startswith('#')]
 
 def _format_peptideinfo(row):
-
     if len(row) == 0:
         return ('', 0, '', 0, '', 0, '', 0, '', 0, ())
     result = (
@@ -300,6 +302,94 @@ def _format_peptideinfo(row):
 
 def _extract_peptideinfo(row, database):
     return _format_peptideinfo(database.loc[row])
+
+def combine_coverage(start_end):
+
+    start_end = sorted(copy(start_end))
+
+    # for ix, entry in enumerate(start_end[:-1]):
+    ix = 0
+    while ix < len(start_end):
+        try:
+            entry = start_end[ix]
+            next_entry = start_end[ix+1]
+        except IndexError: # done
+            break
+        if entry[1] >= next_entry[0] and entry[1] <= next_entry[1]:
+            start_end[ix][1] = next_entry[1]
+            start_end.pop(ix+1)
+        else:
+            ix += 1
+
+    return start_end
+
+def _calc_coverage(seqs, pepts):
+
+    # pepts = sorted(pepts, key=lambda x: len(x), reverse=True)
+    pepts = sorted(pepts, key=lambda x: min(y+len(x) for y in [s.find(x) for s in seqs]))
+
+    coverages = list()
+    for s in seqs:
+        start_end = list()
+        coverage = 0
+        for pept in pepts:
+            start = 0
+            mark = s.find(pept.upper(), start)
+            while mark != -1:
+                start_id, end_id = mark, mark + len(pept)
+                start += end_id
+
+                for start_i, end_i in start_end:
+                    if start_id < end_i and end_id > end_i:
+                        start_id = end_i
+                        break
+                    elif start_id < start_i and end_id > start_i and end_id < end_i:
+                        end_id = start_i
+                        break
+                    elif start_id >= start_i and end_id <= end_i:
+                        start_id = end_id = 0
+                        break
+                    else:
+                        continue
+
+                if start_id != end_id:
+                    start_end.append( [ start_id, end_id ] )
+                    # start_end = combine_coverage(start_end)  # only need to do this if we updated this list
+                # coverage += end_id-start_id
+                mark = s.find(pept.upper(), start)
+
+        start_end = combine_coverage(start_end)
+        coverage = np.sum([ x[1] - x[0] for x in start_end ])
+        coverages.append( coverage/len(s) )
+        # sum(y-x)
+
+    if coverages:
+        return np.mean(coverages)
+    else:
+        print('Warning, GeneID', row['GeneID'], 'has a coverage of 0')
+        return 0
+
+def calc_coverage_axis(row, fa, psms):
+
+    seqs = fa[fa.geneid == row['GeneID']]['sequence'].tolist()
+    pepts = row['PeptidePrint'].split('_')
+
+    u2g_pepts = psms[ (psms.GeneID == row['GeneID']) & (psms.GeneIDCount_All == 1) ].Sequence.unique()
+
+    return _calc_coverage(seqs, pepts), _calc_coverage(seqs, u2g_pepts)
+
+def calc_coverage(df, fa, psms):
+
+    res = df.pipe(apply_by_multiprocessing,
+                  calc_coverage_axis,
+                  workers=WORKERS,
+                  func_args=(fa, psms),
+                  axis=1
+    )
+    # df['Coverage'], df['Coverage_u2g'] = list(zip(res))
+    df['Coverage'], df['Coverage_u2g'] = list(zip(*res))
+    return df
+
 
 def extract_peptideinfo(usrdata, database):
     filter_int = partial(filter, lambda x : x.isdigit())
@@ -1241,6 +1331,80 @@ def assign_sra(df):
 
     return df
 
+# def set_protein_groups_axis(row, psms, protgis, protrefs):
+    # gid = row['GeneID']
+    # try:
+    #     gene_specific = protgis.get(gid).split(SEP)
+    # except AttributeError:
+    #     gene_specific = tuple()
+    # psms[ psms['GeneID'] == gid ]
+
+def set_protein_groups_axis(row, protgis, protrefs):
+
+    gid = row.name
+    valid_protgis = protgis.get(gid).split(SEP)
+    valid_refs    = protrefs.get(gid).split(SEP)
+    # protgis = filter(lambda x: not np.isnan(x), row.loc['ProteinGIs_All'])
+    protgis  = [x for x in row.loc['ProteinGIs_All'] if isinstance(x, str)]
+    protrefs = [x for x in row.loc['ProteinRefs_All'] if isinstance(x, str)]
+
+    protgi_grps = [x for x in protgis if any(y in x for y in valid_protgis)]
+    protref_grps = [x for x in protrefs if any(y in x for y in valid_refs)]
+
+    # remove gis/refs that belong to different gids
+    protgi_grps_gene, protref_grps_gene = list(), list()
+
+    protgi_grps_gene = [set([x for x in grp.split(SEP) if x in valid_protgis])
+                        for grp in protgi_grps]
+    # now find subsets:
+    protgi_grps_pruned = list()
+    for grp in protgi_grps_gene:
+        for other in protgi_grps_gene:
+            if grp == other:
+                continue # same one
+            if grp.intersection(other) == other:  # other is a subset
+                break
+        else: # only if we get through everyother and don't break out do we keep
+            if grp not in protgi_grps_pruned:
+                protgi_grps_pruned.append(grp)
+
+    protref_grps_gene = [set([x for x in grp.split(SEP) if x in valid_protgis])
+                         for grp in protref_grps]
+    # now find subsets:
+    protref_grps_pruned = list()
+    for grp in protref_grps_gene:
+        for other in protref_grps_gene:
+            if grp == other:
+                continue # same one
+            if grp.intersection(other) == other:  # other is a subset
+                break
+        else: # only if we get through everyother and don't break out do we keep
+            if grp not in protref_grps_pruned:
+                protref_grps_pruned.append(grp)
+
+    return '|'.join(SEP.join(x) for x in protgi_grps_pruned), '|'.join(SEP.join(x) for x in protref_grps_pruned)
+
+def set_protein_groups(df, psms, gene_protgi_dict, gene_protref_dict):
+    """Assign protein groups (via collections of unique-to-protein(s) peptides)"""
+
+    res = (psms.groupby('GeneID')
+           .agg({'ProteinGIs_All': 'unique', 'ProteinRefs_All': 'unique'})
+           .pipe(apply_by_multiprocessing,
+                 set_protein_groups_axis,
+                 func_args=(gene_protgi_dict, gene_protref_dict),
+                 workers=WORKERS,
+                 axis=1
+           )
+           .apply(pd.Series)
+           .rename(columns={0:'ProteinGI_GIDGroups', 1:'ProteinRef_GIDGroups'})
+    )
+    # this is regular expression count, so escape the pipe
+    res['ProteinGI_GIDGroupCount']  = res.ProteinGI_GIDGroups.str.count('\|') + 1
+    res['ProteinRef_GIDGroupCount'] = res.ProteinRef_GIDGroups.str.count('\|') + 1
+
+    return df.merge(res, left_on='GeneID', right_index=True)
+
+
 # from ._orig_code import *
 # from ._orig_code import (extract_peptideinfo, _extract_peptideinfo,
 #                          _peptidome_matcher, peptidome_matcher)
@@ -1342,6 +1506,7 @@ def grouper(usrdata, outdir='', database=None,
                     )
         )
 
+
         additional_labels = list()
         # ======================== Plugin for multiple taxons  ===================== #
         taxon_ids = usrdata.df['TaxonID'].replace(['0', 0], np.nan).dropna().unique()
@@ -1412,6 +1577,7 @@ def grouper(usrdata, outdir='', database=None,
                     .pipe(get_gene_info, database)
                     # .pipe(get_gene_capacity, database)
                     .pipe(get_peptides_for_gene, temp_df)
+                    .pipe(calc_coverage, database, temp_df)
                     .pipe(get_psms_for_gene, temp_df)
                     .pipe(print_log_msg, msg=msg_areas)
                     .pipe(calculate_full_areas, temp_df, 'SequenceArea', normalize)
@@ -1426,6 +1592,7 @@ def grouper(usrdata, outdir='', database=None,
                             ProteinRefs = lambda x: x['GeneID'].map(gene_protref_dict),
                     )
                     .pipe(assign_sra)
+                    .pipe(set_protein_groups, temp_df, gene_protgi_dict, gene_protref_dict)
         )
 
         msg_areas = 'Calculating distributed area ratio for {}'.format(usrdata.datafile)
