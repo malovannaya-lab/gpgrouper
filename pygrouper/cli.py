@@ -194,8 +194,8 @@ def run(autorun, contaminants, contaminant_label, database, enzyme, interval, io
     refseqs = config.refseqs
     filtervalues = config.filtervalues
     if filtervalues:
-        s = ', '.join(['ion_score', 'ion_score_bins', 'qvalue', 'pep',
-                   'idg', 'zmin', 'zmax', 'modi'])
+        # s = ', '.join(['ion_score', 'ion_score_bins', 'qvalue', 'pep', 'idg', 'zmin', 'zmax', 'modi'])
+        s = ', '.join(['ion_score', 'qvalue', 'pep', 'idg', 'zmin', 'zmax', 'modi'])
         click.echo('Using predefined config file. Specifying any of {} via a flag will have no effect'.format(s))
     column_aliases = config.column_aliases
     gid_ignore_file = contaminants or config.contaminants

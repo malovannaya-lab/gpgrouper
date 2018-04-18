@@ -330,3 +330,15 @@ def calculate_miscuts(seq, targets=None):
     if not any(seq[-1] == x for x in 'KR'):  # then at the C terminal
         return miscuts
     return miscuts -1
+
+import hashlib
+def md5sum(filename, blocksize=65536):
+    hash = hashlib.md5()
+    with open(filename, "rb") as f:
+        for block in iter(lambda: f.read(blocksize), b""):
+            hash.update(block)
+    return hash.hexdigest()
+
+def write_chksum(filename, chsum):
+    with open(filename, 'w') as f:
+        f.write(chsum)

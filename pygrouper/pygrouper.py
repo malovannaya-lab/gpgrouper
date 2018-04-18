@@ -605,7 +605,8 @@ def split_on_geneid(df):
           .reset_index())
     df.loc[df.GeneID == '', 'GeneID'] = -1
     df['GeneID'] = df.GeneID.fillna(-1)
-    df['GeneID'] = df.GeneID.astype(int)
+    # df['GeneID'] = df.GeneID.astype(int)
+    df['GeneID'] = df.GeneID.astype(str)
     return df
 
 def rank_peptides(df, area_col, ranks_only=False):
@@ -661,10 +662,16 @@ def flag_AUC_PSM(df, fv, contaminant_label='__CONTAMINANT__', phospho=False):
     df.loc[df['PSM_IDG'] > fv['idg'],
            ['AUC_UseFLAG', 'PSM_UseFLAG']] = 0
 
-    df.loc[(df['Peak_UseFLAG'] == 0) & (df['PSMAmbiguity'].str.lower()=='unambiguous'),
-           ['AUC_UseFLAG', 'PSM_UseFLAG']] = 1
-    df.loc[(df['Peak_UseFLAG'] == 0) & (df['PSMAmbiguity'].str.lower()!='unambiguous'),
-           ['AUC_UseFLAG', 'PSM_UseFLAG']] = 0
+    if df['PSMAmbiguity'].dtype == str:
+        df.loc[(df['Peak_UseFLAG'] == 0) & (df['PSMAmbiguity'].str.lower()=='unambiguous'),
+               ['AUC_UseFLAG', 'PSM_UseFLAG']] = 1
+        df.loc[(df['Peak_UseFLAG'] == 0) & (df['PSMAmbiguity'].str.lower()!='unambiguous'),
+               ['AUC_UseFLAG', 'PSM_UseFLAG']] = 0
+    elif any(df['PSMAmbiguity'].dtype == x for x in (int, float)):
+        df.loc[(df['Peak_UseFLAG'] == 0) & (df['PSMAmbiguity'] == 0),
+               ['AUC_UseFLAG', 'PSM_UseFLAG']] = 1
+        df.loc[(df['Peak_UseFLAG'] == 0) & (df['PSMAmbiguity'] != 0),
+               ['AUC_UseFLAG', 'PSM_UseFLAG']] = 0
 
     df.loc[ df['AUC_reflagger'] == 0, 'AUC_UseFLAG'] = 0
 
@@ -1304,6 +1311,10 @@ def concat_isobar_output(rec, run, search, outdir, cols=None, labeltype=None, da
 
     df.to_csv(os.path.join(outdir, outf), columns=cols,
                     index=False, encoding='utf-8', sep='\t')
+
+    out_chksum = os.path.join(outdir, outf[:-3]+'cksum')
+    write_chksum(out_chksum, md5sum(os.path.join(outdir, outf)))
+
     print('Export of {} e2g file : {}'.format(labeltype, outf))
 
 def assign_sra(df):
@@ -1312,8 +1323,9 @@ def assign_sra(df):
     # cat_type = CategoricalDtype(categories=['S', 'R', 'A'],
     #                             ordered=True)
     # df['SRA'] = df['SRA'].astype(cat_type)
-    df['SRA'] = df['SRA'].astype('category', categories=['S', 'R', 'A'],
-                                 ordered=True)
+    df['SRA'] = pd.Categorical(['A']*len(df), categories=['S', 'R', 'A'], ordered=True)
+    # df['SRA'] = df['SRA'].astype('category', categories=['S', 'R', 'A'],
+    #                              ordered=True)
 
     df.loc[ (df['IDSet'] == 1) &
             (df['IDGroup_u2g'] <= 3), 'SRA'] = 'S'
@@ -1506,10 +1518,9 @@ def grouper(usrdata, outdir='', database=None,
                     )
         )
 
-
         additional_labels = list()
         # ======================== Plugin for multiple taxons  ===================== #
-        taxon_ids = usrdata.df['TaxonID'].replace(['0', 0], np.nan).dropna().unique()
+        taxon_ids = usrdata.df['TaxonID'].replace(['0', 0, 'NaN', 'nan', 'NAN'], np.nan).dropna().unique()
         taxon_totals = dict()
         usrdata.to_logq("TaxonIDs: {}".format(len(taxon_ids)))
         # usrdata.to_logq(str(usrdata.df))
@@ -1519,8 +1530,8 @@ def grouper(usrdata, outdir='', database=None,
         elif len(taxon_ids) > 1:  # more than 1 taxon id
             taxon_totals = multi_taxon_splitter(taxon_ids, usrdata.df,
                                                 gid_ignore_list, 'PrecursorArea_split')
-            print('Multiple taxons found, redistributing areas...')
-            usrdata.to_logq('{} | Multiple taxons found, redistributing areas.'.format(time.ctime()))
+            print('Multiple taxa found, redistributing areas...')
+            usrdata.to_logq('{} | Multiple taxa found, redistributing areas.'.format(time.ctime()))
             usrdata.taxon_ratio_totals.update(taxon_totals)
             for taxon, ratio in taxon_totals.items():
                 # print('For the full data : {} = {}'.format(taxon, ratio))
@@ -1630,6 +1641,12 @@ def grouper(usrdata, outdir='', database=None,
         genedata_out = usrdata.output_name(str(labelix)+'_e2g', ext='tab')
         genes_df.to_csv(os.path.join(usrdata.outdir, genedata_out), columns=E2G_COLS,
                         index=False, encoding='utf-8', sep='\t')
+
+        genedata_chksum = os.path.join(usrdata.outdir, usrdata.output_name(str(labelix)+'_e2g', ext='cksum'))
+        write_chksum(genedata_chksum, md5sum(os.path.join(usrdata.outdir, genedata_out)))
+
+        genedata_out_chksum = os.path.join(usrdata.outdir, usrdata.output_name(str(labelix)+'_e2g', ext='cksum'))
+        write_chksum(genedata_out_chksum, md5sum(os.path.join(usrdata.outdir, genedata_out)))
         del genes_df
 
         usrdata.to_logq('{} | Export of genetable for labeltype {} completed.'.format(time.ctime(), label))
@@ -1721,10 +1738,15 @@ def grouper(usrdata, outdir='', database=None,
             print([x for x in data_cols if x not in usrdata.df.columns.values])
         out = os.path.join(usrdata.outdir, usrdata.output_name(str(labelix)+'_psms', ext='tab'))
         usrdata.df.to_csv(out, index=False, encoding='utf-8', sep='\t', columns=data_cols)
+        out_chksum = os.path.join(usrdata.outdir, usrdata.output_name(str(labelix)+'_psms', ext='cksum'))
+        write_chksum(out_chksum, md5sum(os.path.join(out)))
 
         msfname = usrdata.output_name('{}_msf'.format(str(labelix)), ext='tab')
         msfdata = spectra_summary(usrdata)
         msfdata.to_csv(os.path.join(usrdata.outdir, msfname), index=False, sep='\t')
+
+        out_cksum = os.path.join(usrdata.outdir, usrdata.output_name('{}_msf'.format(str(labelix)), ext='cksum'))
+        write_chksum(out_cksum, md5sum(os.path.join(usrdata.outdir, msfname)))
 
 
         usrdata.df = None
@@ -1803,27 +1825,28 @@ def load_fasta(refseq_file):
     REQUIRED_COLS = ('geneid', 'sequence')
     ADDITIONAL_COLS = ('description', 'gi', 'homologene', 'ref', 'taxon', 'symbol')
     gen = fasta_dict_from_file(refseq_file)
+    df = pd.DataFrame.from_dict(gen, dtype=str)
 
     # routine for converting things to integer if possible, else leave as string
-    l = []
-    for g in gen:
-        if 'geneid' not in g:
-            continue
-        if g['geneid'] == '' or (isinstance(g['geneid'], (int, float)) and g['geneid'].isnull()):
-            continue
-        for k,v in g.items():
-            if g[k] == 'nan':
-                g[k] = -1
-            try:
-                g[k] = int(v)
-                g['']
-            except Exception as e:
-                pass
-        l.append(g)
-    # end
-    df = (pd.DataFrame.from_dict(l)
-          # .replace(np.nan, '')
-    )
+    # l = []
+    # for g in gen:
+    #     if 'geneid' not in g:
+    #         continue
+    #     if g['geneid'] == '' or (isinstance(g['geneid'], (int, float)) and g['geneid'].isnull()):
+    #         continue
+    #     for k,v in g.items():
+    #         if g[k] == 'nan':
+    #             g[k] = -1
+    #         try:
+    #             g[k] = int(v)
+    #             g['']
+    #         except Exception as e:
+    #             pass
+    #     l.append(g)
+    # # end
+    # df = (pd.DataFrame.from_dict(l)
+    #       # .replace(np.nan, '')
+    # )
     if not all(x in df.columns for x in REQUIRED_COLS):
         missing = ', '.join(x for x in REQUIRED_COLS if x not in df.columns)
         fmt = 'Invalid FASTA file : {} is missing the following identifiers : {}\n'
