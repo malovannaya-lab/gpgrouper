@@ -1299,7 +1299,8 @@ def concat_isobar_output(rec, run, search, outdir, cols=None, labeltype=None, da
         warn('No output for {}_{}_{}'.format(rec, run, search))
         return
     df = pd.concat((pd.read_table(f) for f in files))
-    outf = '{}_{}_{}_{}_all_{}.tab'.format(rec, run, search, labeltype, datatype)
+    # outf = '{}_{}_{}_{}_all_{}.tab'.format(rec, run, search, labeltype, datatype)
+    outf = '{}_{}_{}_{}_{}.tab'.format(rec, run, search, labeltype, datatype)
 
     if datatype == 'e2g' and cols is None:
         cols = E2G_COLS
@@ -1638,14 +1639,19 @@ def grouper(usrdata, outdir='', database=None,
         genecount += len(genes_df)
         ibaqtot += genes_df[~genes_df.GeneID.isin(gid_ignore_list)].iBAQ_dstrAdj.sum()
 
-        genedata_out = usrdata.output_name(str(labelix)+'_e2g', ext='tab')
+        if usrdata.labeltype in ('TMT', 'iTRAQ'):  # and silac
+            genedata_out = usrdata.output_name(str(labelix)+'_e2g', ext='tab')
+            genedata_out_chksum = os.path.join(usrdata.outdir, usrdata.output_name(str(labelix)+'_e2g', ext='cksum'))
+        else:
+            genedata_out = usrdata.output_name('e2g', ext='tab')
+            genedata_out_chksum = os.path.join(usrdata.outdir, usrdata.output_name('e2g', ext='cksum'))
         genes_df.to_csv(os.path.join(usrdata.outdir, genedata_out), columns=E2G_COLS,
                         index=False, encoding='utf-8', sep='\t')
 
-        genedata_chksum = os.path.join(usrdata.outdir, usrdata.output_name(str(labelix)+'_e2g', ext='cksum'))
+        # genedata_chksum = os.path.join(usrdata.outdir, usrdata.output_name(str(labelix)+'_e2g', ext='cksum'))
+        genedata_chksum = os.path.join(usrdata.outdir, usrdata.output_name('e2g', ext='cksum'))
         write_chksum(genedata_chksum, md5sum(os.path.join(usrdata.outdir, genedata_out)))
 
-        genedata_out_chksum = os.path.join(usrdata.outdir, usrdata.output_name(str(labelix)+'_e2g', ext='cksum'))
         write_chksum(genedata_out_chksum, md5sum(os.path.join(usrdata.outdir, genedata_out)))
         del genes_df
 
@@ -1736,16 +1742,20 @@ def grouper(usrdata, outdir='', database=None,
         if not all(x in usrdata.df.columns.values for x in set(data_cols) - set(_EXTRA_COLS)):
             print('Potential error, not all columns filled.')
             print([x for x in data_cols if x not in usrdata.df.columns.values])
-        out = os.path.join(usrdata.outdir, usrdata.output_name(str(labelix)+'_psms', ext='tab'))
+        # out = os.path.join(usrdata.outdir, usrdata.output_name(str(labelix)+'_psms', ext='tab'))
+        out = os.path.join(usrdata.outdir, usrdata.output_name('psms', ext='tab'))
         usrdata.df.to_csv(out, index=False, encoding='utf-8', sep='\t', columns=data_cols)
-        out_chksum = os.path.join(usrdata.outdir, usrdata.output_name(str(labelix)+'_psms', ext='cksum'))
+        # out_chksum = os.path.join(usrdata.outdir, usrdata.output_name(str(labelix)+'_psms', ext='cksum'))
+        out_chksum = os.path.join(usrdata.outdir, usrdata.output_name('psms', ext='cksum'))
         write_chksum(out_chksum, md5sum(os.path.join(out)))
 
-        msfname = usrdata.output_name('{}_msf'.format(str(labelix)), ext='tab')
+        # msfname = usrdata.output_name('{}_msf'.format(str(labelix)), ext='tab')
+        msfname = usrdata.output_name('msf', ext='tab')
         msfdata = spectra_summary(usrdata)
         msfdata.to_csv(os.path.join(usrdata.outdir, msfname), index=False, sep='\t')
 
-        out_cksum = os.path.join(usrdata.outdir, usrdata.output_name('{}_msf'.format(str(labelix)), ext='cksum'))
+        # out_cksum = os.path.join(usrdata.outdir, usrdata.output_name('{}_msf'.format(str(labelix)), ext='cksum'))
+        out_cksum = os.path.join(usrdata.outdir, usrdata.output_name('msf', ext='cksum'))
         write_chksum(out_cksum, md5sum(os.path.join(usrdata.outdir, msfname)))
 
 
