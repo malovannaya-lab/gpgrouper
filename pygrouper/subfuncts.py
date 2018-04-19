@@ -339,6 +339,6 @@ def md5sum(filename, blocksize=65536):
             hash.update(block)
     return hash.hexdigest()
 
-def write_chksum(filename, chsum):
+def write_md5(filename, chsum):
     with open(filename, 'w') as f:
         f.write(chsum)

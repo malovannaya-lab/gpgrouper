@@ -401,7 +401,7 @@ class TestAreaTMT(unittest.TestCase):
                                                                              response.exc_info[1])
                          )
 
-        df = pd.read_table('./testdata/10101_1_1_none_0_e2g.tab').fillna(0)
+        df = pd.read_table('./testdata/10101_1_1_none_e2g.tab').fillna(0)
         self.assertGreater( df.query('GeneID==999').AreaSum_dstrAdj.values[0], 0)
 
         for gid in df.GeneID.unique():  # rest should be zero
@@ -431,7 +431,7 @@ class TestAreaTMT(unittest.TestCase):
                          )
         dstrAdj = 'AreaSum_dstrAdj'
         maxarea = 'AreaSum_max'
-        df = pd.read_table('./testdata/10101_1_1_none_0_e2g.tab')
+        df = pd.read_table('./testdata/10101_1_1_none_e2g.tab')
         self.assertEqual(True, all(df[ df.GeneID.isin(self.set2s)]['IDSet'] == 2))
         self.assertEqual(True, all(df.query('IDSet==3')['AreaSum_dstrAdj']==0))
         for tid in 9606, 10090:
@@ -518,7 +518,7 @@ class TestFull(unittest.TestCase):
                                            '--configfile', CONFIG_FILE,
                                            ])
         # output = pd.read_table(os.path.join(INPUT_DIR, '1_1_1_none_0_e2g.tab'))
-        output = pd.read_table(os.path.join(INPUT_DIR, '1_1_1_none_0_psms.tab'))
+        output = pd.read_table(os.path.join(INPUT_DIR, '1_1_1_none_psms.tab'))
         # print(output.columns)
         for col in data_cols:
             self.assertTrue(col in output.columns, msg='{} not found in data file'.format(col))

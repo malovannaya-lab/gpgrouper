@@ -1313,8 +1313,8 @@ def concat_isobar_output(rec, run, search, outdir, cols=None, labeltype=None, da
     df.to_csv(os.path.join(outdir, outf), columns=cols,
                     index=False, encoding='utf-8', sep='\t')
 
-    out_chksum = os.path.join(outdir, outf[:-3]+'cksum')
-    write_chksum(out_chksum, md5sum(os.path.join(outdir, outf)))
+    out_chksum = os.path.join(outdir, outf[:-3]+'md5')
+    write_md5(out_chksum, md5sum(os.path.join(outdir, outf)))
 
     print('Export of {} e2g file : {}'.format(labeltype, outf))
 
@@ -1641,18 +1641,18 @@ def grouper(usrdata, outdir='', database=None,
 
         if usrdata.labeltype in ('TMT', 'iTRAQ'):  # and silac
             genedata_out = usrdata.output_name(str(labelix)+'_e2g', ext='tab')
-            genedata_out_chksum = os.path.join(usrdata.outdir, usrdata.output_name(str(labelix)+'_e2g', ext='cksum'))
+            genedata_out_chksum = os.path.join(usrdata.outdir, usrdata.output_name(str(labelix)+'_e2g', ext='md5'))
         else:
             genedata_out = usrdata.output_name('e2g', ext='tab')
-            genedata_out_chksum = os.path.join(usrdata.outdir, usrdata.output_name('e2g', ext='cksum'))
+            genedata_out_chksum = os.path.join(usrdata.outdir, usrdata.output_name('e2g', ext='md5'))
         genes_df.to_csv(os.path.join(usrdata.outdir, genedata_out), columns=E2G_COLS,
                         index=False, encoding='utf-8', sep='\t')
 
-        # genedata_chksum = os.path.join(usrdata.outdir, usrdata.output_name(str(labelix)+'_e2g', ext='cksum'))
-        genedata_chksum = os.path.join(usrdata.outdir, usrdata.output_name('e2g', ext='cksum'))
-        write_chksum(genedata_chksum, md5sum(os.path.join(usrdata.outdir, genedata_out)))
+        # genedata_chksum = os.path.join(usrdata.outdir, usrdata.output_name(str(labelix)+'_e2g', ext='md5'))
+        genedata_chksum = os.path.join(usrdata.outdir, usrdata.output_name('e2g', ext='md5'))
+        write_md5(genedata_chksum, md5sum(os.path.join(usrdata.outdir, genedata_out)))
 
-        write_chksum(genedata_out_chksum, md5sum(os.path.join(usrdata.outdir, genedata_out)))
+        write_md5(genedata_out_chksum, md5sum(os.path.join(usrdata.outdir, genedata_out)))
         del genes_df
 
         usrdata.to_logq('{} | Export of genetable for labeltype {} completed.'.format(time.ctime(), label))
@@ -1745,18 +1745,18 @@ def grouper(usrdata, outdir='', database=None,
         # out = os.path.join(usrdata.outdir, usrdata.output_name(str(labelix)+'_psms', ext='tab'))
         out = os.path.join(usrdata.outdir, usrdata.output_name('psms', ext='tab'))
         usrdata.df.to_csv(out, index=False, encoding='utf-8', sep='\t', columns=data_cols)
-        # out_chksum = os.path.join(usrdata.outdir, usrdata.output_name(str(labelix)+'_psms', ext='cksum'))
-        out_chksum = os.path.join(usrdata.outdir, usrdata.output_name('psms', ext='cksum'))
-        write_chksum(out_chksum, md5sum(os.path.join(out)))
+        # out_chksum = os.path.join(usrdata.outdir, usrdata.output_name(str(labelix)+'_psms', ext='md5'))
+        out_chksum = os.path.join(usrdata.outdir, usrdata.output_name('psms', ext='md5'))
+        write_md5(out_chksum, md5sum(os.path.join(out)))
 
         # msfname = usrdata.output_name('{}_msf'.format(str(labelix)), ext='tab')
         msfname = usrdata.output_name('msf', ext='tab')
         msfdata = spectra_summary(usrdata)
         msfdata.to_csv(os.path.join(usrdata.outdir, msfname), index=False, sep='\t')
 
-        # out_cksum = os.path.join(usrdata.outdir, usrdata.output_name('{}_msf'.format(str(labelix)), ext='cksum'))
-        out_cksum = os.path.join(usrdata.outdir, usrdata.output_name('msf', ext='cksum'))
-        write_chksum(out_cksum, md5sum(os.path.join(usrdata.outdir, msfname)))
+        # out_md5 = os.path.join(usrdata.outdir, usrdata.output_name('{}_msf'.format(str(labelix)), ext='md5'))
+        out_md5 = os.path.join(usrdata.outdir, usrdata.output_name('msf', ext='md5'))
+        write_md5(out_md5, md5sum(os.path.join(usrdata.outdir, msfname)))
 
 
         usrdata.df = None
