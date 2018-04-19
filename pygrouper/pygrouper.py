@@ -1835,7 +1835,7 @@ def load_fasta(refseq_file):
     REQUIRED_COLS = ('geneid', 'sequence')
     ADDITIONAL_COLS = ('description', 'gi', 'homologene', 'ref', 'taxon', 'symbol')
     gen = fasta_dict_from_file(refseq_file)
-    df = pd.DataFrame.from_dict(gen, dtype=str)
+    df = pd.DataFrame.from_dict(gen)  # dtype is already string via RefProtDB
 
     # routine for converting things to integer if possible, else leave as string
     # l = []
