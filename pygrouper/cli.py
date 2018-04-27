@@ -155,6 +155,9 @@ DEFAULTS = {'max_files': 99, 'pep': 1.0, 'enzyme': 'trypsin/P', 'configfile': No
               show_default=True,
               help='''Directory to look for corresponding rawfiles for extra summary information.
               Note the raw files are not required for successful analysis.''')
+@click.option('--razor', default=False, show_default=True, is_flag=True,
+              help='''Also calculate Peptide and Gene Area based on Razor Peptide
+              definition. Left here for comparison.''')
 @click.option('-s', '--configfile', type=click.Path(exists=True, dir_okay=False),
               help=''''Points to a specific configfile for use in the analysis.
               Note will automatically look for a `pygrouper_config.ini` in present directory if not specified''')
@@ -176,7 +179,7 @@ DEFAULTS = {'max_files': 99, 'pep': 1.0, 'enzyme': 'trypsin/P', 'configfile': No
 def run(autorun, contaminants, contaminant_label, database, enzyme, interval, ion_score,
         ion_score_bins, labeltype, miscuts, modi, name, no_taxa_redistrib, outdir, psms_file,
         pipeline, idg, pep, qvalue, quant_source, rawfiledir, configfile, taxonid, zmin, zmax,
-        phospho, record_no, run_no, search_no, workers):
+        phospho, record_no, run_no, search_no, workers, razor):
     """Run PyGrouper"""
 
     if not all([database, psms_file]) and not autorun:
@@ -259,7 +262,8 @@ def run(autorun, contaminants, contaminant_label, database, enzyme, interval, io
         ret = pygrouper.main(usrdatas=usrdatas, inputdir=INPUT_DIR, outputdir=OUTPUT_DIR,
                              refs=refseqs, column_aliases=column_aliases,
                              gid_ignore_file=contaminants, labels=LABELS,
-                             contaminant_label=contaminant_label, enzyme=enzyme, workers=workers )
+                             contaminant_label=contaminant_label, enzyme=enzyme, workers=workers,
+                             razor=razor)
         if not all(x.EXIT_CODE==0 for x in ret):
             # import ipdb; ipdb.set_trace()
             for x in ret:

@@ -138,6 +138,8 @@ def apply_by_multiprocessing(df, func, workers=1, func_args=None, **kwargs):
         result = _apply_df((df, func, 0, func_args, kwargs,))
         return result[1]
 
+    workers = min(workers, len(df))  # edge case where df has less rows than workers
+    workers = max(workers, 1)        # has to be at least 1
 
     # pool = multiprocessing.Pool(processes=workers)
     with multiprocessing.Pool(processes=workers) as pool:
@@ -370,13 +372,21 @@ def _calc_coverage(seqs, pepts):
         return 0
 
 def calc_coverage_axis(row, fa, psms):
+    """
+    Calculates total and u2g coverage for each GeneID (row) with respect to
+    reference fasta (fa) and peptide evidence (psms)
+    """
+
+    if row['GeneID'] == '-1':  # reserved for no GeneID match
+        return 0, 0
 
     seqs = fa[fa.geneid == row['GeneID']]['sequence'].tolist()
     pepts = row['PeptidePrint'].split('_')
 
     u2g_pepts = psms[ (psms.GeneID == row['GeneID']) & (psms.GeneIDCount_All == 1) ].Sequence.unique()
 
-    return _calc_coverage(seqs, pepts), _calc_coverage(seqs, u2g_pepts)
+    return _calc_coverage(seqs, pepts), _calc_coverage(seqs, u2g_pepts) if len(u2g_pepts) > 0 else 0
+
 
 def calc_coverage(df, fa, psms):
 
@@ -603,8 +613,9 @@ def split_on_geneid(df):
                                                            # multi-index
     df = (df.join(glstsplitter)
           .reset_index())
-    df.loc[df.GeneID == '', 'GeneID'] = -1
-    df['GeneID'] = df.GeneID.fillna(-1)
+    df['GeneID'] = df.GeneID.fillna('-1')
+    df.loc[df.GeneID == '', 'GeneID'] = '-1'
+    df['GeneID'] = df.GeneID.fillna('-1')
     # df['GeneID'] = df.GeneID.astype(int)
     df['GeneID'] = df.GeneID.astype(str)
     return df
@@ -1316,7 +1327,7 @@ def concat_isobar_output(rec, run, search, outdir, cols=None, labeltype=None, da
     out_chksum = os.path.join(outdir, outf[:-3]+'md5')
     write_md5(out_chksum, md5sum(os.path.join(outdir, outf)))
 
-    print('Export of {} e2g file : {}'.format(labeltype, outf))
+    print('Export of {} file : {}'.format(labeltype, outf))
 
 def assign_sra(df):
 
@@ -1355,8 +1366,8 @@ def assign_sra(df):
 def set_protein_groups_axis(row, protgis, protrefs):
 
     gid = row.name
-    valid_protgis = protgis.get(gid).split(SEP)
-    valid_refs    = protrefs.get(gid).split(SEP)
+    valid_protgis = protgis.get(gid, '').split(SEP)
+    valid_refs    = protrefs.get(gid, '').split(SEP)
     # protgis = filter(lambda x: not np.isnan(x), row.loc['ProteinGIs_All'])
     protgis  = [x for x in row.loc['ProteinGIs_All'] if isinstance(x, str)]
     protrefs = [x for x in row.loc['ProteinRefs_All'] if isinstance(x, str)]
@@ -1423,7 +1434,8 @@ def set_protein_groups(df, psms, gene_protgi_dict, gene_protref_dict):
 #                          _peptidome_matcher, peptidome_matcher)
 def grouper(usrdata, outdir='', database=None,
             gid_ignore_file='', labels=dict(),
-            contaminant_label='__CONTAMINANT__'):
+            contaminant_label='__CONTAMINANT__',
+            razor=False):
     """Function to group a psm file from PD after Mascot Search"""
 
     def print_log_msg(df_or_None=None, msg='', *args, **kwargs):
@@ -1633,6 +1645,8 @@ def grouper(usrdata, outdir='', database=None,
                             ModificationTS = now)
                     .sort_values(by=['IDSet', 'GPGroup'])
         )
+        if razor:
+            genes_df = genes_df.pipe(calculate_gene_razorarea, temp_df, normalize)
 
         # =============================================================#
 
@@ -1645,6 +1659,8 @@ def grouper(usrdata, outdir='', database=None,
         else:
             genedata_out = usrdata.output_name('e2g', ext='tab')
             genedata_out_chksum = os.path.join(usrdata.outdir, usrdata.output_name('e2g', ext='md5'))
+        if razor and 'RazorArea' not in E2G_COLS:
+            E2G_COLS.append('AreaSum_razor')
         genes_df.to_csv(os.path.join(usrdata.outdir, genedata_out), columns=E2G_COLS,
                         index=False, encoding='utf-8', sep='\t')
 
@@ -1668,6 +1684,8 @@ def grouper(usrdata, outdir='', database=None,
             elif usrdata.labeltype == 'iTRAQ':
                 data_cols = DATA_COLS + ['iTRAQ_114', 'iTRAQ_115', 'iTRAQ_116', 'iTRAQ_117',
                                         'QuanInfo', 'QuanUsage']
+            if razor:
+                data_cols.append('RazorArea')
         # ========================================================================= #
         usrdata.df.drop('metadatainfo', axis=1, inplace=True)  # Don't need this
                                                            # column anymore.
@@ -1731,26 +1749,28 @@ def grouper(usrdata, outdir='', database=None,
 
         data_cols = DATA_COLS
         if usrdata.labeltype in ('TMT', 'iTRAQ'):
-            if usrdata.labeltype in ('TMT', 'iTRAQ'):
-                if usrdata.labeltype == 'TMT':
-                    data_cols = DATA_COLS + ['TMT_126', 'TMT_127_N', 'TMT_127_C', 'TMT_128_N',
-                                            'TMT_128_C', 'TMT_129_N', 'TMT_129_C', 'TMT_130_N',
-                                            'TMT_130_C', 'TMT_131', 'QuanInfo', 'QuanUsage']
-                elif usrdata.labeltype == 'iTRAQ':
-                    data_cols = DATA_COLS + ['iTRAQ_114', 'iTRAQ_115', 'iTRAQ_116', 'iTRAQ_117',
-                                            'QuanInfo', 'QuanUsage']
+            if usrdata.labeltype == 'TMT':
+                data_cols = DATA_COLS + ['TMT_126', 'TMT_127_N', 'TMT_127_C', 'TMT_128_N',
+                                        'TMT_128_C', 'TMT_129_N', 'TMT_129_C', 'TMT_130_N',
+                                        'TMT_130_C', 'TMT_131', 'QuanInfo', 'QuanUsage']
+            elif usrdata.labeltype == 'iTRAQ':
+                data_cols = DATA_COLS + ['iTRAQ_114', 'iTRAQ_115', 'iTRAQ_116', 'iTRAQ_117',
+                                        'QuanInfo', 'QuanUsage']
+            if razor and 'RazorArea' not in data_cols:
+                data_cols.append('RazorArea')
         if not all(x in usrdata.df.columns.values for x in set(data_cols) - set(_EXTRA_COLS)):
             print('Potential error, not all columns filled.')
             print([x for x in data_cols if x not in usrdata.df.columns.values])
-        # out = os.path.join(usrdata.outdir, usrdata.output_name(str(labelix)+'_psms', ext='tab'))
-        out = os.path.join(usrdata.outdir, usrdata.output_name('psms', ext='tab'))
+
+        out = os.path.join(usrdata.outdir, usrdata.output_name(str(labelix)+'_psms', ext='tab'))
+        # out = os.path.join(usrdata.outdir, usrdata.output_name('psms', ext='tab'))
         usrdata.df.to_csv(out, index=False, encoding='utf-8', sep='\t', columns=data_cols)
-        # out_chksum = os.path.join(usrdata.outdir, usrdata.output_name(str(labelix)+'_psms', ext='md5'))
-        out_chksum = os.path.join(usrdata.outdir, usrdata.output_name('psms', ext='md5'))
+        out_chksum = os.path.join(usrdata.outdir, usrdata.output_name(str(labelix)+'_psms', ext='md5'))
+        # out_chksum = os.path.join(usrdata.outdir, usrdata.output_name('psms', ext='md5'))
         write_md5(out_chksum, md5sum(os.path.join(out)))
 
-        # msfname = usrdata.output_name('{}_msf'.format(str(labelix)), ext='tab')
-        msfname = usrdata.output_name('msf', ext='tab')
+        msfname = usrdata.output_name('{}_msf'.format(str(labelix)), ext='tab')
+        # msfname = usrdata.output_name('msf', ext='tab')
         msfdata = spectra_summary(usrdata)
         msfdata.to_csv(os.path.join(usrdata.outdir, msfname), index=False, sep='\t')
 
@@ -1778,18 +1798,20 @@ def grouper(usrdata, outdir='', database=None,
             elif usrdata.labeltype == 'iTRAQ':
                 data_cols = DATA_COLS + ['iTRAQ_114', 'iTRAQ_115', 'iTRAQ_116', 'iTRAQ_117',
                                          'QuanInfo', 'QuanUsage']
+            if razor and 'RazorArea' not in data_cols:
+                data_cols.append('RazorArea')
         # if not all(x in isobar_output.columns.values for x in set(data_cols) - set(_EXTRA_COLS)):
         #     print('Potential error, not all columns filled.')
         #     print([x for x in data_cols if x not in isobar_output.columns.values])
         # data_cols = [x for x in data_cols if x in isobar_output.columns.values]
         concat_isobar_output(usrdata.recno, usrdata.runno, usrdata.searchno,
-                             usrdata.outdir, labeltype=usrdata.labeltype, datatype='e2g')
-        # usrdata.df = pd.merge(usrdata.df, temp_df, how='left')
-        concat_isobar_output(usrdata.recno, usrdata.runno, usrdata.searchno,
-                             usrdata.outdir, labeltype=usrdata.labeltype, datatype='psms', cols=data_cols)
+                                usrdata.outdir, labeltype=usrdata.labeltype, datatype='e2g')
+    # usrdata.df = pd.merge(usrdata.df, temp_df, how='left')
+    concat_isobar_output(usrdata.recno, usrdata.runno, usrdata.searchno,
+                            usrdata.outdir, labeltype=usrdata.labeltype, datatype='psms', cols=data_cols)
 
-        concat_isobar_output(usrdata.recno, usrdata.runno, usrdata.searchno,
-                             usrdata.outdir, labeltype=usrdata.labeltype, datatype='msf')
+    concat_isobar_output(usrdata.recno, usrdata.runno, usrdata.searchno,
+                            usrdata.outdir, labeltype=usrdata.labeltype, datatype='msf')
 
         # isobar_output.to_csv(os.path.join(usrdata.outdir, usrdata_out), columns=data_cols,
         #                      index=False, encoding='utf-8', sep='\t')
@@ -2052,7 +2074,8 @@ WORKERS = 1
 
 def main(usrdatas=[], fullpeptread=False, inputdir='', outputdir='', refs=dict(),
          rawfilepath=None, column_aliases=dict(), gid_ignore_file='', labels=dict(),
-         raise_on_error=False, contaminant_label='__CONTAMINANT__', enzyme='trypsin/P', workers=1):
+         raise_on_error=False, contaminant_label='__CONTAMINANT__', enzyme='trypsin/P', workers=1,
+         razor=False):
     """
     refs :: dict of taxonIDs -> refseq file names
     """
@@ -2093,7 +2116,7 @@ def main(usrdatas=[], fullpeptread=False, inputdir='', outputdir='', refs=dict()
             grouper(usrdata,
                     database=databases[usrdata.taxonid],
                     gid_ignore_file=gid_ignore_file, labels=labels,
-                    contaminant_label=contaminant_label)
+                    contaminant_label=contaminant_label, razor=razor)
             usrdata.EXIT_CODE = 0
         except Exception as e:  # catch and store all exceptions, won't crash
                                 # the whole program at least
