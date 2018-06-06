@@ -1372,6 +1372,7 @@ def set_protein_groups_axis(row, protgis, protrefs):
     protgis  = [x for x in row.loc['ProteinGIs_All'] if isinstance(x, str)]
     protrefs = [x for x in row.loc['ProteinRefs_All'] if isinstance(x, str)]
 
+    # filter by proteins that map to this particular gene
     protgi_grps = [x for x in protgis if any(y in x for y in valid_protgis)]
     protref_grps = [x for x in protrefs if any(y in x for y in valid_refs)]
 
@@ -1386,7 +1387,9 @@ def set_protein_groups_axis(row, protgis, protrefs):
         for other in protgi_grps_gene:
             if grp == other:
                 continue # same one
-            if grp.intersection(other) == other:  # other is a subset
+            # if grp.intersection(other) == other:  # other is a subset
+            #     break
+            if not grp - other:  # grp is a subset
                 break
         else: # only if we get through everyother and don't break out do we keep
             if grp not in protgi_grps_pruned:
