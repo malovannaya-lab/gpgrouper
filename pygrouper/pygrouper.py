@@ -318,7 +318,6 @@ def combine_coverage(start_end):
 
 def _calc_coverage(seqs, pepts):
 
-    # pepts = sorted(pepts, key=lambda x: len(x), reverse=True)
     pepts = sorted(pepts, key=lambda x: min(y+len(x) for y in [s.find(x) for s in seqs]))
 
     coverages = list()
@@ -372,6 +371,9 @@ def calc_coverage_axis(row, fa, psms):
         return 0, 0
 
     seqs = fa[fa.geneid == row['GeneID']]['sequence'].tolist()
+    if len(seqs) == 0: # mismatch
+        warn('When calculating coverage, GeneID {} not found in fasta file'.format(row['GeneID']))
+        return 0, 0
     pepts = row['PeptidePrint'].split('_')
 
     u2g_pepts = psms[ (psms.GeneID == row['GeneID']) & (psms.GeneIDCount_All == 1) ].Sequence.unique()
