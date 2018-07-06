@@ -38,11 +38,11 @@ pd.set_option(
 __author__ = 'Alexander B. Saltzman'
 __copyright__ = _version.__copyright__
 __credits__ = ['Alexander B. Saltzman', 'Anna Malovannaya']
-__license__ = 'MIT'
+__license__ = 'BSD 3-Clause'
 __version__ = _version.__version__
 __maintainer__ = 'Alexander B. Saltzman'
 __email__ = 'saltzman@bcm.edu'
-program_title = 'Pygrouper v{}'.format(__version__)
+program_title = 'gpGrouper v{}'.format(__version__)
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 logfilename = program_title.replace(' ', '_') + '.log'
 logging.basicConfig(filename=logfilename, level=logging.DEBUG)

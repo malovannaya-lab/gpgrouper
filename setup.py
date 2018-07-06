@@ -9,14 +9,14 @@ def calculate_version(inputfile):
         return '1.0'
 
 _version_f = os.path.join(os.path.split(os.path.abspath(__file__))[0],
-                          'pygrouper', '_version.py'
+                          'gpgrouper', '_version.py'
 )
 package_version = calculate_version(_version_f)
 
 setup(
-    name='PyGrouper',
+    name='gpGrouper',
     version=package_version,
-    py_modules=['pygrouper'],
+    py_modules=['gpgrouper'],
     packages=find_packages(),
     # packages=['pygrouper',
     #           'pygrouper.pygrouper',
@@ -34,7 +34,7 @@ setup(
     ],
     entry_points="""
     [console_scripts]
-    pygrouper=pygrouper.cli:cli
+    gpgrouper=gpgrouper.cli:cli
     """,
     # package_data={
     #     'pygrouper': ['base_config.ini']
@@ -51,7 +51,7 @@ setup(
         'Programming Language :: Python :: 3.5',
         'Programming Language :: Python :: 3.6',
     ],
-    url='https://github.com/asalt/pygrouper',
+    url='https://github.com/asalt/gpgrouper',
     author='Alexander Saltzman',
     author_email='saltzman@bcm.edu,'
 

@@ -13,12 +13,12 @@ from click.testing import CliRunner
 import numpy as np
 import pandas as pd
 
-from pygrouper import pygrouper
+from gpgrouper import gpgrouper
 # from pygrouper import auto_grouper
 
-from pygrouper import cli
+from gpgrouper import cli
 # from .. import cli
-from pygrouper.containers import UserData
+from gpgrouper.containers import UserData
 # from ..containers import UserData
 from RefProtDB.utils import _fasta_dict_from_file, fasta_dict_from_file
 
@@ -63,7 +63,7 @@ class InputTest(unittest.TestCase):
 
 
 
-    @mock.patch('pygrouper.pygrouper.main')
+    @mock.patch('gpgrouper.pygrouper.main')
     @mock.patch('sys.stdout', stdout)
     def test_call_run(self, main):
         self.longMessage = True
@@ -72,7 +72,7 @@ class InputTest(unittest.TestCase):
         self.assertEqual(response.exit_code, 1, msg=response.output)
 
     # @mock.patch('sys.stdout', devnull)
-    @mock.patch('pygrouper.pygrouper.main')
+    @mock.patch('gpgrouper.pygrouper.main')
     def test_call_run(self, main):
         self.longMessage = True
         runner = CliRunner()
@@ -80,9 +80,9 @@ class InputTest(unittest.TestCase):
                                            '--psms-file', PSMS_FILE])
         self.assertEqual(response.exit_code, 0, msg=response.output)
 
-    @mock.patch('pygrouper.pygrouper.main')
+    @mock.patch('gpgrouper.gpgrouper.main')
     def test_simple_input(self, main):
-        """Test calling of `pygrouper.main` from `pygrouper run` with valid database, psms file, and taxonid"""
+        """Test calling of `gpgrouper.main` from `gpgrouper run` with valid database, psms file, and taxonid"""
         self.longMessage = True
         runner = CliRunner()
         response = runner.invoke(cli.cli, ['run', '--database', REFSEQ_FILE,
@@ -108,26 +108,26 @@ class InputTest(unittest.TestCase):
     def test_load_fasta(self):
         with open(REFSEQ_FILE, 'r') as f:
             total_records = f.read().count('>')
-        out = pygrouper.load_fasta(REFSEQ_FILE)
+        out = gpgrouper.load_fasta(REFSEQ_FILE)
         self.assertEqual(total_records, len(out))
 
     def test_invalid_fasta(self):
-        orig = pygrouper.fasta_dict_from_file
-        pygrouper.__dict__['fasta_dict_from_file'] = _fasta_dict_from_file
+        orig = gpgrouper.fasta_dict_from_file
+        gpgrouper.__dict__['fasta_dict_from_file'] = _fasta_dict_from_file
         fasta = StringIO()
         fasta.write(u'>gi|1234\nXXXXXX')
         fasta.seek(0)
         try:
             with self.assertRaises(ValueError):
-                pygrouper.load_fasta(fasta)
+                gpgrouper.load_fasta(fasta)
         finally:
-            pygrouper.__dict__['fasta_dict_from_file'] = orig
+            gpgrouper.__dict__['fasta_dict_from_file'] = orig
 
 
 
 def get_sample_data():
         runner = CliRunner()
-        with mock.patch('pygrouper.pygrouper.main') as main:
+        with mock.patch('gpgrouper.gpgrouper.main') as main:
             response = runner.invoke(cli.cli, ['run', '--database', REFSEQ_FILE,
                                                '--psms-file', PSMS_FILE,
                                                '--taxonid', 9606,
@@ -164,8 +164,8 @@ class MatchTest(unittest.TestCase):
     def test_called_match(self):
         "Test if match function gets called (stage_match is working properly)"
         sample = get_sample_data()
-        with mock.patch('pygrouper.pygrouper._match') as _match:
-            pygrouper.match(sample['usrdatas'], sample['refs'])
+        with mock.patch('gpgrouper.gpgrouper._match') as _match:
+            gpgrouper.match(sample['usrdatas'], sample['refs'])
             self.assertTrue(_match.called)
 
     def test_called_matched_multiple(self):
@@ -176,8 +176,8 @@ class MatchTest(unittest.TestCase):
         usrdata1.taxonid = 10090
         sample['refs'][10090] = sample['refs'][9606]
         sample['usrdatas'].append(usrdata1)
-        with mock.patch('pygrouper.pygrouper._match') as _match:
-            pygrouper.match(sample['usrdatas'], sample['refs'])
+        with mock.patch('gpgrouper.gpgrouper._match') as _match:
+            gpgrouper.match(sample['usrdatas'], sample['refs'])
             self.assertEqual(_match.call_count, 2)
 
     def test_matcher(self):
@@ -185,8 +185,8 @@ class MatchTest(unittest.TestCase):
         does not validate any data, just if it dones't fail """
         sample = get_sample_data()
         usrdatas = sample['usrdatas']
-        pygrouper.set_up(usrdatas, sample['column_aliases'])
-        _ = pygrouper.match(usrdatas, sample['refs'])
+        gpgrouper.set_up(usrdatas, sample['column_aliases'])
+        _ = gpgrouper.match(usrdatas, sample['refs'])
         usrdata = usrdatas[-1]
         outcols = ['GeneIDs_All', 'GeneIDCount_All', 'TaxonIDs_All', 'TaxonIDCount_All',
                    'ProteinGIs_All', 'ProteinGICount_All']
@@ -194,7 +194,7 @@ class MatchTest(unittest.TestCase):
             self.assertIn(outcol, usrdata.df.columns,
                           msg='Matcher not returning correct columns')
 
-_logfile = re.compile('Pygrouper_v.*.log')
+_logfile = re.compile('gpGrouper_v.*.log')
 
 class TestMin(unittest.TestCase):
     """Test with the minimum required data"""
@@ -504,7 +504,7 @@ class TestFull(unittest.TestCase):
                          )
     def test_proper_columns_psms(self):
 
-        data_cols = pygrouper.DATA_COLS
+        data_cols = gpgrouper.DATA_COLS
         try:
             data_cols.remove('LastScan')
         except ValueError:
