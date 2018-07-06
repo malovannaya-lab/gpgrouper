@@ -72,22 +72,13 @@ labelflag = {'none': 0,  # hard coded number IDs for labels
 }
 flaglabel = {v:k for k,v in labelflag.items()}
 
-E2G_COLS = ['EXPRecNo', 'EXPRunNo', 'EXPSearchNo',
-            'EXPLabelFLAG', 'AddedBy',
-            'CreationTS', 'ModificationTS', 'TaxonID',
-            'GeneID', 'ProteinGIs', 'ProteinRefs',
-            'HIDs', 'Description',
-            'ProteinGI_GIDGroups', 'ProteinRef_GIDGroups',
-            'ProteinGI_GIDGroupCount', 'ProteinRef_GIDGroupCount',
-            'IDSet', 'IDGroup', 'IDGroup_u2g',
-            'SRA', 'Coverage', 'Coverage_u2g',
-            'GPGroup', 'GPGroups_All', 'PSMs',
-            'PSMs_u2g', 'PeptidePrint', 'PeptideCount',
-            'PeptideCount_u2g', 'PeptideCount_S',
-            'PeptideCount_S_u2g',
-            'AreaSum_u2g_0', 'AreaSum_u2g_all',
-            'AreaSum_max', 'AreaSum_dstrAdj',
-            'GeneCapacity', 'iBAQ_dstrAdj']
+E2G_COLS = ['EXPRecNo', 'EXPRunNo', 'EXPSearchNo', 'EXPLabelFLAG', 'AddedBy', 'CreationTS',
+            'ModificationTS', 'GeneID', 'GeneSymbol', 'Description', 'TaxonID', 'HIDs', 'PeptidePrint',
+            'GPGroup', 'GPGroups_All', 'ProteinGIs', 'ProteinRefs', 'ProteinGI_GIDGroups',
+            'ProteinGI_GIDGroupCount', 'ProteinRef_GIDGroups', 'ProteinRef_GIDGroupCount', 'IDSet', 'IDGroup',
+            'IDGroup_u2g', 'SRA', 'Coverage', 'Coverage_u2g', 'PSMs', 'PSMs_u2g', 'PeptideCount',
+            'PeptideCount_u2g', 'PeptideCount_S', 'PeptideCount_S_u2g', 'AreaSum_u2g_0', 'AreaSum_u2g_all',
+            'AreaSum_max', 'AreaSum_dstrAdj', 'GeneCapacity', 'iBAQ_dstrAdj']
 
 DATA_COLS = ['EXPRecNo', 'EXPRunNo', 'EXPSearchNo',
              'Sequence', 'PSMAmbiguity', 'Modifications',
