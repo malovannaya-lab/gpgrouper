@@ -2,9 +2,9 @@ import os
 
 import six
 if six.PY3:
-    from configparser import ConfigParser
+    from configparser import ConfigParser, NoOptionError
 elif six.PY2:
-    from ConfigParser import ConfigParser
+    from ConfigParser import ConfigParser, NoOptionError
 from getpass import getuser
 
 
@@ -29,9 +29,9 @@ class Config(object):
         self.contaminants = None
 
 if six.PY3:
-    parser = ConfigParser(comment_prefixes=(';')) # allow number sign to be read in configfile
+    parser = ConfigParser(comment_prefixes=(';'), allow_no_value=True) # allow number sign to be read in configfile
 elif six.PY2:
-    parser = ConfigParser() # allow number sign to be read in configfile
+    parser = ConfigParser(allow_no_value=True) # allow number sign to be read in configfile
 parser.optionxform = str
 
 
@@ -60,10 +60,17 @@ def parse_configfile(config_file=None, user=None):
     parser = get_configfile(config, config_file)
     if parser is None:
         return config
-    config.inputdir = parser.get('directories', 'inputdir')
-    config.outputdir = parser.get('directories', 'outputdir')
-    config.rawfiledir = parser.get('directories', 'rawfiledir')
-    config.contaminants = parser.get('directories', 'contaminants')
+    try:
+        config.inputdir = parser.get('directories', 'inputdir', fallback='.')
+        config.outputdir = parser.get('directories', 'outputdir', fallback='.')
+        config.rawfiledir = parser.get('directories', 'rawfiledir', fallback='.')
+        config.contaminants = parser.get('directories', 'contaminants', fallback='.')
+    except TypeError: # python2
+        for x in 'inputdir', 'outputdir', 'rawfiledir', 'contaminants':
+            try:
+                setattr(config, x,parser.get('directories', x))
+            except NoOptionError:
+                setattr(config, x, '.')
 
     # fv_section = parser['filter values']
     # filtervalues = {'ion_score': fv_section.getfloat('ion score'),
