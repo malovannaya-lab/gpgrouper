@@ -161,7 +161,7 @@ DEFAULTS = {'max_files': 99, 'pep': 1.0, 'enzyme': 'trypsin/P', 'configfile': No
 @click.option('-s', '--configfile', type=click.Path(exists=True, dir_okay=False),
               help=''''Points to a specific configfile for use in the analysis.
               Note will automatically look for a `gpgrouper_config.ini` in present directory if not specified''')
-@click.option('-t', '--taxonid', type=int,
+@click.option('-t', '--taxonid', type=str,
               help='Taxon ID associated with the database file')
 @click.option('--zmin', type=int, default=DEFAULTS['zmin'], show_default=True,
               help='Minimum charge')

@@ -8,7 +8,7 @@ elif six.PY2:
 from getpass import getuser
 
 
-CONFIG_NAME = 'pygrouper_config.ini'
+CONFIG_NAME = 'gpgrouper_config.ini'
 
 class Config(object):
 
