@@ -14,7 +14,6 @@ import numpy as np
 import pandas as pd
 
 from gpgrouper import gpgrouper
-# from pygrouper import auto_grouper
 
 from gpgrouper import cli
 # from .. import cli
@@ -35,16 +34,9 @@ OUTPUT_DIR = RAWFILE_DIR = INPUT_DIR
 REFSEQ_FILE = os.path.join(BASEDIR, 'testdata/two_uniques/refseq_02.fa')
 CONFIG_FILE = os.path.join(BASEDIR, '../pygrouper_config.ini')
 
-# REQUIRED_HEADERS = pygrouper.REQUIRED_HEADERS
-
-
-# usrdata = UserData(datafile=PSMS_FILE, indir=INPUT_DIR, outdir=OUTPUT_DIR, rawfiledir=RAWFILE_DIR,
-                   # no_taxa_redistrib=0, labeltype='None', addedby='test', searchdb=REFSEQ_FILE)
-
-# devnull = open(os.devnull, 'w')
 
 class InputTest(unittest.TestCase):
-    """Test ability to call `pygrouper run`"""
+    """Test ability to call `gpgrouper run`"""
 
     stdout = sys.stdout
     stderr = sys.stderr
@@ -63,7 +55,7 @@ class InputTest(unittest.TestCase):
 
 
 
-    @mock.patch('gpgrouper.pygrouper.main')
+    @mock.patch('gpgrouper.gpgrouper.main')
     @mock.patch('sys.stdout', stdout)
     def test_call_run(self, main):
         self.longMessage = True
@@ -72,7 +64,7 @@ class InputTest(unittest.TestCase):
         self.assertEqual(response.exit_code, 1, msg=response.output)
 
     # @mock.patch('sys.stdout', devnull)
-    @mock.patch('gpgrouper.pygrouper.main')
+    @mock.patch('gpgrouper.gpgrouper.main')
     def test_call_run(self, main):
         self.longMessage = True
         runner = CliRunner()
