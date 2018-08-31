@@ -1555,6 +1555,8 @@ def grouper(usrdata, outdir='', database=None,
     labeltypes = get_labels(usrdata.df, labels, usrdata.labeltype)
     psm_data = split_multiplexed(usrdata, labeltypes, exp_labeltype=usrdata.labeltype)
     dtypes = usrdata.df.dtypes.to_dict()
+    label_taxon = defaultdict(dict)  # store this for species estimates for each label
+
     for labelix, psmfile in psm_data.items():
         # label = flaglabel.get(labelix, 'none')
         label = flaglabel.get(labelix, labelix)
@@ -1585,6 +1587,7 @@ def grouper(usrdata, outdir='', database=None,
                     )
         )
 
+
         additional_labels = list()
         # ======================== Plugin for multiple taxons  ===================== #
         taxon_ids = usrdata.df['TaxonID'].replace(['0', 0, 'NaN', 'nan', 'NAN'], np.nan).dropna().unique()
@@ -1594,6 +1597,7 @@ def grouper(usrdata, outdir='', database=None,
         if len(taxon_ids) == 1 or usrdata.no_taxa_redistrib:  # just 1 taxon id present
             for tid in taxon_ids: # taxon_ids is a set
                 taxon_totals[tid] = 1
+                label_taxon[label][tid] = 1
         elif len(taxon_ids) > 1:  # more than 1 taxon id
             taxon_totals = multi_taxon_splitter(taxon_ids, usrdata.df,
                                                 gid_ignore_list, 'PrecursorArea_split')
@@ -1605,6 +1609,7 @@ def grouper(usrdata, outdir='', database=None,
                 # usrdata.to_logq('For the full data : {} = {}'.format(taxon, ratio))
                 print('For label {} : {} = {}'.format(label, taxon, ratio))
                 usrdata.to_logq('For label {} : {} = {}'.format(label, taxon, ratio))
+                label_taxon[label][taxon] = ratio
 
         gpgcount, genecount, ibaqtot, = 0, 0, 0
 
@@ -1877,9 +1882,14 @@ def grouper(usrdata, outdir='', database=None,
     #     usrdata.df.to_csv(os.path.join(usrdata.outdir, usrdata_out), columns=data_cols,
     #                       index=False, encoding='utf-8', sep='\t')
 
+    out = os.path.join(usrdata.outdir, usrdata.output_name('species_ratios', ext='tab'))
+    label_taxonratios = pd.DataFrame(label_taxon)
+    label_taxonratios.to_csv(out, index=True, encoding='utf-8', sep='\t')
+
     usrdata.to_logq('{} | Export of datatable completed.'.format(time.ctime())+
                     '\nSuccessful grouping of file completed.')
     usrdata.flush_log()
+
 
     print('Successful grouping of {} completed.\n'.format(repr(usrdata)))
 
