@@ -1,5 +1,6 @@
 """Container for each experiment, has a dataframe and metadata"""
 import os
+import re
 from datetime import datetime
 import traceback
 
@@ -32,6 +33,11 @@ class UserData:
         self.df = pd.DataFrame()
         self.pipeline = None
         self.original_columns = None
+
+        rrs = '{}_{}_{}_'.format(recno, runno, searchno)
+        basename = os.path.splitext(os.path.basename(datafile))[0]
+        self.basename = basename.split(rrs)[-1]
+
         self.LOGFILE = os.path.join(outdir, self.output_name(ext='log'))
         self._LOGSTACK = list()
         self.EXIT_CODE = 0
@@ -109,10 +115,11 @@ class UserData:
         """generate an appropriate output file name
         returns rec_run_search_labeltype_filetype.tab"""
         # suffix = '_'.join([str(ix) for ix in suffix])
-        return '{!r}_{}{}.{}'.format(self,
-                                     self.labeltype,
-                                     '_' + suffix if suffix else '',
-                                     ext
+        return '{!r}_{}_{}{}.{}'.format(self,
+                                        self.labeltype,
+                                        self.basename,
+                                        '_' + suffix if suffix else '',
+                                        ext
         )
 
     def populate_base_data(self):
