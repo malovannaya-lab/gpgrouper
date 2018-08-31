@@ -4,6 +4,7 @@ import os
 import csv
 import numpy as np
 from datetime import datetime
+import itertools
 from collections import namedtuple, defaultdict, OrderedDict, deque
 import six
 if six.PY3:
@@ -131,7 +132,9 @@ def fancyprint(ShowText,string_size=12):
             print(''.join(line))
 
 label_pos = re.compile(
-    """(\d+|N-Term)      # Match numbers,
+    """
+    (?<!Label\:)  # not preceded by
+    (\d+|N-Term)      # Match numbers,
     (?!       # only if it's not followed by..."
      [^(]*    #   any number of characters except opening parens" +
      \\)      #   followed by a closing parens" +
@@ -142,7 +145,7 @@ label_pos = re.compile(
 inside_paren = re.compile(r"\((\S+)\)")
 amino_acids = list('ACDEFGHIKLMNPQRSTVWY')
 
-def seq_modi(sequence, modifications, to_count):
+def seq_modi(sequence, modifications, no_count):
     '''
     function to output a modified string of sequence that includes all modifications at the appropriate place.
     Modified amino acids are indicated in the input 'sequence' by a lowercase letter.
@@ -159,11 +162,16 @@ def seq_modi(sequence, modifications, to_count):
     seqlist = list(sequence)
     modi_len = 0  # default length is zero, can change
     label = 0  # default label = 0, can change
+    label_search = re.search('(Label\S+)(?=\))', modifications)# for SILAC
+    if label_search:
+        label = label_search.group(0)
+
     # if not any(c for c in sequence if (c.islower() or c == 'X')): # check if any modifications to deal with
     if not any(c == 'X' for c in sequence) and not modifications: # check if any modifications to deal with
         return sequence, sequence, 0, label
     modkeys = inside_paren.findall(modifications)
-    modi_len = len([x for x in modkeys if any(mod in x for mod in to_count)])
+    modi_len = len([x for x in modkeys if not any(y in x for y in no_count)])
+                    # any(mod in x for mod in to_count)])
     # modkeys = re.findall(r'(\([^\)]+\))',modifications)  #get all modifications
     # modpos = re.findall(r'[A-Z]([0-9]+)',modifications)  # get all modification positions
     modpos = label_pos.findall(modifications)
@@ -321,13 +329,14 @@ def _count_modis_maxquant(modi):
 def count_modis_maxquant(df):
     return df.apply(lambda x: _count_modis_maxquant(x['Modifications']), axis=1)
 
-def calculate_miscuts(seq, targets=None):
+def calculate_miscuts(seq, targets=None, exceptions=None):
     """Calculates number of miscuts for a given sequence
     using amino acids given in targets"""
-    # TODO: implement support for cases such as trypsin/P that don't count miscuts with next aa
-    # a Proline, for example
+    not_miscut = [''.join(x) for x in itertools.product(targets, exceptions)]
     miscuts = sum(seq.count(x) for x in targets)
-    if not any(seq[-1] == x for x in 'KR'):  # then at the C terminal
+    miscuts_not = sum(seq.count(x) for x in not_miscut)
+    miscuts -= miscuts_not
+    if not any(seq[-1] == x for x in targets):  # then at the C terminal
         return miscuts
     return miscuts -1
 

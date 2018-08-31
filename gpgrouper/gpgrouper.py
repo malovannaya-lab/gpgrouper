@@ -113,6 +113,25 @@ try:
 except ImportError:
     imagetitle = False
 
+if six.PY2:
+
+    class DirEntry:
+        def __init__(self, f):
+            self.f = f
+        def is_file(self):
+            return os.path.isfile(self.f)
+        def is_dir(self):
+            return os.path.isdir(self.f)
+        @property
+        def name(self):
+            return self.f
+
+    def scandir(path='.'):
+        files = os.listdir('.')
+        for f in files:
+            yield DirEntry(f)
+
+    os.scandir = scandir
 
 def _apply_df(input_args):
     df, func, i, func_args, kwargs = input_args
@@ -735,7 +754,7 @@ def create_df(inputdf, label, inputcol='GeneID'):
     peptide DataFrame"""
     return pd.DataFrame({'GeneID':
                          list(set(inputdf[inputcol])),
-                         'EXPLabelFLAG': labelflag.get(label, 0)})
+                         'EXPLabelFLAG': labelflag.get(label, label)})
 
 def select_good_peptides(usrdata, labelix):
     """Selects peptides of a given label with the correct flag and at least one genecount
@@ -1230,11 +1249,26 @@ def get_labels(usrdata, labels, labeltype='none'):
     '""labels is a dictionary of lists for each label type""'
     if labeltype == 'none':  # label free
         return ['none']
+    elif labeltype == 'SILAC':
+        return usrdata.LabelFLAG.unique()
     mylabels = labels.get(labeltype)
     if mylabels is None:
         return ['none']
     included_labels = [label for label in mylabels if label in usrdata.columns]
     return included_labels
+
+def regularize_filename(f):
+    """
+    regularize filename so that it's valid on windows
+    """
+    invalids = r'< > : " / \ | ? *'.split(' ')
+    # invalids = r'<>:"/\\\|\?\*'
+    out = str(f)
+    for i in invalids:
+        out = out.replace(i, '_')
+    return out
+
+
 
 def split_multiplexed(usrdata, labeltypes, exp_labeltype='none'):
 
@@ -1246,6 +1280,26 @@ def split_multiplexed(usrdata, labeltypes, exp_labeltype='none'):
         out = os.path.join(usrdata.outdir, usrdata.output_name(str(0)+'_psms', ext='tab'))
         df.to_csv(out, index=False, encoding='utf-8', sep='\t')
         return {0: out}
+
+    # SILAC
+    if exp_labeltype == 'SILAC':
+        output = dict()
+        for iso_label in labeltypes:  # convert labeltype to lower for finding
+            if iso_label == 0:
+                subdf = df[ ~df['SequenceModi'].str.contains('Label') ].copy()
+            else:
+                subdf = df[ df['SequenceModi'].str.contains(iso_label.lower(), regex=False) ].copy()
+
+            subdf['LabelFLAG'] = 0
+            subdf['PrecursorArea_split'] = subdf['PrecursorArea']  # no splitting on reporter ion
+
+            # outname = str(iso_label).replace(':', '_')
+            outname = regularize_filename(str(iso_label))
+            out = os.path.join(usrdata.outdir, usrdata.output_name(outname+'_psms', ext='tab'))
+            subdf.to_csv(out, index=False, encoding='utf-8', sep='\t')
+            output[iso_label] = out
+        return output
+
 
     # iTRAQ/TMT
     # output = list()
@@ -1294,7 +1348,10 @@ def redistribute_area_isobar(temp_df, label, labeltypes, area_col, labeltype):
     return temp_df, new_area_col
 
 def concat_isobar_output(rec, run, search, outdir, cols=None, labeltype=None, datatype='e2g'):
-    pat = re.compile('^{}_{}_{}_{}_\d+_{}.tab'.format(rec, run, search, labeltype, datatype))
+    if labeltype == "SILAC": # do not have digits assigned yet for different labels
+        pat = re.compile('^{}_{}_{}_{}_(Label)?.*_{}.tab'.format(rec, run, search, labeltype, datatype))
+    else:
+        pat = re.compile('^{}_{}_{}_{}_\d+_{}.tab'.format(rec, run, search, labeltype, datatype))
     files = list()
     for entry in os.scandir(outdir):
         if entry.is_file() and pat.search(entry.name):
@@ -1499,7 +1556,8 @@ def grouper(usrdata, outdir='', database=None,
     psm_data = split_multiplexed(usrdata, labeltypes, exp_labeltype=usrdata.labeltype)
     dtypes = usrdata.df.dtypes.to_dict()
     for labelix, psmfile in psm_data.items():
-        label = flaglabel.get(labelix, 'none')
+        # label = flaglabel.get(labelix, 'none')
+        label = flaglabel.get(labelix, labelix)
         df = pd.read_table(psmfile, dtype=dtypes)
         print('{} | Working on label {}'.format(time.ctime(), label))
         usrdata.to_logq('{} | Working on label "{}": {}'.format(time.ctime(), label, labelix))
@@ -1649,8 +1707,8 @@ def grouper(usrdata, outdir='', database=None,
         genecount += len(genes_df)
         ibaqtot += genes_df[~genes_df.GeneID.isin(gid_ignore_list)].iBAQ_dstrAdj.sum()
 
-        if usrdata.labeltype in ('TMT', 'iTRAQ'):  # and silac
-            genedata_out = usrdata.output_name(str(labelix)+'_e2g', ext='tab')
+        if usrdata.labeltype in ('TMT', 'iTRAQ', 'SILAC'):  # and silac
+            genedata_out = usrdata.output_name(regularize_filename(labelix)+'_e2g', ext='tab')
             genedata_out_chksum = os.path.join(usrdata.outdir, usrdata.output_name(str(labelix)+'_e2g', ext='md5'))
         else:
             genedata_out = usrdata.output_name('e2g', ext='tab')
@@ -1758,14 +1816,14 @@ def grouper(usrdata, outdir='', database=None,
             print('Potential error, not all columns filled.')
             print([x for x in data_cols if x not in usrdata.df.columns.values])
 
-        out = os.path.join(usrdata.outdir, usrdata.output_name(str(labelix)+'_psms', ext='tab'))
+        out = os.path.join(usrdata.outdir, usrdata.output_name(regularize_filename(labelix)+'_psms', ext='tab'))
         # out = os.path.join(usrdata.outdir, usrdata.output_name('psms', ext='tab'))
         usrdata.df.to_csv(out, index=False, encoding='utf-8', sep='\t', columns=data_cols)
-        out_chksum = os.path.join(usrdata.outdir, usrdata.output_name(str(labelix)+'_psms', ext='md5'))
+        out_chksum = os.path.join(usrdata.outdir, usrdata.output_name(regularize_filename(labelix)+'_psms', ext='md5'))
         # out_chksum = os.path.join(usrdata.outdir, usrdata.output_name('psms', ext='md5'))
         write_md5(out_chksum, md5sum(os.path.join(out)))
 
-        msfname = usrdata.output_name('{}_msf'.format(str(labelix)), ext='tab')
+        msfname = usrdata.output_name('{}_msf'.format(regularize_filename(labelix)), ext='tab')
         # msfname = usrdata.output_name('msf', ext='tab')
         msfdata = spectra_summary(usrdata)
         msfdata.to_csv(os.path.join(usrdata.outdir, msfname), index=False, sep='\t')
@@ -1783,7 +1841,7 @@ def grouper(usrdata, outdir='', database=None,
                     outname=usrdata.output_name('metadata', ext='json'), outpath=usrdata.outdir)
 
 
-    if usrdata.labeltype in ('TMT', 'iTRAQ'):
+    if usrdata.labeltype in ('TMT', 'iTRAQ', 'SILAC'):
 
         data_cols = DATA_COLS
         if usrdata.labeltype in ('TMT', 'iTRAQ'):
@@ -1829,7 +1887,6 @@ def calculate_breakup_size(row_number):
     return ceil(row_number/4)
 
 def set_modifications(usrdata):
-
     to_replace = {'DeStreak' : 'des', 'Deamidated' : 'dam', 'Carbamidomethyl' : 'car',
                   'Oxidation' : 'oxi', 'Phospho' : 'pho',
                   'Acetyl': 'ace', 'GlyGly' : 'gg', 'Label:13C(6)' : 'lab',
@@ -1838,10 +1895,15 @@ def set_modifications(usrdata):
     modis_abbrev = usrdata.Modifications.replace(regex=to_replace).fillna('')
     modis_abbrev.name = 'Modifications_abbrev'
     usrdata = usrdata.join(modis_abbrev)
+
+    # labels = usrdata.Modifications.str.extract('(Label\S+)(?=\))').unique()  # for SILAC
+    no_count = 'tmt', 'itraq', 'Label'
+
     modifications = usrdata.apply(lambda x :
                                   seq_modi(x['Sequence'],
                                            x['Modifications_abbrev'],
-                                           to_replace.values()
+                                           no_count,
+                                           # labels=labels
                                   ),
                                   axis=1
     )
@@ -1886,9 +1948,13 @@ def load_fasta(refseq_file):
 
 ENZYME = {'trypsin': dict(cutsites=('K', 'R'), exceptions=None),
           'trypsin/P': dict(cutsites=('K', 'R'), exceptions=('P',)),
+          'chymotrypsin': dict(cutsites=('Y', 'W', 'F'), exceptions=None),
+          'LysC': dict(cutsites=('K',), exceptions=None),
+          'GluC': dict(cutsites=('E',), exceptions=None),
+          'ArgC': dict(cutsites=('R',), exceptions=None),
 }
 # TODO: add the rest
- # 'trypsin/P', 'chymotrypsin', 'LysC', 'LysN', 'GluC', 'ArgC' 'AspN',}
+ # 'LysN', 'ArgC'
 
 def _match(usrdatas, refseq_file, miscuts=2, enzyme='trypsin/P'):
 
@@ -1979,17 +2045,17 @@ def column_identifier(df, aliases):
     return column_names
 
 # Idea
-# REQUIRED_HEADERS = ['Sequence', 'Modifications', 'PrecursorArea',
-#                     'Charge', 'IonScore', 'q_value', 'PEP', 'SpectrumFile',
-#                     'RTmin', 'DeltaMassPPM']
-# def check_required_headers(df):
-#     if not all(x in df.columns for x in REQUIRED_HEADERS):
-#         missing = [x for x in REQUIRED_HEADERS if x not in df.columns]
-#         fmt = 'Invalid input file, missing {}'.format(', '.join(missing))
-#         raise ValueError(fmt)
+REQUIRED_HEADERS = ['Sequence', 'Modifications', 'PrecursorArea',
+                    'Charge', 'IonScore', 'q_value', 'PEP', 'SpectrumFile',
+                    'RTmin', 'DeltaMassPPM']
+def check_required_headers(df):
+    if not all(x in df.columns for x in REQUIRED_HEADERS):
+        missing = [x for x in REQUIRED_HEADERS if x not in df.columns]
+        fmt = 'Invalid input file, missing {}'.format(', '.join(missing))
+        raise ValueError(fmt)
 
 
-def set_up(usrdatas, column_aliases):
+def set_up(usrdatas, column_aliases, enzyme='trypsin/P'):
     """Set up the usrdata class for analysis
     Read data, rename columns (if appropriate), populate base data"""
     for usrdata in usrdatas:
@@ -2023,21 +2089,29 @@ def set_up(usrdatas, column_aliases):
         if 'PEP' not in usrdata.df.columns:
             usrdata.df['PEP'] = 0  # not trivial to make a category due to sorting
             # usrdata.categorical_assign('PEP', 0, ordered=True)
-        # check_required_headers(usrdata.df)
-
-
-        if 'MissedCleavages' not in usrdata.df.columns:
-            usrdata.df['MissedCleavages'] =\
-                                        usrdata.df.apply(lambda x:\
-                                                         calculate_miscuts(x['Sequence'],
-                                                                           targets=('K', 'R')),
-                                                         axis=1)
         if not 'q_value' in usrdata.df.columns:
             try:
                 usrdata.df['q_value'] = usrdata.df['PEP'] / 10  # rough approximation
             except KeyError:
                 warn('No q_value available')
                 usrdata.df['q_value'] = 0
+
+        check_required_headers(usrdata.df)
+
+        targets, exceptions = ENZYME[enzyme]['cutsites'], ENZYME[enzyme]['exceptions']
+        usrdata.df.apply(lambda x: calculate_miscuts(x['Sequence'], targets=targets,
+                                                      exceptions=exceptions ),
+                         axis=1)
+
+        if 'MissedCleavages' not in usrdata.df.columns:
+            targets, exceptions = ENZYME[enzyme]['cutsites'], ENZYME[enzyme]['exceptions']
+            usrdata.df['MissedCleavages'] =\
+                                        usrdata.df.apply(lambda x:\
+                                                         calculate_miscuts(x['Sequence'],
+                                                                           targets=targets,
+                                                                           exceptions=exceptions
+                                                                           ),
+                                                         axis=1)
         if not 'PSMAmbiguity' in usrdata.df.columns:
             # usrdata.df['PSMAmbiguity'] = 'Unambiguous'
             usrdata.categorical_assign('PSMAmbiguity', 'Umambiguous')  # okay?
@@ -2094,7 +2168,7 @@ def main(usrdatas=[], fullpeptread=False, inputdir='', outputdir='', refs=dict()
     # logging.info('Start at {}'.format(startTime))
 
     # first set the modifications. Importantly fills in X with the predicted amino acid
-    set_up(usrdatas, column_aliases)
+    set_up(usrdatas, column_aliases, enzyme)
     # for ud in usrdatas:
     #     print(ud, ud.EXIT_CODE)
     if all(usrdata.EXIT_CODE != 0 for usrdata in usrdatas):
