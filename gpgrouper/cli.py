@@ -265,7 +265,6 @@ def run(autorun, contaminants, contaminant_label, database, enzyme, interval, io
                              contaminant_label=contaminant_label, enzyme=enzyme, workers=workers,
                              razor=razor)
         if not all(x.EXIT_CODE==0 for x in ret):
-            # import ipdb; ipdb.set_trace()
             for x in ret:
                 x.flush_log()
 

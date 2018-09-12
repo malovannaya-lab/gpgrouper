@@ -520,6 +520,7 @@ def assign_IDG(df, filtervalues=None):
                                labels=[7, 5, 3, 1], include_lowest=True,
                                right=False).astype('int')
     df.loc[ df['q_value'] > .01, 'PSM_IDG' ] += 1
+    df.loc[ (df['IonScore'].isna() | df['q_value'].isna()), 'PSM_IDG'] = 9
     return df
 
 def make_seqlower(usrdata, col='Sequence'):
@@ -1005,7 +1006,7 @@ def _set2_or_3(row, genes_df, allsets):
     peptset = row.PeptideSet
     # allsets = genes_df.PeptideSet.unique()  # calculate outside this function for performance boost
     if six.PY2 and any(set(peptset) < x for x in allsets):
-            return 3
+        return 3
 
     elif six.PY3 and any(peptset < allsets):
         return 3
@@ -1351,7 +1352,7 @@ def concat_isobar_output(rec, run, search, outdir, cols=None, labeltype=None, da
     if labeltype == "SILAC": # do not have digits assigned yet for different labels
         pat = re.compile('^{}_{}_{}_{}_(Label)?.*_{}.tab'.format(rec, run, search, labeltype, datatype))
     else:
-        pat = re.compile('^{}_{}_{}_{}_\d+_{}.tab'.format(rec, run, search, labeltype, datatype))
+        pat = re.compile('^{}_{}_{}_{}_.*_\d+_{}.tab'.format(rec, run, search, labeltype, datatype))
     files = list()
     for entry in os.scandir(outdir):
         if entry.is_file() and pat.search(entry.name):
@@ -1557,6 +1558,7 @@ def grouper(usrdata, outdir='', database=None,
     dtypes = usrdata.df.dtypes.to_dict()
     label_taxon = defaultdict(dict)  # store this for species estimates for each label
 
+    data_cols = DATA_COLS
     for labelix, psmfile in psm_data.items():
         # label = flaglabel.get(labelix, 'none')
         label = flaglabel.get(labelix, labelix)
@@ -1629,7 +1631,7 @@ def grouper(usrdata, outdir='', database=None,
         # ==========Select only peptides flagged  with good quality=========== #
         temp_df = select_good_peptides(usrdata.df, labelix)
         if temp_df.empty:  # only do if we actually have peptides selected
-            print('No good peptides found for {}'.format(labelix))
+            print('Warning, no good peptides found for label {}'.format(label))
             continue
 
         # if usrdata.labeltype in ('TMT', 'iTRAQ'):

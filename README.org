@@ -12,6 +12,24 @@
    - q_value :: Percolator (or search engine equivalent) score for each PSM
        Note that PEP can be used in place of q_value with the rough observational
        approximation that PEP / 10 = q_value
+   - Charge
+
+*** Renaming Columns
+   A base configuration file for renaming column headers is provided with =gpgrouper=
+   To generate it, simply run =gpgrouper getconfig= and a config file will be generated.
+   The configuration file can be specified by the =--configfile= flag in =gpgrouper run=, but if not specified
+   and the default =gpgrouper_config.ini= file exists, it will be used.
+
+   This file can be edited with addition of new column aliases as needed, though it should be set up to work
+   with ProteomeDiscoverer+Mascot and MaxQuant already.
+
+*** Additional info for MaxQuant
+   For MaxQuant output, the =evidence.txt= PSMs file should be used as input. gpgrouper is designed
+   to be run separately for each experiment. As of writing, it is not configured to work with multiple 
+   label-free experiments searched together under say MaxQuant. Therefore, separate experiments
+   need to be separated. In other words, if MaxQuant is used to search multiple experiments at 
+   once (potentially with match between runs) the evidence.txt file needs to be separated into separate "experiment" files.
+   A simple [[https://gist.github.com/asalt/82548c387e68dc228bb8b2124268a913][script]] is available for doing just this.
 
 ** FASTA Database File
    The database file should be a pre-constructed tab delimited file for matching
