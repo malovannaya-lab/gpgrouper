@@ -2136,7 +2136,9 @@ def set_up(usrdatas, column_aliases, enzyme='trypsin/P'):
             # usrdata.df['SequenceModi'] = usrdata.df['Modified sequence']
             usrdata.df.rename(columns={'Modified sequence': 'SequenceModi'},
                               inplace=True)
-            usrdata.df['SequenceModiCount'] = count_modis_maxquant(usrdata.df)
+            usrdata.df['SequenceModiCount'] = count_modis_maxquant(usrdata.df,
+                                                                   usrdata.labeltype
+            )
             usrdata.categorical_assign('LabelFlag', 0) #TODO: handle this properly
             # usrdata.df['LabelFLAG'] = 0  #TODO: handle this properly
     return

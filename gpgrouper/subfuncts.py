@@ -324,10 +324,15 @@ def _seq_modi_old(sequence, modifications, keeplog=True):
 def _count_modis_maxquant(modi):
     if modi == 'Unmodified':
         return 0
-    return modi.count(',') + 1  # multiple modis are separated by a comma
+    count = modi.count(',') + 1  # multiple modis are separated by a comma
+    if labeltype == 'TMT':
+        count -= modi.lower().count('tmt')
+    elif labeltype == 'iTRAQ':
+        count -= modi.lower().count('itraq')
+    return count
 
-def count_modis_maxquant(df):
-    return df.apply(lambda x: _count_modis_maxquant(x['Modifications']), axis=1)
+def count_modis_maxquant(df, labeltype):
+    return df.apply(lambda x: _count_modis_maxquant(x['Modifications'], labeltype), axis=1)
 
 def calculate_miscuts(seq, targets=None, exceptions=None):
     """Calculates number of miscuts for a given sequence
