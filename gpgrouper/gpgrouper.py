@@ -672,7 +672,7 @@ def flag_AUC_PSM(df, fv, contaminant_label='__CONTAMINANT__', phospho=False):
     df.loc[df['SequenceModiCount'] > fv['modi'],
            ['AUC_UseFLAG', 'PSM_UseFLAG']] = 0
 
-    df.loc[(df['IonScore'].isnull() & df['q_value'].isnull()),
+    df.loc[(df['IonScore'].isnull() | df['q_value'].isnull()),
            ['AUC_UseFLAG', 'PSM_UseFLAG']] = 1, 0
 
     df.loc[df['IonScore'] < fv['ion_score'],
@@ -1348,7 +1348,7 @@ def redistribute_area_isobar(temp_df, label, labeltypes, area_col, labeltype):
     temp_df[new_area_col].fillna(temp_df[area_col], inplace=True)
     return temp_df, new_area_col
 
-def concat_isobar_output(rec, run, search, outdir, cols=None, labeltype=None, datatype='e2g'):
+def concat_isobar_output(rec, run, search, outdir, outf, cols=None, labeltype=None, datatype='e2g'):
     if labeltype == "SILAC": # do not have digits assigned yet for different labels
         pat = re.compile('^{}_{}_{}_{}_(Label)?.*_{}.tab'.format(rec, run, search, labeltype, datatype))
     else:
@@ -1362,7 +1362,7 @@ def concat_isobar_output(rec, run, search, outdir, cols=None, labeltype=None, da
         return
     df = pd.concat((pd.read_table(f) for f in files))
     # outf = '{}_{}_{}_{}_all_{}.tab'.format(rec, run, search, labeltype, datatype)
-    outf = '{}_{}_{}_{}_{}.tab'.format(rec, run, search, labeltype, datatype)
+    # outf = '{}_{}_{}_{}_{}.tab'.format(rec, run, search, labeltype, datatype)
 
     if datatype == 'e2g' and cols is None:
         cols = E2G_COLS
@@ -1865,14 +1865,17 @@ def grouper(usrdata, outdir='', database=None,
         #     print('Potential error, not all columns filled.')
         #     print([x for x in data_cols if x not in isobar_output.columns.values])
         # data_cols = [x for x in data_cols if x in isobar_output.columns.values]
-        concat_isobar_output(usrdata.recno, usrdata.runno, usrdata.searchno,
-                                usrdata.outdir, labeltype=usrdata.labeltype, datatype='e2g')
+        concat_isobar_output(usrdata.recno, usrdata.runno, usrdata.searchno, usrdata.outdir,
+                             usrdata.output_name(suffix='e2g'), labeltype=usrdata.labeltype,
+                             datatype='e2g')
     # usrdata.df = pd.merge(usrdata.df, temp_df, how='left')
-    concat_isobar_output(usrdata.recno, usrdata.runno, usrdata.searchno,
-                            usrdata.outdir, labeltype=usrdata.labeltype, datatype='psms', cols=data_cols)
+    concat_isobar_output(usrdata.recno, usrdata.runno, usrdata.searchno, usrdata.outdir,
+                         usrdata.output_name(suffix='psms'), labeltype=usrdata.labeltype,
+                         datatype='psms', cols=data_cols)
 
-    concat_isobar_output(usrdata.recno, usrdata.runno, usrdata.searchno,
-                            usrdata.outdir, labeltype=usrdata.labeltype, datatype='msf')
+    concat_isobar_output(usrdata.recno, usrdata.runno, usrdata.searchno, usrdata.outdir,
+                         usrdata.output_name(suffix='msf'), labeltype=usrdata.labeltype,
+                         datatype='msf')
 
         # isobar_output.to_csv(os.path.join(usrdata.outdir, usrdata_out), columns=data_cols,
         #                      index=False, encoding='utf-8', sep='\t')
