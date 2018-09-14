@@ -761,8 +761,8 @@ def select_good_peptides(usrdata, labelix):
     """Selects peptides of a given label with the correct flag and at least one genecount
     The LabelFLAG is set here for TMT/iTRAQ/SILAC data.
     """
-    temp_df = usrdata[(usrdata['PSM_UseFLAG'] == 1) &
-                      (usrdata['GeneIDCount_All'] > 0)].copy()  # should keep WL's
+    temp_df = usrdata[((usrdata['PSM_UseFLAG'] == 1) | usrdata['AUC_UseFLAG'] ==1) &
+                      (usrdata['GeneIDCount_All'] > 0)].copy()  # keep match between runs
     temp_df['LabelFLAG'] = labelix
     return temp_df
 
