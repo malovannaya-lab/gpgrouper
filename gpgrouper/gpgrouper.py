@@ -2130,7 +2130,7 @@ def set_up(usrdatas, column_aliases, enzyme='trypsin/P'):
         if not 'PSMAmbiguity' in usrdata.df.columns:
             # usrdata.df['PSMAmbiguity'] = 'Unambiguous'
             usrdata.categorical_assign('PSMAmbiguity', 'Umambiguous')  # okay?
-        if not usrdata.pipeline == 'MQ':  # MaxQuant already has modifications
+        if not usrdata.pipeline == 'MQ' or 'Modified sequence' in usrdata.df:  # MaxQuant already has modifications
             usrdata.df = set_modifications(usrdata.df)
         else:
             # usrdata.df['SequenceModi'] = usrdata.df['Modified sequence']
